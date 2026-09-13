@@ -1366,8 +1366,20 @@ async function exitProgram(){
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function goTab(name){const b=document.querySelector(`.tabs button[data-tab=${name}]`);if(b)b.click();window.scrollTo({top:0,behavior:'smooth'});}
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
+async function openImageGenerator(fr){
+  try{
+    await refreshGallery(false);
+    if(galDir&&galPromptsPath){
+      const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json());
+      const ui=(info.config||{}).gen_ui||{};
+      const P={...(ui.P||{}),prompts:galPromptsPath,output:galDir};
+      await post8765('/api/config',{gen_ui:{...ui,P}});
+    }
+  }catch(e){toast('이미지 생성 화면 연결 실패: '+e.message,true);}
+  fr.src=fr.dataset.src;
+}
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('hidden',t.id!=='tab-'+b.dataset.tab&&t.dataset.tabof!==b.dataset.tab));
-  const fr=document.querySelector('#tab-'+b.dataset.tab+' iframe'); if(fr&&fr.src==='about:blank'){fr.src=fr.dataset.src;}});
+  const fr=document.querySelector('#tab-'+b.dataset.tab+' iframe'); if(fr){if(b.dataset.tab==='imggen')openImageGenerator(fr);else if(fr.src==='about:blank')fr.src=fr.dataset.src;}});
 window.addEventListener('message',e=>{ if(e.data&&e.data.aipHeight){ document.querySelectorAll('#tab-video iframe,#tab-imggen iframe').forEach(f=>{ if(f.contentWindow===e.source) f.style.height=(e.data.aipHeight+40)+'px'; }); } });
 async function checkReady(){
   const box=$('readyBox'); const items=[];   // [ok, 라벨, 고칠 탭]
