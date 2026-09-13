@@ -159,6 +159,16 @@ def reset_output(item_id, scope):
         STATE["job"] = None
         return dict(count=len(targets), trash=os.path.abspath(trash))
 
+
+def delete_script(script_file):
+    """화면의 대본 목록에서 선택된 파일만 삭제한다."""
+    if script_file not in {item["path"] for item in script_files()}:
+        raise ValueError("대본 목록에서 파일을 다시 선택하세요.")
+    root = os.path.realpath(대본_폴더)
+    selected = os.path.realpath(script_file)
+    target = os.path.dirname(selected) if os.path.basename(selected) == "final.txt" else selected
+    return reset_output(os.path.relpath(target, root), "all")
+
 def topics():
     plan = load_json("계획.json", [])
     cands = load_json("후보.json", [])
@@ -915,6 +925,8 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": True})
             elif u.path == "/api/reset":
                 self._json(reset_output(body.get("id", ""), body.get("scope", "")))
+            elif u.path == "/api/delete-script":
+                self._json(delete_script(body.get("script_file", "")))
             elif u.path == "/api/thumbnail":
                 run_job("thumbnail", lambda job: make_thumbnails(job, body)); self._json({"ok": True})
             elif u.path == "/api/optimize":
@@ -1074,6 +1086,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <div class="gonext" style="margin-top:14px"><b>이미 만든 대본이 있으면 →</b>
     <select id="c_file" style="min-width:380px"></select>
     <button class="primary" onclick="continuePipeline($('c_file').value)">🎬 이 대본으로 나레이션 → 이미지 → 영상까지 이어서 만들기</button>
+    <button class="danger" onclick="deleteSelectedScript('c_file')">선택한 대본 삭제</button>
     <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div>
 </div>
 
@@ -1149,7 +1162,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <!-- 이미지 프롬프트 -->
 <div class="card tab hidden" id="tab-images">
   <h2>대본 → 문장별 이미지 프롬프트 <small>DINO 형식 ===001=== 블록</small></h2>
-  <div class="row"><label>대본 파일 <select id="i_file" style="min-width:420px"></select></label><button class="mini" onclick="refresh()">새로고침</button></div>
+  <div class="row"><label>대본 파일 <select id="i_file" style="min-width:420px"></select></label><button class="mini" onclick="refresh()">새로고침</button><button class="danger" onclick="deleteSelectedScript('i_file')">선택한 대본 삭제</button></div>
   <div class="row"><label>변환 지침 <select id="i_guide"></select></label><label>화풍 (클릭)</label><input type="hidden" id="i_style"><div class="styles" id="i_styles"></div><label>한 번에 <input type="number" id="i_chunk" value="30" min="5" max="60" style="width:70px" onchange="api('/api/config',{프롬프트_묶음:+this.value});toast('한 번에 '+this.value+'문장씩 저장됨')"> 문장</label><button class="mini" onclick="editGuide('i_guide')">지침 열어 수정</button></div>
   <p class="hint">문장은 마침표 기준으로 나눕니다(대본 1문장 = 이미지 1장). 결과는 대본 옆에 <code>…_이미지프롬프트.txt</code> 와 Auto-Image Placer 용 <code>…_플로우.txt</code> 로 저장됩니다.</p>
   <div class="row" style="margin-top:14px"><button class="primary" id="i_go" onclick="startImages()">▶ 이미지 프롬프트 만들기</button></div>
@@ -1349,6 +1362,14 @@ async function resetSelected(scope){
   const what=scope==='all'?'대본과 생성 자료 모두':'생성 자료만';
   if(!confirm(`「${item.label}」의 ${what} 대본/_휴지통으로 옮길까요?`))return;
   try{const result=await api('/api/reset',{id,scope});$('progressCard').classList.add('hidden');await refresh();toast(`${result.count}개 항목을 _휴지통으로 옮겼습니다`);}
+  catch(e){toast(e.message,true);}
+}
+async function deleteSelectedScript(selectId){
+  const select=$(selectId), file=select.value;
+  if(!file)return toast('삭제할 대본을 선택하세요',true);
+  const name=select.options[select.selectedIndex]?.textContent||file;
+  if(!confirm(`「${name}」 대본과 연결된 자료를 _휴지통으로 옮길까요?`))return;
+  try{const result=await api('/api/delete-script',{script_file:file});$('progressCard').classList.add('hidden');await refresh();toast(`${result.count}개 항목을 _휴지통으로 옮겼습니다`);}
   catch(e){toast(e.message,true);}
 }
 async function saveKey(k){
