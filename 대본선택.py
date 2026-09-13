@@ -1145,7 +1145,9 @@ body{background:radial-gradient(circle at 8% 0%,rgba(104,210,191,.18),transparen
 .card{border-radius:18px;border-color:var(--line);padding:23px 26px;box-shadow:0 8px 30px rgba(21,55,60,.045)}
 h2{font-family:var(--sans);font-size:20px;font-weight:800;letter-spacing:-.035em;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:17px}h2 small{font-size:12.5px;letter-spacing:0}
 .tabs.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:13px}.tabs.steps button{min-width:0;border-radius:15px;background:var(--surface);border-color:var(--line);box-shadow:0 5px 18px rgba(21,55,60,.04);padding:13px 15px;text-align:left;transition:transform .18s,box-shadow .18s,border-color .18s}.tabs.steps button:hover{transform:translateY(-2px);box-shadow:0 9px 22px rgba(21,55,60,.1)}.tabs.steps button.on{background:var(--accent);color:#fff;box-shadow:0 9px 25px rgba(8,126,121,.22)}.tabs.steps .no{width:30px;height:30px;border-radius:9px}.tabs.steps button small{line-height:1.35;margin-top:3px}
+.tabs.steps .tab-title{display:block;min-width:0;white-space:normal;line-height:1.3}.tabs.steps .tab-title small{display:block}
 .tabs.tools{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:7px;margin-bottom:20px;align-items:center}.tabs.tools button{border-radius:9px;padding:8px 12px}.tabs.tools button.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.toolbox{margin:0 0 20px;border:1px solid var(--line);border-radius:13px;background:var(--surface)}.toolbox summary{padding:12px 16px;font-weight:700;cursor:pointer}.toolbox .tabs.tools{margin:0;border:0;border-top:1px solid var(--line);border-radius:0}.simple-guide{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 16px}.simple-guide span{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 13px;font-size:13px;color:var(--muted)}
 button{transition:background .16s,border-color .16s,transform .16s,box-shadow .16s}button:hover:not(:disabled){transform:translateY(-1px)}button.primary{border-radius:10px;box-shadow:0 6px 17px rgba(8,126,121,.18)}button.primary:hover{background:#076a66;color:white}.danger{background:var(--warn-soft);color:var(--warn);border-color:rgba(173,72,62,.25);font-weight:700}.danger:hover{background:var(--warn);color:white;border-color:var(--warn)}
 input[type=text],input[type=number],input[type=password],select,textarea{background:var(--surface);border-radius:10px;padding:9px 12px;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(8,126,121,.13)}
 .stepline{gap:15px;padding:8px 0}.stepline .no{width:32px;height:32px;border-radius:10px}.gonext{padding:16px 18px;border:1px solid rgba(8,126,121,.15);border-radius:14px}.list{border-radius:12px}.list li{padding:12px 15px}.list li.sel{outline:0;box-shadow:inset 3px 0 var(--accent)}.ready button{padding:7px 12px}.log{border-radius:12px}.result{border-radius:12px}
@@ -1158,16 +1160,17 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <p class="sub">주제 선택부터 대본, 나레이션, 이미지와 영상까지. 필요한 단계를 차례로 진행하세요.</p></header>
 <div id="envwarn" class="warn hidden"></div>
 
+<div class="simple-guide"><span>① 주제를 적고 만들기</span><span>② 그림 확인·재생성</span><span>③ 영상 마무리</span></div>
 <div class="tabs steps">
-  <button class="on" data-tab="settings"><span class="no">1</span>처음 설정<small>API 키 · 목소리 · 좌표</small></button>
-  <button data-tab="person"><span class="no">2</span>주제 고르기<small>사람의 이유</small></button>
-  <button data-tab="mindam"><span class="no">2</span>주제 고르기<small>민담·야담·옛이야기</small></button>
-  <button data-tab="auto"><span class="no">3</span>만들기<small>대본 → 나레이션 → 이미지 → 영상</small></button>
+  <button class="on" data-tab="auto"><span class="no">1</span><span class="tab-title">영상 만들기<small>주제 입력 · 자동 실행</small></span></button>
+  <button data-tab="gallery"><span class="no">2</span><span class="tab-title">이미지 확인·재생성<small>장면별 그림 · 다시 만들기</small></span></button>
+  <button data-tab="video"><span class="no">3</span><span class="tab-title">영상 편집<small>자막 · 최종 영상</small></span></button>
+  <button data-tab="settings"><span class="no">⚙</span><span class="tab-title">설정<small>처음 설치할 때 확인</small></span></button>
 </div>
-<div class="tabs tools"><span class="hint" style="align-self:center">따로 쓰는 도구:</span><button data-tab="images">이미지 프롬프트만</button><button data-tab="video">🎬 영상 합치기</button><button data-tab="imggen">🖼 이미지 생성·좌표</button><button data-tab="reset">작업 정리</button></div>
+<details class="toolbox"><summary>주제 추천·세부 도구 펼치기</summary><div class="tabs tools"><button data-tab="person">사람의 이유 주제 추천</button><button data-tab="mindam">민담 주제 추천</button><button data-tab="images">이미지 프롬프트만</button><button data-tab="imggen">이미지 생성 좌표</button><button data-tab="reset">작업 정리</button></div></details>
 
 <!-- 원클릭 -->
-<div class="card tab hidden" id="tab-auto">
+<div class="card tab" id="tab-auto">
   <h2>③ 만들기 <small>주제 하나 → 대본 → 나레이션 → 이미지 → 완성 영상까지 한 번에</small></h2>
   <div id="readyBox" class="ready"></div>
   <div class="stepline"><span class="no">1</span><div><b>어느 채널?</b>
@@ -1190,8 +1193,9 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div>
 </div>
 
-<div class="card tab hidden" id="galleryCard" data-tabof="auto">
+<div class="card tab" id="galleryCard" data-tabof="auto gallery">
   <h2>🖼 이미지 <small id="pg_imgs_t">장면별 생성 현황 — 위에서 고른 대본 기준</small></h2>
+  <div class="row"><label>확인할 대본 <select id="g_file" style="min-width:380px"></select></label><span class="hint">그림 아래의 재생성을 누르면 해당 장면만 다시 만듭니다.</span></div>
   <div class="row" style="gap:8px"><button class="primary" onclick="galStart(false)">▶ 빠진 장면 이어서 만들기</button><button onclick="galCtl('pause')">❚❚ 일시정지</button><button onclick="galCtl('resume')">▶ 재개</button><button onclick="galCtl('stop')" style="border-color:var(--warn);color:var(--warn)">■ 중단</button><button onclick="galStart(true)" style="border-color:var(--warn);color:var(--warn)">🔄 처음부터 다시 만들기</button>
     <span class="hint" id="gal_ctl"></span></div>
   <div class="row"><span class="hint" id="gal_src"></span><button class="mini" onclick="refreshGallery(true)">새로고침</button><button class="mini" onclick="openPath(galDir)" id="gal_open">이미지 폴더 열기</button></div>
@@ -1294,7 +1298,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 설정 -->
-<div class="card tab" id="tab-settings">
+<div class="card tab hidden" id="tab-settings">
   <h2>처음 사용 순서</h2>
   <p class="hint">① 아래에서 대본 AI를 연결하세요. ② 영상까지 만들려면 인월드 목소리와 이미지 생성 좌표도 준비하세요. ③ [주제 고르기]에서 제목을 고른 뒤 [만들기]로 보내세요.</p>
   <div id="setupReady" class="ready"></div>
@@ -1364,7 +1368,7 @@ async function exitProgram(){
   catch(e){toast('종료 요청 실패: '+e.message,true);}
 }
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function goTab(name){const b=document.querySelector(`.tabs button[data-tab=${name}]`);if(b)b.click();window.scrollTo({top:0,behavior:'smooth'});}
+function goTab(name){const b=document.querySelector(`.tabs button[data-tab=${name}]`);if(b){const details=b.closest('details');if(details)details.open=true;b.click();}window.scrollTo({top:0,behavior:'smooth'});}
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
 async function openImageGenerator(fr){
   try{
@@ -1378,7 +1382,8 @@ async function openImageGenerator(fr){
   }catch(e){toast('이미지 생성 화면 연결 실패: '+e.message,true);}
   fr.src=fr.dataset.src;
 }
-document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('hidden',t.id!=='tab-'+b.dataset.tab&&t.dataset.tabof!==b.dataset.tab));
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('hidden',t.id!=='tab-'+b.dataset.tab&&!(t.dataset.tabof||'').split(' ').includes(b.dataset.tab)));
+  if(b.dataset.tab==='gallery')refreshGallery(true);
   const fr=document.querySelector('#tab-'+b.dataset.tab+' iframe'); if(fr){if(b.dataset.tab==='imggen')openImageGenerator(fr);else if(fr.src==='about:blank')fr.src=fr.dataset.src;}});
 window.addEventListener('message',e=>{ if(e.data&&e.data.aipHeight){ document.querySelectorAll('#tab-video iframe,#tab-imggen iframe').forEach(f=>{ if(f.contentWindow===e.source) f.style.height=(e.data.aipHeight+40)+'px'; }); } });
 async function checkReady(){
@@ -1414,8 +1419,12 @@ async function refresh(){
   $('v_mindam').textContent=c.인월드_목소리_민담?'✔ 저장됨 · 속도 '+(c.인월드_속도_민담||1):'없음 → 공용'; $('v_mindam').classList.toggle('ok',!!c.인월드_목소리_민담);
   $('v_cpm').textContent='✔ '+(c.분당_글자수||270)+'자/분'; $('v_cpm').classList.add('ok');
   for(const [k,v] of Object.entries(STATE.keys||{})){const el=$('k_'+k);if(!el)continue;el.textContent=v?'✔ 저장됨 '+v:'없음';el.classList.toggle('ok',!!v);}
+  const selected=$('g_file').value||$('c_file').value||localStorage.getItem('selectedScript')||'';
   $('i_file').innerHTML=STATE.scripts.map(s=>`<option value="${esc(s.path)}">${esc(s.name)}</option>`).join('')||'<option value="">(대본 폴더에 파일 없음)</option>';
-  $('c_file').innerHTML=$('i_file').innerHTML; refreshGallery(true);
+  $('c_file').innerHTML=$('g_file').innerHTML=$('i_file').innerHTML;
+  if(STATE.scripts.some(s=>s.path===selected))$('c_file').value=$('g_file').value=selected;
+  else $('g_file').value=$('c_file').value;
+  refreshGallery(true);
   const oldReset=$('reset_file').value;
   $('reset_file').innerHTML=(STATE.reset_items||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.kind==='mindam'?'민담 · ':'대본 · ')}${esc(x.label)}</option>`).join('')||'<option value="">초기화할 작업 없음</option>';
   if((STATE.reset_items||[]).some(x=>x.id===oldReset))$('reset_file').value=oldReset;
@@ -1596,14 +1605,15 @@ let galDir='', galPromptsPath='';
 async function refreshGallery(force){
   // 실행 중인 파이프라인이 있으면 그 결과 폴더, 아니면 [이미 만든 대본] 에서 고른 대본의 자료 폴더
   const j=STATE.job; let dir='',pr='';
-  if(j&&j.kind==='pipeline'&&(j.result||{}).images){dir=j.result.images;pr=j.result.prompts||'';}
+  if(j&&j.kind==='pipeline'&&j.status==='running'&&(j.result||{}).images){dir=j.result.images;pr=j.result.prompts||'';}
   else{const f=$('c_file').value; if(f){try{const a=await api('/api/assets?script='+encodeURIComponent(f));dir=a.images;pr=a.prompts;}catch(e){}}}
   galDir=dir; galPromptsPath=pr; $('gal_src').textContent=dir?dir:'대본을 고르면 그 대본의 이미지 폴더를 보여 줍니다';
   if(force)galKey='';
   await updateGallery({kind:'pipeline',result:{images:dir,prompts:pr}});
 }
-$('c_file').addEventListener('change',()=>refreshGallery(true));
-setInterval(()=>{ if(!document.querySelector('.tabs button.on')||document.querySelector('.tabs button.on').dataset.tab!=='auto')return; refreshGallery(false); },3000);
+$('c_file').addEventListener('change',()=>{ $('g_file').value=$('c_file').value;localStorage.setItem('selectedScript',$('c_file').value);refreshGallery(true); });
+$('g_file').addEventListener('change',()=>{ $('c_file').value=$('g_file').value;localStorage.setItem('selectedScript',$('g_file').value);refreshGallery(true); });
+setInterval(()=>{ const tab=document.querySelector('.tabs button.on')?.dataset.tab;if(tab==='auto'||tab==='gallery')refreshGallery(false); },3000);
 async function updateGallery(j){
   const dir=(j.result||{}).images; const box=$('galleryCard');
   if(!dir){$('pg_gal').innerHTML='<div class="hint">대본을 고르세요</div>';return;}
