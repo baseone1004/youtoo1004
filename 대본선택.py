@@ -54,6 +54,34 @@ STATE = {"job": None}
 LOCK = threading.Lock()
 
 
+def shutdown_program(server):
+    """Stop the editor's image runner, then close both local servers."""
+    job = STATE["job"]
+    if job and job.status == "running":
+        job.cancel_requested = True
+    try:
+        _rq.post("http://127.0.0.1:8765/api/gen/stop", json={}, timeout=3)
+    except _rq.RequestException:
+        pass  # The editor may already be closed.
+    # The editor runs as a separate pythonw process. Only stop the process
+    # listening on its dedicated local port after checking its command line.
+    if os.name == "nt":
+        script = (
+            "$conn=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8765 "
+            "-State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; "
+            "if($conn){$proc=Get-CimInstance Win32_Process "
+            "-Filter \"ProcessId=$($conn.OwningProcess)\"; "
+            "if($proc.CommandLine -match '(^|[\\\\/ ])app\\.py( |$)'){"
+            "Stop-Process -Id $conn.OwningProcess -ErrorAction Stop}}"
+        )
+        try:
+            subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                           timeout=10, capture_output=True, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    server.shutdown()
+
+
 def run_job(kind, fn):
     with LOCK:
         if STATE["job"] and STATE["job"].status == "running":
@@ -987,6 +1015,9 @@ class H(BaseHTTPRequestHandler):
                 if j and j.status == "running":
                     j.cancel_requested = True
                 self._json({"ok": True})
+            elif u.path == "/api/shutdown":
+                self._json({"ok": True})
+                threading.Thread(target=shutdown_program, args=(self.server,), daemon=True).start()
             elif u.path == "/api/reset":
                 self._json(reset_output(body.get("id", ""), body.get("scope", "")))
             elif u.path == "/api/delete-script":
@@ -1122,6 +1153,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 @media(max-width:520px){.tabs.steps{grid-template-columns:1fr 1fr;gap:7px}.tabs.steps button{padding:10px;gap:7px;font-size:12px}.tabs.steps button small{display:none}.tabs.steps .no{width:24px;height:24px;font-size:11px}.hero{padding:24px 20px}.hero .sub{font-size:12px}.tabs.tools .hint{display:none}.tabs.tools button{flex:1}.keyrow input{min-width:0;width:100%}}
 </style></head><body><div class="wrap">
 <header class="hero"><div class="eyebrow">CREATOR STUDIO · 사람의 이유 / 민담·야담</div>
+<button class="danger" style="float:right" onclick="exitProgram()">■ 프로그램 종료</button>
 <h1>이야기를 영상으로 만드는 공간</h1>
 <p class="sub">주제 선택부터 대본, 나레이션, 이미지와 영상까지. 필요한 단계를 차례로 진행하세요.</p></header>
 <div id="envwarn" class="warn hidden"></div>
@@ -1326,6 +1358,11 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 const $=id=>document.getElementById(id);
 let STATE=null, selected=null, bench=null, editing=null, pollTimer=null, chosenVar=null, varRef='';
 async function api(p,body,method){const r=await fetch(p,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j;}
+async function exitProgram(){
+  if(!confirm('이미지 생성과 다운로드를 중단하고 프로그램을 종료할까요?'))return;
+  try{await api('/api/shutdown',{});document.body.innerHTML='<main style="max-width:560px;margin:12vh auto;padding:36px;font:18px/1.7 sans-serif;text-align:center"><h1>프로그램을 종료했습니다</h1><p>이미지 생성·다운로드를 중단하고 서버를 닫는 중입니다. 이 창은 닫아도 됩니다.</p></main>';}
+  catch(e){toast('종료 요청 실패: '+e.message,true);}
+}
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function goTab(name){const b=document.querySelector(`.tabs button[data-tab=${name}]`);if(b)b.click();window.scrollTo({top:0,behavior:'smooth'});}
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
@@ -1682,6 +1719,8 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        srv.server_close()
 
 if __name__ == "__main__":
     main()
