@@ -436,6 +436,13 @@ def make_variations(job, req):
     # ── 공통
     "실사": "photorealistic cinematic photography, natural lighting, 16:9 aspect ratio",
     "애니": "Korean webtoon style illustration, clean bold line art, flat cel-shaded coloring, 16:9 aspect ratio",
+    "2D 일러스트": "Premium hand-drawn 2D editorial animation illustration for an adult Korean psychology channel, "
+                  "clean confident ink outlines, refined expressive adult faces, flat layered shapes with subtle cel shading, "
+                  "consistent character proportions, controlled warm cream and muted teal palette with restrained coral accents, "
+                  "cinematic composition made with 2D color shapes, crisp readable focal point, 16:9 landscape. "
+                  "Use the image already uploaded in the Dropshot References panel as the primary visual guide: "
+                  "match its character design, facial features, hairstyle, linework and palette where relevant. "
+                  "Do not copy its pose or background. No watercolor texture, pastel wash, photorealism, 3D render, text or watermark.",
     "파스텔": "soft pastel illustration, gentle watercolor texture, warm muted palette, 16:9 aspect ratio",
     "수묵": "traditional Korean ink wash painting style with subtle color, hanji paper texture, 16:9 aspect ratio",
     # ── 야담·민담·옛이야기용 (조선 배경 고정, 아동풍 금지)
@@ -457,12 +464,12 @@ def make_variations(job, req):
               "Joseon-era hanok and forest, eerie but non-graphic, faces clearly visible, 16:9 aspect ratio",
 }
 화풍_설명 = {
-    "실사": "사진 같은 시네마틱", "애니": "웹툰·셀 채색", "파스텔": "부드러운 수채", "수묵": "한지·먹 느낌",
+    "실사": "사진 같은 시네마틱", "애니": "웹툰·셀 채색", "2D 일러스트": "선명한 성인용 2D·레퍼런스 유지", "파스텔": "부드러운 수채", "수묵": "한지·먹 느낌",
     "사극 웹툰": "조선 배경 웹툰 극화 (인트로 지침 스타일)", "사극 실사": "조선 사극 영화 스틸", "민화": "호랑이·까치 민화풍 평면 채색",
     "풍속화": "김홍도·신윤복 풍속화 붓선", "수묵담채": "먹 + 옅은 채색, 여백", "한지 동화": "따뜻한 한지 그림책 (어른용)",
     "목판화": "굵은 목판 선, 흙빛 팔레트", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
 }
-화풍_그룹 = {"공통": ["실사", "애니", "파스텔", "수묵"],
+화풍_그룹 = {"공통": ["실사", "애니", "2D 일러스트", "파스텔", "수묵"],
           "야담·민담·옛이야기": ["사극 웹툰", "사극 실사", "민화", "풍속화", "수묵담채", "한지 동화", "목판화", "괴담 극화"]}
 
 def split_sentences(body):
@@ -496,6 +503,12 @@ def make_image_prompts(job, req):
         e = min(s + chunk, len(sents))
         lines = "\n".join(f"{i+1:03d}. {sents[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
+                + ("[레퍼런스] 드롭샷 References 패널에 업로드된 이미지를 반드시 참조한다. "
+                   "C형의 동일 인물은 얼굴형·눈·머리·체형·의상을 유지하고, "
+                   "A형은 인물을 억지로 추가하지 말고 선화·색감만 일치시킨다. "
+                   "각 영어 프롬프트에 이 레퍼런스 지시를 명시한다. 수채화·사진·3D 표현은 금지한다.\n"
+                   if req.get("style") == "2D 일러스트" else "")
+                +
                 f"[이번 범위] {s+1:03d} ~ {e:03d} (총 {e-s}개 장면)\n\n[이번 범위 원문]\n{lines}\n\n"
                 f"위 {e-s}개 문장 각각에 대해 ===NNN=== 장면 블록을 {s+1:03d}부터 {e:03d}까지 순서대로 출력한다.")
         job.add(f"   {s+1:03d}~{e:03d} 변환 ")
@@ -520,6 +533,55 @@ def make_image_prompts(job, req):
     job.add(f"✓ 저장: {out_path}")
     job.add("비용: " + ai.cost_text())
     return dict(file=out_path, flow=flow_path, scenes=len(sents), cost=ai.cost_text())
+
+
+def restyle_script_prompts_2d(script_file):
+    """기존 파스텔 프롬프트를 2D+레퍼런스 지시로 바꾸고 원본을 백업한다."""
+    if script_file not in {item["path"] for item in script_files()}:
+        raise ValueError("대본 목록에서 파일을 다시 선택하세요.")
+    prompts = (os.path.join(os.path.dirname(script_file), "이미지프롬프트.txt")
+               if os.path.basename(script_file) == "final.txt"
+               else re.sub(r"\.txt$", "", script_file) + "_이미지프롬프트.txt")
+    if not os.path.isfile(prompts):
+        raise ValueError("먼저 이미지 프롬프트를 만드세요.")
+    with open(prompts, encoding="utf-8-sig") as f:
+        original = f.read()
+    if "Premium hand-drawn 2D editorial animation illustration" in original:
+        raise ValueError("이미 2D 프롬프트로 변환된 파일입니다.")
+    blocks = re.split(r"(?=^===\d{3}===\s*$)", original, flags=re.M)
+    count = 0
+    changed = []
+    for block in blocks:
+        if not re.match(r"^===\d{3}===", block):
+            changed.append(block); continue
+        kind = re.search(r"^유형:\s*([ABC])", block, flags=re.M)
+        role = ("For the principal recurring person, use the uploaded reference image as the exact character identity: "
+                "preserve facial structure, eyes, hairstyle, proportions, and signature clothing across scenes. "
+                if kind and kind.group(1) == "C" else
+                "Use the uploaded reference image for linework, color palette, and overall 2D art direction; "
+                "do not add a person who is not in this scene. ")
+        def update_prompt(match):
+            prompt = match.group(1).strip()
+            prompt = re.sub(r"(?i)soft pastel illustration,?\s*gentle watercolor texture,?\s*warm muted palette,?\s*16:9 aspect ratio\.?", "", prompt)
+            prompt = re.sub(r"(?i)soft pastel style|pastel illustration|watercolor (?:texture|effect|wash)", "clean 2D cel-shaded illustration", prompt)
+            prompt = re.sub(r"(?i)\bsoftly painted\b", "cleanly drawn", prompt)
+            prompt = re.sub(r"\s{2,}", " ", prompt).strip()
+            return "프롬프트: " + 화풍["2D 일러스트"] + " " + role + prompt
+        block, n = re.subn(r"^프롬프트:\s*(.+)$", update_prompt, block, count=1, flags=re.M)
+        if n != 1:
+            raise ValueError("장면 프롬프트 형식이 올바르지 않습니다.")
+        count += 1
+        changed.append(block)
+    if not count:
+        raise ValueError("변환할 장면을 찾지 못했습니다.")
+    backup_dir = os.path.join(assets_dir(script_file), "프롬프트_백업")
+    os.makedirs(backup_dir, exist_ok=True)
+    backup = os.path.join(backup_dir, datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_파스텔.txt")
+    with open(backup, "w", encoding="utf-8") as f:
+        f.write(original)
+    with open(prompts, "w", encoding="utf-8") as f:
+        f.write("".join(changed))
+    return dict(count=count, prompts=os.path.abspath(prompts), backup=os.path.abspath(backup))
 
 
 # ── 작업 4: 나레이션 (인월드 TTS) ─────────────────────────────
@@ -787,7 +849,9 @@ def make_pipeline(job, req):
             raise SystemExit("이미지 프롬프트 파일이 없어 이미지 생성을 할 수 없습니다.")
         job.stage = "④ 이미지 자동 생성"
         os.makedirs(images_dir, exist_ok=True)
-        run_image_generation(job, result["prompts"], images_dir, req.get("style_prefix", ""))
+        selected_style = req.get("style", "실사")
+        prefix = req.get("style_prefix") or (화풍["2D 일러스트"] if selected_style == "2D 일러스트" else "")
+        run_image_generation(job, result["prompts"], images_dir, prefix)
         result["images"] = images_dir
     # 5) 후킹 영상
     n_hook = int(steps.get("hook", 0) or 0)
@@ -935,6 +999,10 @@ class H(BaseHTTPRequestHandler):
                 self._json(make_timestamps(body))
             elif u.path == "/api/images":
                 run_job("images", lambda job: make_image_prompts(job, body)); self._json({"ok": True})
+            elif u.path == "/api/restyle-2d":
+                if STATE["job"] and STATE["job"].status == "running":
+                    raise ValueError("진행 중인 작업을 마친 뒤 변환하세요.")
+                self._json(restyle_script_prompts_2d(body.get("script_file", "")))
             elif u.path == "/api/guideline":
                 write_guideline(body["name"], body["text"]); self._json({"ok": True})
             elif u.path == "/api/config":
@@ -1166,6 +1234,8 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <div class="row"><label>변환 지침 <select id="i_guide"></select></label><label>화풍 (클릭)</label><input type="hidden" id="i_style"><div class="styles" id="i_styles"></div><label>한 번에 <input type="number" id="i_chunk" value="30" min="5" max="60" style="width:70px" onchange="api('/api/config',{프롬프트_묶음:+this.value});toast('한 번에 '+this.value+'문장씩 저장됨')"> 문장</label><button class="mini" onclick="editGuide('i_guide')">지침 열어 수정</button></div>
   <p class="hint">문장은 마침표 기준으로 나눕니다(대본 1문장 = 이미지 1장). 결과는 대본 옆에 <code>…_이미지프롬프트.txt</code> 와 Auto-Image Placer 용 <code>…_플로우.txt</code> 로 저장됩니다.</p>
   <div class="row" style="margin-top:14px"><button class="primary" id="i_go" onclick="startImages()">▶ 이미지 프롬프트 만들기</button></div>
+  <div class="row"><button onclick="restyleTo2D()">기존 파스텔 프롬프트를 2D·레퍼런스로 바꾸기</button><span class="hint">원본은 대본 자료 폴더에 백업됩니다.</span></div>
+  <p class="hint">레퍼런스는 드롭샷 생성창의 References에서 첨부 상태를 확인하세요. 인물 일관성이 목적이면 Subject로 지정하세요. 프롬프트 문구만으로는 이미지 첨부가 유지되지 않습니다.</p>
   <h2 style="margin-top:18px">알고리즘 최적화 · 챕터 타임스탬프 <small>이미 만든 대본에 따로 실행</small></h2>
   <div class="row"><button onclick="startThumb()">🖼 썸네일 3장 만들기 (위에서 고른 대본으로)</button><span class="hint">최적화 파일의 썸네일 문구 3세트 → 이미지 3장 생성(좌표 클릭) → 문구 합성 → 자료폴더/썸네일/썸네일_1~3.jpg</span></div>
   <div class="row"><button onclick="startOptimize()">▶ 위에서 고른 대본 파일 알고리즘 최적화만 실행</button><span class="hint">제목 후보 5개(점수) · 썸네일 문구 3세트 · 설명글 · 태그 · 고정댓글 · 첫 30초 점검 · 업로드 시각 → *_유튜브최적화.txt</span></div>
@@ -1362,6 +1432,12 @@ async function resetSelected(scope){
   const what=scope==='all'?'대본과 생성 자료 모두':'생성 자료만';
   if(!confirm(`「${item.label}」의 ${what} 대본/_휴지통으로 옮길까요?`))return;
   try{const result=await api('/api/reset',{id,scope});$('progressCard').classList.add('hidden');await refresh();toast(`${result.count}개 항목을 _휴지통으로 옮겼습니다`);}
+  catch(e){toast(e.message,true);}
+}
+async function restyleTo2D(){
+  const file=$('i_file').value;if(!file)return toast('대본을 먼저 고르세요',true);
+  if(!confirm('이 대본의 이미지 프롬프트를 2D·레퍼런스 지시로 바꿀까요? 기존 파일은 백업됩니다.'))return;
+  try{const r=await api('/api/restyle-2d',{script_file:file});pickStyle('2D 일러스트');toast(`${r.count}개 장면을 2D로 전환했습니다`);}
   catch(e){toast(e.message,true);}
 }
 async function deleteSelectedScript(selectId){
