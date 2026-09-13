@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "대본 만들기 · 딥시크 웹 연결",
+  "version": "1.0.0",
+  "description": "chat.deepseek.com 탭에서 대본선택(127.0.0.1:8766)의 요청을 받아 새 대화에 입력하고 답변을 돌려줍니다. API 비용 0원.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8766/*", "http://localhost:8766/*", "https://chat.deepseek.com/*"],
+  "content_scripts": [
+    { "matches": ["https://chat.deepseek.com/*"], "js": ["content.js"], "run_at": "document_idle" }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "대본 만들기 · 딥시크 웹 연결" }
+}

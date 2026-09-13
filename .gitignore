@@ -1,0 +1,19 @@
+# Local configuration contains API credentials.
+설정.json
+*.env
+.env*
+
+# Generated content and local state.
+대본/
+계획.json
+후보.json
+민담_후보.json
+트렌드.json
+민담_트렌드.json
+*리포트.html
+*사용한_주제.txt
+로그_*.txt
+__pycache__/
+*.pyc
+.claude/
+지침/민담/최근_사용_이름.txt
