@@ -4,7 +4,7 @@
 
   대본만들기.bat  → 계획.json 에서 오늘 날짜까지의 주제 중 아직 대본이 없는 것을 하루 2편까지 생성
   python 대본생성.py --전부   → 계획에 있는 14편 전부
-  python 대본생성.py --테스트 → 2,000자 짜리 짧은 대본 1편 (키·설정 확인용)
+  python 대본생성.py --테스트 → 약 1분짜리 짧은 대본 1편 (키·설정 확인용)
 
 결과: 대본/YYYY-MM-DD_N편_제목.txt  (DINO 7.5 형식 그대로: [제목]…[대본] ===sum===)
 설정: 설정.json 의 AI / API_키 / 대본_글자수 / 하루_대본_편수
@@ -34,7 +34,7 @@ def topic_card(t, target):
              "[이 영상에서 다룰 내용]"] + [f"- {p}" for p in t.get("다룰내용", [])]
     if t.get("출처후보"):
         lines += ["[참고할 만한 저서·연구]"] + [f"- {s}" for s in t["출처후보"]]
-    lines += [f"[작성 목표] 공백 포함 약 {target:,}자, 9개 구간"]
+    lines += [f"[작성 목표] 공백 포함 약 {target:,}자, " + ("1분 테스트" if target <= 400 else "9개 구간")]
     return "\n".join(lines)
 
 def split_groups(n_parts):
@@ -47,6 +47,18 @@ def split_groups(n_parts):
 
 def generate(ai, system, t, target, n_parts):
     card = topic_card(t, target)
+    if target <= 400:
+        short_system = system + ("\n\n[1분 테스트 예외] 이번 요청은 연결 확인용 1분 대본입니다. "
+                                 "긴 영상의 9구간 구성과 구간별 분량 규칙은 적용하지 마세요. "
+                                 "낭독 본문을 도입·핵심 설명·마무리의 짧은 흐름으로 쓰세요.")
+        short_user = (f"{card}\n\n[제목]부터 [고정댓글]까지 기존 출력 형식의 메타 블록을 간단히 작성한 뒤, "
+                      f"[대본] 아래에 공백 포함 약 {target}자 분량의 자연스러운 한국어 낭독문만 쓰세요. "
+                      "도입에서 구체적 상황을 제시하고, 이유 하나와 실천 하나로 마무리하세요. "
+                      "구간 계획·구간 번호·다음 편 예고는 쓰지 마세요.")
+        head, _, body = parse_first(ai.ask(short_system, short_user, max_tokens=2500))
+        body = strip_next_teaser(fix_script_sentences(body)).strip()
+        full = compose_description(head).strip() + "\n[대본]\n" + body + "\n"
+        return full, body
     kw = " ".join(t.get("태그", [])[:2])
     src = web_search([t["제목"], f"{kw} 심리학 연구 결과", f"{kw} 연구 논문", f"{kw} 통계 조사"], per_query=5, max_total=8)
     print(f"   참고 자료 {len(src)}건 검색")
@@ -181,7 +193,7 @@ def main():
         return
 
     ai = AI(cfg)
-    target = 2000 if test else int(cfg["대본_글자수"])
+    target = int(cfg.get("분당_글자수", 270) or 270) if test else int(cfg["대본_글자수"])
     n_parts = 1 if test else max(1, -(-target // 4500))
     print(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 · {len(todo)}편\n")
 

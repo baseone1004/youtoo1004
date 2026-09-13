@@ -1123,7 +1123,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <h2 style="margin-top:18px">② 지침·분량</h2>
   <div class="row">
     <label>대본 지침 <select id="p_guide"></select></label>
-    <label>영상 길이 <span class="lenbtns" data-for="p_target"></span> <input type="number" id="p_target" value="7000" min="2000" max="40000" step="500" style="width:90px"> 자</label>
+    <label>영상 길이 <span class="lenbtns" data-for="p_target"></span> <input type="number" id="p_target" value="7000" min="200" max="40000" step="10" style="width:90px"> 자</label>
     <label><input type="checkbox" id="p_used" checked> 사용한_주제.txt 에 기록</label>
     <label><input type="checkbox" id="p_opt" checked> 알고리즘 최적화(제목 5개·썸네일·설명·태그·첫30초 점검)</label>
     <button class="mini" onclick="editGuide('p_guide')">지침 열어 수정</button>
@@ -1402,11 +1402,11 @@ function renderStyles(list,cur){
 function pickStyle(v,silent){$('a_style').value=v;$('i_style').value=v;document.querySelectorAll('.styles button').forEach(b=>b.classList.toggle('on',b.dataset.val===v));if(!silent){api('/api/config',{화풍:v}).catch(()=>{});toast('화풍: '+v);}}
 // ── 사람의 이유 길이 버튼 (분당 글자수 × 분)
 function renderLenButtons(cpm){
-  document.querySelectorAll('.lenbtns').forEach(sp=>{const id=sp.dataset.for;sp.innerHTML=[2,20,25,30].map(m=>`<button type="button" data-min="${m}" onclick="setLen('${id}',${m})">${m}분${m===2?' (테스트)':''}</button>`).join('');});
+  document.querySelectorAll('.lenbtns').forEach(sp=>{const id=sp.dataset.for;sp.innerHTML=[1,20,25,30].map(m=>`<button type="button" data-min="${m}" onclick="setLen('${id}',${m})">${m}분${m===1?' (테스트)':''}</button>`).join('');});
   window._cpm=cpm;
 }
-function setLen(id,min){const v=Math.round(min*(window._cpm||270)/100)*100;$(id).value=v;if(id==='p_target')$('a_target').value=v;else $('p_target').value=v;markLen('p_target');markLen('a_target');api('/api/config',{대본_글자수:v}).catch(()=>{});}
-function markLen(id){const v=+$(id).value,cpm=window._cpm||270;document.querySelectorAll(`.lenbtns[data-for=${id}] button`).forEach(b=>b.classList.toggle('on',Math.abs(v-Math.round(+b.dataset.min*cpm/100)*100)<50));}
+function setLen(id,min){const v=Math.round(min*(window._cpm||270));$(id).value=v;if(id==='p_target')$('a_target').value=v;else $('p_target').value=v;markLen('p_target');markLen('a_target');if(min!==1)api('/api/config',{대본_글자수:v}).catch(()=>{});}
+function markLen(id){const v=+$(id).value,cpm=window._cpm||270;document.querySelectorAll(`.lenbtns[data-for=${id}] button`).forEach(b=>b.classList.toggle('on',Math.abs(v-Math.round(+b.dataset.min*cpm))<50));}
 document.addEventListener('input',e=>{if(e.target.id==='p_target'||e.target.id==='a_target')markLen(e.target.id);});
 async function startTTS(){try{await api('/api/tts',{script_file:$('i_file').value});startPolling();}catch(e){toast(e.message,true);}}
 function pipelineTopic(){const ch=document.querySelector('input[name=a_channel]:checked').value;return ch;}
