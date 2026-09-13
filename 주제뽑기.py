@@ -107,7 +107,8 @@ def similarity(a, b):
 # YouTube 데이터 (yt-dlp, API 키 필요 없음)
 # ─────────────────────────────────────────────────────────────
 # 주의: 한국어 UI(Accept-Language ko / lang ko)로 받으면 yt-dlp 가 "3.2만회" 같은 조회수를 못 읽어 view_count 가 비므로 영어 UI 그대로 둔다.
-YDL_OPTS = {"quiet": True, "no_warnings": True, "extract_flat": True, "skip_download": True, "ignoreerrors": True}
+YDL_OPTS = {"quiet": True, "no_warnings": True, "extract_flat": True, "skip_download": True, "ignoreerrors": True,
+            "extractor_args": {"youtube": {"lang": ["ko"]}}}
 
 def ydl_extract(url, playlistend=None):
     opts = dict(YDL_OPTS)
