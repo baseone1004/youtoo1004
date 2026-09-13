@@ -8,7 +8,7 @@
   · 이미지 프롬프트: 만든 대본을 문장별 이미지 프롬프트(===001=== 형식)로 변환
   지침은 지침/ 폴더의 txt 를 골라 쓰고, 화면에서 바로 고쳐 저장할 수 있습니다.
 """
-import sys, os, re, io, json, glob, time, threading, datetime, webbrowser, urllib.parse, subprocess
+import sys, os, re, io, json, glob, time, threading, datetime, webbrowser, urllib.parse, subprocess, shutil, uuid
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BASE = os.path.dirname(os.path.abspath(__file__)); os.chdir(BASE)
@@ -100,6 +100,64 @@ def script_files():
                         mtime=os.path.getmtime(p)))
     out.sort(key=lambda x: -x["mtime"])
     return out
+
+
+def reset_items():
+    """대본과 중간 생성물을 삭제 대상으로 나열한다. 폴더 밖 경로는 받지 않는다."""
+    root = os.path.realpath(대본_폴더)
+    out = []
+    for p in glob.glob(os.path.join(root, "*.txt")):
+        name = os.path.basename(p)
+        if any(name.endswith(s) for s in ("_이미지프롬프트.txt", "_이미지프롬프트_플로우.txt",
+                                           "_유튜브최적화.txt", "_썸네일.txt", "_메타.txt", "_테스트.txt")):
+            continue
+        out.append(dict(id=os.path.relpath(p, root), label=name, kind="person", partial=False))
+    for p in glob.glob(os.path.join(root, "*_자료")):
+        if os.path.isdir(p) and not os.path.isfile(p[:-3] + ".txt"):
+            out.append(dict(id=os.path.relpath(p, root), label=os.path.basename(p) + " (대본 없는 작업 자료)",
+                            kind="person", partial=True))
+    folk_root = os.path.join(root, "민담")
+    for p in glob.glob(os.path.join(folk_root, "*")):
+        if os.path.isdir(p):
+            out.append(dict(id=os.path.relpath(p, root), label=os.path.basename(p) +
+                            (" (완성)" if os.path.isfile(os.path.join(p, "final.txt")) else " (작성 중)"),
+                            kind="mindam", partial=not os.path.isfile(os.path.join(p, "final.txt"))))
+    out.sort(key=lambda x: x["label"], reverse=True)
+    return out
+
+
+def reset_output(item_id, scope):
+    """선택한 작업만 대본/_휴지통으로 이동한다. 실행 중인 작업은 건드리지 않는다."""
+    with LOCK:
+        if STATE["job"] and STATE["job"].status == "running":
+            raise ValueError("작업이 진행 중입니다. 완료하거나 중단한 뒤 초기화하세요.")
+        items = {item["id"]: item for item in reset_items()}
+        if item_id not in items or scope not in ("all", "assets"):
+            raise ValueError("삭제할 대본을 목록에서 다시 선택하세요.")
+        item = items[item_id]
+        root = os.path.realpath(대본_폴더)
+        path = os.path.realpath(os.path.join(root, item_id))
+        if os.path.commonpath((root, path)) != root:
+            raise ValueError("허용되지 않은 경로입니다.")
+        if item["kind"] == "mindam":
+            if scope == "assets":
+                raise ValueError("민담은 대본과 작업 자료를 함께 초기화할 수 있습니다.")
+            targets = [path]
+        else:
+            base = os.path.splitext(path)[0] if path.endswith(".txt") else path[:-3]
+            suffixes = ("_자료", "_이미지프롬프트.txt", "_이미지프롬프트_플로우.txt",
+                        "_유튜브최적화.txt", "_썸네일.txt", "_메타.txt", "_테스트.txt")
+            targets = [base + s for s in suffixes if os.path.exists(base + s)]
+            if scope == "all" and os.path.isfile(base + ".txt"):
+                targets.insert(0, base + ".txt")
+        if not targets:
+            raise ValueError("초기화할 파일이 없습니다.")
+        trash = os.path.join(root, "_휴지통", datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8])
+        os.makedirs(trash)
+        for target in targets:
+            shutil.move(target, os.path.join(trash, os.path.basename(target)))
+        STATE["job"] = None
+        return dict(count=len(targets), trash=os.path.abspath(trash))
 
 def topics():
     plan = load_json("계획.json", [])
@@ -793,7 +851,7 @@ class H(BaseHTTPRequestHandler):
                                             후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30)),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items()}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
-                                job=job.to_dict() if job else None))
+                                job=job.to_dict() if job else None, reset_items=reset_items()))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
             elif u.path == "/api/web/next":                       # 크롬 확장이 긴 폴링으로 작업을 가져감
@@ -855,6 +913,8 @@ class H(BaseHTTPRequestHandler):
                 if j and j.status == "running":
                     j.cancel_requested = True
                 self._json({"ok": True})
+            elif u.path == "/api/reset":
+                self._json(reset_output(body.get("id", ""), body.get("scope", "")))
             elif u.path == "/api/thumbnail":
                 run_job("thumbnail", lambda job: make_thumbnails(job, body)); self._json({"ok": True})
             elif u.path == "/api/optimize":
@@ -963,19 +1023,36 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .stylegrp{width:100%;margin-bottom:6px}.stylegrp-t{font-size:11.5px;color:var(--muted);margin:2px 0 4px;letter-spacing:.04em}
 .lenbtns button{border:1px solid var(--line);background:var(--box);border-radius:6px;padding:3px 10px;font-size:12.5px;cursor:pointer;margin-right:3px}.lenbtns button.on{background:var(--accent);color:#fff;border-color:transparent}
 .pill{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--muted)}
+/* Calm studio theme */
+:root{--bg:#f3f7f6;--surface:#fff;--ink:#162b31;--muted:#62757a;--line:#dce7e5;--accent:#087e79;--accent-soft:#e6f5f2;--gold:#c18429;--warn:#ad483e;--warn-soft:#fff0ed;--box:#f7faf9;--ok:#187c5e}
+@media (prefers-color-scheme:dark){:root{--bg:#101b20;--surface:#19272b;--ink:#eaf4f2;--muted:#a3bbb9;--line:#34474a;--accent:#6ad7c9;--accent-soft:#1c3c39;--gold:#edba65;--warn:#f3a096;--warn-soft:#482b2b;--box:#152226;--ok:#7be2aa}}
+body{background:radial-gradient(circle at 8% 0%,rgba(104,210,191,.18),transparent 31%),radial-gradient(circle at 96% 16%,rgba(226,187,108,.11),transparent 29%),var(--bg);letter-spacing:-.012em}
+.wrap{max-width:1140px;padding:28px 24px 92px}
+.hero{position:relative;overflow:hidden;background:linear-gradient(125deg,#102e37 0%,#124e50 56%,#0a7770 100%);color:#fff;border-radius:24px;padding:34px 38px 36px;margin-bottom:20px;box-shadow:0 18px 45px rgba(19,58,64,.2)}
+.hero:after{content:'';position:absolute;width:350px;height:350px;border:1px solid rgba(255,255,255,.16);border-radius:50%;right:-70px;top:-210px;box-shadow:0 0 0 48px rgba(255,255,255,.04),0 0 0 100px rgba(255,255,255,.025);pointer-events:none}
+.hero .eyebrow{color:#a9e9dc;font-weight:700;letter-spacing:.18em}.hero h1{font-size:clamp(28px,4vw,42px);line-height:1.25;letter-spacing:-.045em;margin:8px 0 10px}.hero .sub{color:#d1e7e3;margin:0;max-width:670px;font-size:14px}
+.card{border-radius:18px;border-color:var(--line);padding:23px 26px;box-shadow:0 8px 30px rgba(21,55,60,.045)}
+h2{font-family:var(--sans);font-size:20px;font-weight:800;letter-spacing:-.035em;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:17px}h2 small{font-size:12.5px;letter-spacing:0}
+.tabs.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:13px}.tabs.steps button{min-width:0;border-radius:15px;background:var(--surface);border-color:var(--line);box-shadow:0 5px 18px rgba(21,55,60,.04);padding:13px 15px;text-align:left;transition:transform .18s,box-shadow .18s,border-color .18s}.tabs.steps button:hover{transform:translateY(-2px);box-shadow:0 9px 22px rgba(21,55,60,.1)}.tabs.steps button.on{background:var(--accent);color:#fff;box-shadow:0 9px 25px rgba(8,126,121,.22)}.tabs.steps .no{width:30px;height:30px;border-radius:9px}.tabs.steps button small{line-height:1.35;margin-top:3px}
+.tabs.tools{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:7px;margin-bottom:20px;align-items:center}.tabs.tools button{border-radius:9px;padding:8px 12px}.tabs.tools button.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+button{transition:background .16s,border-color .16s,transform .16s,box-shadow .16s}button:hover:not(:disabled){transform:translateY(-1px)}button.primary{border-radius:10px;box-shadow:0 6px 17px rgba(8,126,121,.18)}button.primary:hover{background:#076a66;color:white}.danger{background:var(--warn-soft);color:var(--warn);border-color:rgba(173,72,62,.25);font-weight:700}.danger:hover{background:var(--warn);color:white;border-color:var(--warn)}
+input[type=text],input[type=number],input[type=password],select,textarea{background:var(--surface);border-radius:10px;padding:9px 12px;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(8,126,121,.13)}
+.stepline{gap:15px;padding:8px 0}.stepline .no{width:32px;height:32px;border-radius:10px}.gonext{padding:16px 18px;border:1px solid rgba(8,126,121,.15);border-radius:14px}.list{border-radius:12px}.list li{padding:12px 15px}.list li.sel{outline:0;box-shadow:inset 3px 0 var(--accent)}.ready button{padding:7px 12px}.log{border-radius:12px}.result{border-radius:12px}
+@media(max-width:850px){.tabs.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:16px 14px 60px}.hero{padding:27px 25px;border-radius:18px}.card{padding:18px}}
+@media(max-width:520px){.tabs.steps{grid-template-columns:1fr 1fr;gap:7px}.tabs.steps button{padding:10px;gap:7px;font-size:12px}.tabs.steps button small{display:none}.tabs.steps .no{width:24px;height:24px;font-size:11px}.hero{padding:24px 20px}.hero .sub{font-size:12px}.tabs.tools .hint{display:none}.tabs.tools button{flex:1}.keyrow input{min-width:0;width:100%}}
 </style></head><body><div class="wrap">
-<div class="eyebrow">사람의 이유 · 민담·야담</div>
-<h1>주제 고르고 대본 만들기</h1>
-<p class="sub">리포트에서 뽑은 주제를 하나 고르면 설정.json 의 AI(딥시크)가 지침대로 대본을 씁니다. 지침은 아래에서 바로 고칠 수 있습니다.</p>
+<header class="hero"><div class="eyebrow">CREATOR STUDIO · 사람의 이유 / 민담·야담</div>
+<h1>이야기를 영상으로 만드는 공간</h1>
+<p class="sub">주제 선택부터 대본, 나레이션, 이미지와 영상까지. 필요한 단계를 차례로 진행하세요.</p></header>
 <div id="envwarn" class="warn hidden"></div>
 
 <div class="tabs steps">
-  <button data-tab="settings"><span class="no">1</span>처음 설정<small>API 키 · 목소리 · 좌표</small></button>
+  <button class="on" data-tab="settings"><span class="no">1</span>처음 설정<small>API 키 · 목소리 · 좌표</small></button>
   <button data-tab="person"><span class="no">2</span>주제 고르기<small>사람의 이유</small></button>
   <button data-tab="mindam"><span class="no">2</span>주제 고르기<small>민담·야담·옛이야기</small></button>
   <button data-tab="auto"><span class="no">3</span>만들기<small>대본 → 나레이션 → 이미지 → 영상</small></button>
 </div>
-<div class="tabs tools"><span class="hint" style="align-self:center">따로 쓰는 도구:</span><button data-tab="images">이미지 프롬프트만</button><button data-tab="video">🎬 영상 합치기</button><button data-tab="imggen">🖼 이미지 생성·좌표</button></div>
+<div class="tabs tools"><span class="hint" style="align-self:center">따로 쓰는 도구:</span><button data-tab="images">이미지 프롬프트만</button><button data-tab="video">🎬 영상 합치기</button><button data-tab="imggen">🖼 이미지 생성·좌표</button><button data-tab="reset">작업 정리</button></div>
 
 <!-- 원클릭 -->
 <div class="card tab hidden" id="tab-auto">
@@ -1093,6 +1170,14 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
   <iframe id="fr_imggen" src="about:blank" data-src="http://127.0.0.1:8765/imagegen" style="width:100%;height:1500px;border:0;background:#fff"></iframe>
 </div>
 
+<div class="card tab hidden" id="tab-reset">
+  <h2>작업 정리 <small>완성 대본과 작성 중인 민담을 선택해서 초기화</small></h2>
+  <p class="hint">선택한 작업만 <code>대본/_휴지통</code>으로 옮깁니다. 다른 대본과 설정은 유지되며, 필요하면 휴지통 폴더에서 직접 복구할 수 있습니다.</p>
+  <div class="row"><label>초기화할 작업 <select id="reset_file" style="min-width:min(100%,520px)"></select></label><button class="mini" onclick="refresh()">목록 새로고침</button></div>
+  <div class="row"><button onclick="resetSelected('assets')">자료만 초기화</button><button class="danger" onclick="resetSelected('all')">대본과 자료 모두 초기화</button></div>
+  <p class="hint">자료만 초기화는 일반 대본에서 사용할 수 있습니다. 민담은 작성 중인 챕터와 완성본을 한 폴더에 보관하므로 함께 초기화합니다. 실행 중인 작업은 초기화할 수 없습니다.</p>
+</div>
+
 <!-- 설정 -->
 <div class="card tab" id="tab-settings">
   <h2>처음 사용 순서</h2>
@@ -1199,6 +1284,9 @@ async function refresh(){
   for(const [k,v] of Object.entries(STATE.keys||{})){const el=$('k_'+k);if(!el)continue;el.textContent=v?'✔ 저장됨 '+v:'없음';el.classList.toggle('ok',!!v);}
   $('i_file').innerHTML=STATE.scripts.map(s=>`<option value="${esc(s.path)}">${esc(s.name)}</option>`).join('')||'<option value="">(대본 폴더에 파일 없음)</option>';
   $('c_file').innerHTML=$('i_file').innerHTML; refreshGallery(true);
+  const oldReset=$('reset_file').value;
+  $('reset_file').innerHTML=(STATE.reset_items||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.kind==='mindam'?'민담 · ':'대본 · ')}${esc(x.label)}</option>`).join('')||'<option value="">초기화할 작업 없음</option>';
+  if((STATE.reset_items||[]).some(x=>x.id===oldReset))$('reset_file').value=oldReset;
   $('p_target').value=STATE.config.대본_글자수; $('a_target').value=STATE.config.대본_글자수; markLen('p_target'); markLen('a_target');
   $('s_ai').value=STATE.config.AI; $('s_model').value=STATE.config.모델||'';
   const isWeb=STATE.config.AI==='deepseek-web';
@@ -1254,6 +1342,15 @@ $('p_title').addEventListener('input',()=>{if(selected&&$('p_title').value!==sel
 
 async function editGuide(selId){const name=$(selId).value;if(!name)return;const sub=selId==='m_guide'?'민담/':'';editing=sub+name;const j=await api('/api/guideline?name='+encodeURIComponent(editing));$('g_name').textContent=editing;$('g_text').value=j.text;$('guideCard').classList.remove('hidden');$('guideCard').scrollIntoView({behavior:'smooth'});}
 async function saveGuide(){await api('/api/guideline',{name:editing,text:$('g_text').value});toast('지침 저장됨: '+editing);}
+async function resetSelected(scope){
+  const id=$('reset_file').value, item=(STATE.reset_items||[]).find(x=>x.id===id);
+  if(!item)return toast('초기화할 작업을 선택하세요',true);
+  if(scope==='assets'&&item.kind==='mindam')return toast('민담은 대본과 자료를 함께 초기화하세요',true);
+  const what=scope==='all'?'대본과 생성 자료 모두':'생성 자료만';
+  if(!confirm(`「${item.label}」의 ${what} 대본/_휴지통으로 옮길까요?`))return;
+  try{const result=await api('/api/reset',{id,scope});$('progressCard').classList.add('hidden');await refresh();toast(`${result.count}개 항목을 _휴지통으로 옮겼습니다`);}
+  catch(e){toast(e.message,true);}
+}
 async function saveKey(k){
   const v=$('key_'+k).value.trim(); if(!v) return toast('새 키를 입력한 뒤 저장을 누르세요. (이미 저장된 키는 그대로 유지됩니다)',true);
   const body=k==='inworld'?{인월드_API_키:v}:{['API_키_'+k]:v};
