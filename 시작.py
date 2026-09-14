@@ -82,8 +82,10 @@ def main():
         try:
             from 편집프로그램_UI_연결 import apply as apply_editor_ui
             apply_editor_ui(editor)
+            from 편집프로그램_KIE_연결 import apply as apply_editor_kie
+            apply_editor_kie(editor)
         except (OSError, ValueError) as exc:
-            print("편집프로그램 미리보기 설정을 확인하세요:", exc)
+            print("편집프로그램 연결 설정을 확인하세요:", exc)
     if editor and not ready(8765):
         log = open_log("로그_편집프로그램.txt")
         logs.append(log)
