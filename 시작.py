@@ -78,6 +78,12 @@ def main():
     env.update(PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
     children, logs = [], []
     editor = find_editor()
+    if editor:
+        try:
+            from 편집프로그램_UI_연결 import apply as apply_editor_ui
+            apply_editor_ui(editor)
+        except (OSError, ValueError) as exc:
+            print("편집프로그램 미리보기 설정을 확인하세요:", exc)
     if editor and not ready(8765):
         log = open_log("로그_편집프로그램.txt")
         logs.append(log)

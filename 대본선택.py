@@ -836,6 +836,8 @@ def make_thumbnails(job, req):
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
     steps = req.get("steps") or {}
+    if int(steps.get("hook", 0) or 0) > 0 and not aip("/api/info").get("kie_key_saved"):
+        raise ValueError("KIE API 키가 없습니다. [이미지 확인·재생성]에서 KIE 키를 저장하세요.")
     result = {}
     job.result = result          # 진행 중에도 단계별 결과(대본·프롬프트·나레이션…)를 화면에서 열 수 있게
     # 1) 대본 (이미 있는 대본 파일로 시작하면 건너뜀)
@@ -1196,6 +1198,11 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <div class="card tab" id="galleryCard" data-tabof="auto gallery">
   <h2>🖼 이미지 <small id="pg_imgs_t">장면별 생성 현황 — 위에서 고른 대본 기준</small></h2>
   <div class="row"><label>확인할 대본 <select id="g_file" style="min-width:380px"></select></label><span class="hint">그림 아래의 재생성을 누르면 해당 장면만 다시 만듭니다.</span></div>
+  <div class="gonext" style="margin:12px 0"><b>🎬 앞 7장 KIE 영상화</b>
+    <div class="row" style="margin-top:8px"><label>KIE API 키 <input type="password" id="g_kie_key" placeholder="KIE 키 입력" autocomplete="off" style="min-width:260px"></label><button onclick="saveKieKey()">키 저장</button><span id="g_kie_status" class="hint">확인 중…</span></div>
+    <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 영상화 중단</button><span class="hint">7장 이미지가 완성된 뒤 실행 · 이미 만든 영상은 건너뜀 · KIE 크레딧 사용</span></div>
+    <div class="hint" id="g_kie_progress"></div>
+  </div>
   <div class="row" style="gap:8px"><button class="primary" onclick="galStart(false)">▶ 빠진 장면 이어서 만들기</button><button onclick="galCtl('pause')">❚❚ 일시정지</button><button onclick="galCtl('resume')">▶ 재개</button><button onclick="galCtl('stop')" style="border-color:var(--warn);color:var(--warn)">■ 중단</button><button onclick="galStart(true)" style="border-color:var(--warn);color:var(--warn)">🔄 처음부터 다시 만들기</button>
     <span class="hint" id="gal_ctl"></span></div>
   <div class="row"><span class="hint" id="gal_src"></span><button class="mini" onclick="refreshGallery(true)">새로고침</button><button class="mini" onclick="openPath(galDir)" id="gal_open">이미지 폴더 열기</button></div>
@@ -1436,6 +1443,7 @@ async function refresh(){
   $('envwarn').classList.toggle('hidden',STATE.config.키있음||isWeb);
   $('envwarn').textContent='설정.json 에 API 키가 없습니다. [설정] 탭에서 딥시크 키를 넣거나 AI 를 deepseek-web(무료) 로 바꾸세요.';
   if(isWeb&&!STATE.web_alive){$('envwarn').classList.remove('hidden');$('envwarn').textContent='deepseek-web 모드: 크롬 확장이 연결되지 않았습니다. [설정] 탭의 "deepseek-web 쓰는 법"을 보세요.';}
+  refreshKieStatus();
   renderAfter();
 }
 function renderAfter(){
@@ -1547,6 +1555,7 @@ function pipelineTopic(){const ch=document.querySelector('input[name=a_channel]:
 async function continuePipeline(file){
   if(!file) return toast('대본 파일을 고르세요',true);
   const steps={optimize:false,prompts:true,tts:true,images:true,hook:+$('a_hook').value,render:true,thumbnail:$('a_thumb').checked};
+  if(steps.hook>0&&!await ensureKieReady())return;
   try{await api('/api/pipeline',{reuse_prompts:true,script_file:file,channel:file.endsWith('final.txt')?'mindam':'person',style:$('a_style').value,img_guideline:$('i_guide').value,chunk:+$('i_chunk').value,steps,thumb_position:$('a_thumb_pos').value});startPolling();}catch(e){toast(e.message,true);}
 }
 async function startThumb(){
@@ -1555,6 +1564,7 @@ async function startThumb(){
 async function startPipeline(){
   const ch=pipelineTopic(); const title=$('a_title').value.trim(); if(!title) return toast('주제를 입력하세요',true);
   const steps={optimize:$('a_optimize').checked,prompts:$('a_prompts').checked,tts:$('a_tts').checked,images:$('a_images').checked,hook:+$('a_hook').value,render:$('a_render').checked,thumbnail:$('a_thumb').checked};
+  if(steps.hook>0&&!await ensureKieReady())return;
   const body={channel:ch,title,topic:(ch==='person'&&selected&&selected.제목===title)?selected:null,guideline:$('p_guide').value,target:+$('a_target').value,mark_used:true,
     length:$('m_length').value,bench:(ch==='mindam'&&bench&&bench.제목===title)?bench:null,img_guideline:$('i_guide').value,style:$('a_style').value,chunk:+$('i_chunk').value,steps,thumb_position:$('a_thumb_pos').value};
   try{await api('/api/pipeline',body);startPolling();}catch(e){toast(e.message,true);}
@@ -1647,6 +1657,48 @@ async function genBodyFromUI(){
     style_prefix:ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷',auto_generate:ui.auto_generate!==false};
 }
 async function post8765(path,body){const r=await fetch('http://127.0.0.1:8765'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j;}
+async function refreshKieStatus(){
+  try{const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json());$('g_kie_status').textContent=info.kie_key_saved?'✓ KIE 키 저장됨':'KIE 키가 필요합니다';return !!info.kie_key_saved;}
+  catch(e){$('g_kie_status').textContent='편집프로그램 연결을 확인하세요';return false;}
+}
+async function saveKieKey(){
+  const key=$('g_kie_key').value.trim();if(!key)return toast('KIE API 키를 입력하세요',true);
+  try{await post8765('/api/config',{kie_api_key:key});$('g_kie_key').value='';await refreshKieStatus();toast('KIE 키 저장됨');}
+  catch(e){toast('KIE 키 저장 실패: '+e.message,true);}
+}
+async function ensureKieReady(){
+  if(await refreshKieStatus())return true;
+  goTab('gallery');$('g_kie_key').focus();toast('앞 7장 영상화를 위해 KIE 키를 먼저 저장하세요',true);return false;
+}
+let kieJobId=sessionStorage.getItem('kieJobId')||'', kieTimer=null;
+async function pollKieJob(){
+  if(!kieJobId)return;
+  try{const r=await fetch('http://127.0.0.1:8765/api/jobs/'+encodeURIComponent(kieJobId));if(!r.ok)throw new Error('작업을 찾지 못했습니다');const j=await r.json();
+    $('g_kie_progress').textContent=`KIE ${j.stage||j.status||'진행 중'}${j.progress!=null?' · '+Math.round(j.progress*100)+'%':''}${j.error?' · '+j.error:''}`;
+    if(['done','error','cancelled'].includes(j.status)){clearInterval(kieTimer);kieTimer=null;kieJobId='';sessionStorage.removeItem('kieJobId');refreshGallery(true);}
+  }catch(e){clearInterval(kieTimer);kieTimer=null;$('g_kie_progress').textContent='영상화 상태 확인 실패: '+e.message;}
+}
+async function startFirstSevenVideos(){
+  if(kieJobId)return toast('앞 7장 영상화가 이미 진행 중입니다',true);
+  if(!galDir||!galPromptsPath)return toast('대본과 이미지 프롬프트를 먼저 고르세요',true);
+  if(!await ensureKieReady())return;
+  try{
+    const im=await fetch('http://127.0.0.1:8765/api/gen/images?dir='+encodeURIComponent(galDir)).then(r=>r.json());
+    const ready=new Set((im.images||[]).filter(x=>!x.video).map(x=>x.no));
+    const missing=[1,2,3,4,5,6,7].filter(no=>!ready.has(no));
+    if(missing.length)return toast('앞 7장 이미지가 먼저 필요합니다. 없는 장면: '+missing.map(n=>String(n).padStart(3,'0')).join(', '),true);
+    if(!confirm('앞 7장 이미지를 KIE AI 영상으로 변환할까요? 장면마다 크레딧이 사용됩니다.'))return;
+    const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json()),ui=(info.config||{}).gen_ui||{};
+    const body={api_key:'',images_dir:galDir,prompts_file:galPromptsPath,scenes:[1,2,3,4,5,6,7],model:ui.kie_model||'veo-3-1',aspect_ratio:ui.kie_ratio||'16:9',duration:0,motion_prompt:ui.motion_prompt||'Subtle 2D motion, preserve characters and composition.',use_scene_prompt:true,output_dir:''};
+    const j=await post8765('/api/hook/start',body);kieJobId=j.job_id;sessionStorage.setItem('kieJobId',kieJobId);clearInterval(kieTimer);kieTimer=setInterval(pollKieJob,2000);pollKieJob();toast('앞 7장 영상 변환을 시작했습니다');
+  }catch(e){toast('영상화 실패: '+e.message,true);}
+}
+async function cancelKieVideos(){
+  if(!kieJobId)return toast('진행 중인 영상화가 없습니다',true);
+  try{await post8765('/api/jobs/'+encodeURIComponent(kieJobId)+'/cancel',{});$('g_kie_progress').textContent='영상화 중단 요청';}
+  catch(e){toast('중단 실패: '+e.message,true);}
+}
+if(kieJobId){kieTimer=setInterval(pollKieJob,2000);setTimeout(pollKieJob,500);}
 async function galStart(fromScratch){
   try{
     const body=await genBodyFromUI();
@@ -1656,6 +1708,7 @@ async function galStart(fromScratch){
 }
 async function galCtl(what){try{await post8765('/api/gen/'+what,{});toast({pause:'일시정지',resume:'재개',stop:'중단 요청'}[what]);galKey='';}catch(e){toast(e.message,true);}}
 async function hookScene(no){
+  if(!await ensureKieReady())return;
   if(!confirm(String(no).padStart(3,'0')+'번 장면을 KIE 로 영상으로 만들까요? (크레딧 차감, 1~4분)'))return;
   try{
     const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json()); const ui=(info.config||{}).gen_ui||{}; const j=STATE.job||(await api('/api/job'));
