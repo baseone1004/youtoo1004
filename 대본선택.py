@@ -1323,6 +1323,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <li>여기 AI 를 <b>deepseek-web</b> 으로 저장. 아래 상태가 "확장 연결됨"이면 끝. 대본을 만들면 그 탭에서 자동으로 새 대화 → 지침+요청 입력 → 답변 수집을 반복합니다.</li>
     <li>딥시크 웹은 한 번에 쓸 수 있는 답변 길이가 API 보다 짧을 수 있어, 글자수를 5,000자 단위로 나눠 요청합니다. 서버 혼잡 시 자동 재시도.</li></ol></details>
   <h2 style="margin-top:14px">드롭샷 이미지 생성 좌표 <small>입력창 → 생성 버튼 → 다운로드 버튼 순서로 잡으세요</small></h2>
+  <div class="row"><button type="button" class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board', '_blank', 'noopener')">↗ 드롭샷 AI 열기</button></div>
   <p class="hint">[6초 좌표]를 누른 뒤 6초 안에 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 잡힌 좌표는 자동 저장됩니다.</p>
   <div class="row"><label>드롭샷 창 제목 <input type="text" id="s_window_keyword" value="드롭샷" style="width:150px"></label><button class="mini" onclick="saveEditorXY()">제목·좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
   <div class="row"><b style="min-width:130px">프롬프트 입력창</b><label>X <input type="number" id="s_prompt_x" style="width:90px"></label><label>Y <input type="number" id="s_prompt_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('prompt')">6초 좌표</button><button class="mini" onclick="testEditorXY('prompt')">테스트</button></div>
