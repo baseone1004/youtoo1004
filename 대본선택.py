@@ -724,9 +724,14 @@ def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
         job.stage = "후킹 영상: " + (st.get("stage") or st.get("status"))
         if st["status"] in ("done", "error", "cancelled"):
             if st["status"] != "done":
-                job.add("   ! 후킹 영상 실패: " + (st.get("error") or st["status"])); return {}
-            job.add(f"   ✓ 후킹 영상 {len((st.get('result') or {}).get('videos', {}))}개")
-            return st.get("result") or {}
+                raise RuntimeError("KIE 영상 변환 실패: " + (st.get("error") or st["status"]))
+            result = st.get("result") or {}
+            videos = result.get("videos") or {}
+            missing = [no for no in scenes if str(no) not in {str(k) for k in videos}]
+            if missing:
+                raise RuntimeError("KIE 영상 변환이 완료되지 않았습니다. 실패한 장면: " + ", ".join(f"{no:03d}" for no in missing))
+            job.add(f"   ✓ KIE 영상 {len(videos)}개")
+            return result
         time.sleep(5)
 
 
@@ -837,7 +842,7 @@ def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
     steps = req.get("steps") or {}
     if int(steps.get("hook", 0) or 0) > 0 and not aip("/api/info").get("kie_key_saved"):
-        raise ValueError("KIE API 키가 없습니다. [이미지 확인·재생성]에서 KIE 키를 저장하세요.")
+        raise ValueError("KIE API 키가 없습니다. [설정]에서 KIE 키를 저장하세요.")
     result = {}
     job.result = result          # 진행 중에도 단계별 결과(대본·프롬프트·나레이션…)를 화면에서 열 수 있게
     # 1) 대본 (이미 있는 대본 파일로 시작하면 건너뜀)
@@ -1200,7 +1205,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <div class="row"><label>확인할 대본 <select id="g_file" style="min-width:380px"></select></label><span class="hint">그림 아래의 재생성을 누르면 해당 장면만 다시 만듭니다.</span></div>
   <div class="gonext" style="margin:12px 0"><b>🎬 앞 7장 KIE 영상화</b>
     <div class="row" style="margin-top:8px"><span id="g_kie_status" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="goTab('settings')">API 키·좌표 설정 →</button></div>
-    <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 영상화 중단</button><span class="hint">7장 이미지가 완성된 뒤 실행 · 이미 만든 영상은 건너뜀 · KIE 크레딧 사용</span></div>
+    <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 KIE AI로 영상 변환</button><button onclick="cancelKieVideos()">■ 영상화 중단</button><span class="hint">이미지→영상 변환은 KIE AI만 사용 · 이미 만든 영상은 건너뜀 · KIE 크레딧 사용</span></div>
     <div id="g_kie_progress" role="status" aria-live="polite" style="font-weight:700;margin:10px 0">영상 파일 확인 중…</div>
     <div class="row"><span class="hint" id="g_kie_scenes">1~7번 영상 확인 중…</span><button class="mini" onclick="refreshKieFiles()">영상 상태 새로고침</button><button class="mini" onclick="openPath(galDir)">영상 저장 폴더 열기</button></div>
   </div>
@@ -1217,7 +1222,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <label><input type="checkbox" id="a_tts" checked>나레이션(인월드)</label>
     <label><input type="checkbox" id="a_images" checked>이미지 자동 생성(좌표 클릭)</label>
     <label>후킹 영상 앞 <input type="number" id="a_hook" value="7" min="0" max="30" style="width:70px" onchange="api('/api/config',{후킹_장면수:+this.value})"> 장면 (KIE, 0=안 함)</label>
-    <label><input type="checkbox" id="a_render" checked>최종 MP4 렌더(자막 굽기·줌팬)</label>
+    <label><input type="checkbox" id="a_render" checked>최종 MP4 편집·저장(자막·음성 합치기)</label>
     <label><input type="checkbox" id="a_thumb" checked>썸네일 3장 자동</label>
     <label>썸네일 문구 위치 <select id="a_thumb_pos"><option value="bottom">아래</option><option value="left">왼쪽</option><option value="top">위</option></select></label>
   </div>
