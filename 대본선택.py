@@ -1169,7 +1169,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <button data-tab="video"><span class="no">3</span><span class="tab-title">영상 편집<small>자막 · 최종 영상</small></span></button>
   <button data-tab="settings"><span class="no">⚙</span><span class="tab-title">설정<small>처음 설치할 때 확인</small></span></button>
 </div>
-<details class="toolbox"><summary>주제 추천·세부 도구 펼치기</summary><div class="tabs tools"><button data-tab="person">사람의 이유 주제 추천</button><button data-tab="mindam">민담 주제 추천</button><button data-tab="images">이미지 프롬프트만</button><button data-tab="imggen">이미지 생성 좌표</button><button data-tab="reset">작업 정리</button></div></details>
+<details class="toolbox"><summary>주제 추천·세부 도구 펼치기</summary><div class="tabs tools"><button data-tab="person">사람의 이유 주제 추천</button><button data-tab="mindam">민담 주제 추천</button><button data-tab="images">이미지 프롬프트만</button><button data-tab="reset">작업 정리</button></div></details>
 
 <!-- 원클릭 -->
 <div class="card tab" id="tab-auto">
@@ -1199,7 +1199,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <h2>🖼 이미지 <small id="pg_imgs_t">장면별 생성 현황 — 위에서 고른 대본 기준</small></h2>
   <div class="row"><label>확인할 대본 <select id="g_file" style="min-width:380px"></select></label><span class="hint">그림 아래의 재생성을 누르면 해당 장면만 다시 만듭니다.</span></div>
   <div class="gonext" style="margin:12px 0"><b>🎬 앞 7장 KIE 영상화</b>
-    <div class="row" style="margin-top:8px"><label>KIE API 키 <input type="password" id="g_kie_key" placeholder="KIE 키 입력" autocomplete="off" style="min-width:260px"></label><button onclick="saveKieKey()">키 저장</button><span id="g_kie_status" class="hint">확인 중…</span></div>
+    <div class="row" style="margin-top:8px"><span id="g_kie_status" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="goTab('settings')">API 키·좌표 설정 →</button></div>
     <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 영상화 중단</button><span class="hint">7장 이미지가 완성된 뒤 실행 · 이미 만든 영상은 건너뜀 · KIE 크레딧 사용</span></div>
     <div class="hint" id="g_kie_progress"></div>
   </div>
@@ -1292,10 +1292,6 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <div class="card tab hidden" id="tab-video" style="padding:0;overflow:hidden">
   <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:1500px;border:0;background:#fff"></iframe>
 </div>
-<div class="card tab hidden" id="tab-imggen" style="padding:0;overflow:hidden">
-  <iframe id="fr_imggen" src="about:blank" data-src="http://127.0.0.1:8765/imagegen" style="width:100%;height:1500px;border:0;background:#fff"></iframe>
-</div>
-
 <div class="card tab hidden" id="tab-reset">
   <h2>작업 정리 <small>완성 대본과 작성 중인 민담을 선택해서 초기화</small></h2>
   <p class="hint">선택한 작업만 <code>대본/_휴지통</code>으로 옮깁니다. 다른 대본과 설정은 유지되며, 필요하면 휴지통 폴더에서 직접 복구할 수 있습니다.</p>
@@ -1307,10 +1303,10 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <!-- 설정 -->
 <div class="card tab hidden" id="tab-settings">
   <h2>처음 사용 순서</h2>
-  <p class="hint">① 아래에서 대본 AI를 연결하세요. ② 영상까지 만들려면 인월드 목소리와 이미지 생성 좌표도 준비하세요. ③ [주제 고르기]에서 제목을 고른 뒤 [만들기]로 보내세요.</p>
+  <p class="hint">① API 키를 저장하세요. ② 드롭샷 입력·생성·다운로드 좌표를 확인하세요. ③ [영상 만들기]에서 주제를 입력하면 됩니다.</p>
   <div id="setupReady" class="ready"></div>
   <div class="row"><button class="primary" onclick="goTab('person')">사람의 이유 주제 고르기 →</button><button onclick="goTab('mindam')">민담·야담 주제 고르기 →</button></div>
-  <h2>설정.json</h2>
+  <h2>대본 AI 선택</h2>
   <div class="row"><label>대본 쓰는 AI <select id="s_ai" onchange="saveAI()"><option value="deepseek-web">deepseek-web (웹 채팅 · 무료 · 확장 필요)</option><option>deepseek</option><option>gemini</option><option>claude</option></select></label>
     <label>모델 <input type="text" id="s_model" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
   <p class="hint" id="s_status"></p>
@@ -1319,16 +1315,20 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <div class="keyrow"><b>제미나이</b><span class="keystat" id="k_gemini"></span><input type="password" id="key_gemini" placeholder="AIza…  (aistudio.google.com/apikey)"><button class="mini" onclick="saveKey('gemini')">저장</button></div>
   <div class="keyrow"><b>클로드</b><span class="keystat" id="k_claude"></span><input type="password" id="key_claude" placeholder="sk-ant-…  (console.anthropic.com)"><button class="mini" onclick="saveKey('claude')">저장</button></div>
   <div class="keyrow"><b>인월드 TTS</b><span class="keystat" id="k_inworld"></span><input type="password" id="key_inworld" placeholder="Basic 키  (platform.inworld.ai)"><button class="mini" onclick="saveKey('inworld')">저장</button></div>
-  <p class="hint">KIE(후킹 영상) 키는 <a href="http://127.0.0.1:8765/imagegen" target="_blank">편집프로그램 화면</a>에서 같은 방식으로 저장합니다.</p>
+  <div class="keyrow"><b>KIE 영상화</b><span class="keystat" id="s_kie_status">확인 중…</span><input type="password" id="s_kie_key" placeholder="KIE AI API 키" autocomplete="off"><button class="mini" onclick="saveKieKey()">저장</button></div>
   <div class="hint" id="s_web" style="margin:-4px 0 8px"></div>
   <details><summary class="hint">deepseek-web 쓰는 법 (API 비용 0원)</summary><ol class="hint">
     <li>크롬 주소창에 <code>chrome://extensions</code> → 오른쪽 위 <b>개발자 모드</b> 켜기 → <b>압축해제된 확장 프로그램을 로드</b> → 이 폴더의 <code>딥시크_확장</code> 선택</li>
     <li>크롬에서 <code>https://chat.deepseek.com</code> 을 열고 로그인 (탭을 닫지 않고 둡니다 — 최소화는 괜찮음)</li>
     <li>여기 AI 를 <b>deepseek-web</b> 으로 저장. 아래 상태가 "확장 연결됨"이면 끝. 대본을 만들면 그 탭에서 자동으로 새 대화 → 지침+요청 입력 → 답변 수집을 반복합니다.</li>
     <li>딥시크 웹은 한 번에 쓸 수 있는 답변 길이가 API 보다 짧을 수 있어, 글자수를 5,000자 단위로 나눠 요청합니다. 서버 혼잡 시 자동 재시도.</li></ol></details>
-  <h2 style="margin-top:14px">이미지 자동 생성 좌표 · 후킹 영상(KIE) 키</h2>
-  <p class="hint">좌표와 KIE 키는 편집프로그램 화면에 있습니다 → <a href="http://127.0.0.1:8765/imagegen" target="_blank"><b>이미지 자동 생성 화면 열기 (127.0.0.1:8765/imagegen)</b></a><br>
-  거기서 AI 이미지 창의 [프롬프트 입력창]·[생성하기]·[다운로드] 위에 마우스를 올리고 <b>6초 좌표</b>를 눌러 3개를 저장하면, 원클릭 자동 실행이 그 좌표를 씁니다.</p>
+  <h2 style="margin-top:14px">드롭샷 이미지 생성 좌표 <small>입력창 → 생성 버튼 → 다운로드 버튼 순서로 잡으세요</small></h2>
+  <p class="hint">[6초 좌표]를 누른 뒤 6초 안에 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 잡힌 좌표는 자동 저장됩니다.</p>
+  <div class="row"><label>드롭샷 창 제목 <input type="text" id="s_window_keyword" value="드롭샷" style="width:150px"></label><button class="mini" onclick="saveEditorXY()">제목·좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
+  <div class="row"><b style="min-width:130px">프롬프트 입력창</b><label>X <input type="number" id="s_prompt_x" style="width:90px"></label><label>Y <input type="number" id="s_prompt_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('prompt')">6초 좌표</button><button class="mini" onclick="testEditorXY('prompt')">테스트</button></div>
+  <div class="row"><b style="min-width:130px">생성 버튼</b><label>X <input type="number" id="s_generate_x" style="width:90px"></label><label>Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('generate')">6초 좌표</button><button class="mini" onclick="testEditorXY('generate')">테스트</button></div>
+  <div class="row"><b style="min-width:130px">다운로드 버튼</b><label>X <input type="number" id="s_download_x" style="width:90px"></label><label>Y <input type="number" id="s_download_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('download')">6초 좌표</button><button class="mini" onclick="testEditorXY('download')">테스트</button></div>
+  <p class="hint" id="s_xy_status">저장된 좌표를 읽는 중…</p>
   <h2 style="margin-top:14px">인월드(Inworld) 목소리 <small>채널마다 다른 목소리로 저장됩니다</small></h2>
   <div class="row"><label>모델 <select id="s_inworld_model"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>
   <div class="keyrow"><b>사람의 이유</b><span class="keystat" id="v_person"></span>
@@ -1377,22 +1377,11 @@ async function exitProgram(){
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function goTab(name){const b=document.querySelector(`.tabs button[data-tab=${name}]`);if(b){const details=b.closest('details');if(details)details.open=true;b.click();}window.scrollTo({top:0,behavior:'smooth'});}
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
-async function openImageGenerator(fr){
-  try{
-    await refreshGallery(false);
-    if(galDir&&galPromptsPath){
-      const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json());
-      const ui=(info.config||{}).gen_ui||{};
-      const P={...(ui.P||{}),prompts:galPromptsPath,output:galDir};
-      await post8765('/api/config',{gen_ui:{...ui,P}});
-    }
-  }catch(e){toast('이미지 생성 화면 연결 실패: '+e.message,true);}
-  fr.src=fr.dataset.src;
-}
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('hidden',t.id!=='tab-'+b.dataset.tab&&!(t.dataset.tabof||'').split(' ').includes(b.dataset.tab)));
   if(b.dataset.tab==='gallery')refreshGallery(true);
-  const fr=document.querySelector('#tab-'+b.dataset.tab+' iframe'); if(fr){if(b.dataset.tab==='imggen')openImageGenerator(fr);else if(fr.src==='about:blank')fr.src=fr.dataset.src;}});
-window.addEventListener('message',e=>{ if(e.data&&e.data.aipHeight){ document.querySelectorAll('#tab-video iframe,#tab-imggen iframe').forEach(f=>{ if(f.contentWindow===e.source) f.style.height=(e.data.aipHeight+40)+'px'; }); } });
+  if(b.dataset.tab==='settings')loadEditorSettings();
+  const fr=document.querySelector('#tab-'+b.dataset.tab+' iframe'); if(fr&&fr.src==='about:blank')fr.src=fr.dataset.src;});
+window.addEventListener('message',e=>{ if(e.data&&e.data.aipHeight){ const f=$('fr_video');if(f&&f.contentWindow===e.source)f.style.height=(e.data.aipHeight+40)+'px'; } });
 async function checkReady(){
   const box=$('readyBox'); const items=[];   // [ok, 라벨, 고칠 탭]
   try{ const info=await api('/api/state');
@@ -1402,7 +1391,7 @@ async function checkReady(){
     else items.push([!!info.config.키있음, info.config.키있음?(info.config.AI+' 키 ✓'):(info.config.AI+' 키 없음'), 'settings']);
   }catch(e){}
   try{ const r=await fetch('http://127.0.0.1:8765/api/info'); const j=await r.json(); const xy=((j.config||{}).gen_ui||{}).XY||{}; const ok=!!(xy.prompt&&xy.generate&&xy.download);
-    items.push([ok, ok?'이미지 생성 좌표 ✓':'드롭샷 AI 좌표 3개 없음', 'imggen']); }
+    items.push([ok, ok?'이미지 생성 좌표 ✓':'드롭샷 AI 좌표 3개 없음', 'settings']); }
   catch(e){ items.push([false,'편집프로그램(8765) 꺼짐 — 유튜브_자동화_시작.bat 다시 실행', null]); }
   const markup='<span class="hint" style="align-self:center">준비 상태:</span>'+items.map(([ok,label,tab])=>`<button type="button" class="${ok?'ok':'bad'}" ${tab&&!ok?`onclick="goTab('${tab}')"`:''}>${ok?'🟢':'🔴'} ${esc(label)}${(!ok&&tab)?' → 고치기':''}</button>`).join('');
   box.innerHTML=markup; $('setupReady').innerHTML=markup;
@@ -1658,17 +1647,51 @@ async function genBodyFromUI(){
 }
 async function post8765(path,body){const r=await fetch('http://127.0.0.1:8765'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j;}
 async function refreshKieStatus(){
-  try{const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json());$('g_kie_status').textContent=info.kie_key_saved?'✓ KIE 키 저장됨':'KIE 키가 필요합니다';return !!info.kie_key_saved;}
-  catch(e){$('g_kie_status').textContent='편집프로그램 연결을 확인하세요';return false;}
+  try{const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json());const msg=info.kie_key_saved?'✓ KIE 키 저장됨':'KIE 키가 필요합니다';$('g_kie_status').textContent=$('s_kie_status').textContent=msg;return !!info.kie_key_saved;}
+  catch(e){$('g_kie_status').textContent=$('s_kie_status').textContent='편집프로그램 연결을 확인하세요';return false;}
 }
 async function saveKieKey(){
-  const key=$('g_kie_key').value.trim();if(!key)return toast('KIE API 키를 입력하세요',true);
-  try{await post8765('/api/config',{kie_api_key:key});$('g_kie_key').value='';await refreshKieStatus();toast('KIE 키 저장됨');}
+  const key=$('s_kie_key').value.trim();if(!key)return toast('KIE API 키를 입력하세요',true);
+  try{await post8765('/api/config',{kie_api_key:key});$('s_kie_key').value='';await refreshKieStatus();toast('KIE 키 저장됨');}
   catch(e){toast('KIE 키 저장 실패: '+e.message,true);}
 }
 async function ensureKieReady(){
   if(await refreshKieStatus())return true;
-  goTab('gallery');$('g_kie_key').focus();toast('앞 7장 영상화를 위해 KIE 키를 먼저 저장하세요',true);return false;
+  goTab('settings');$('s_kie_key').focus();toast('앞 7장 영상화를 위해 KIE 키를 먼저 저장하세요',true);return false;
+}
+async function loadEditorSettings(){
+  try{
+    const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json());if(!info.config)throw new Error('편집프로그램 응답 없음');
+    const ui=info.config.gen_ui||{},xy=ui.XY||{};
+    for(const name of ['prompt','generate','download']){const pair=xy[name]||[];$('s_'+name+'_x').value=pair[0]??'';$('s_'+name+'_y').value=pair[1]??'';}
+    $('s_window_keyword').value=ui.window_keyword||'드롭샷';
+    $('s_xy_status').textContent='저장된 좌표: '+['prompt','generate','download'].map(n=>xy[n]?`${{prompt:'입력창',generate:'생성',download:'다운로드'}[n]} (${xy[n].join(', ')})`:`${{prompt:'입력창',generate:'생성',download:'다운로드'}[n]} 없음`).join(' · ');
+    await refreshKieStatus();
+  }catch(e){$('s_xy_status').textContent='좌표를 불러오지 못했습니다: '+e.message;}
+}
+async function saveEditorXY(){
+  try{
+    const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json()),ui=(info.config||{}).gen_ui||{},XY={...(ui.XY||{})};
+    for(const name of ['prompt','generate','download']){
+      const x=$('s_'+name+'_x').value.trim(),y=$('s_'+name+'_y').value.trim();
+      if((x&&!y)||(!x&&y))throw new Error('X와 Y를 모두 입력하세요: '+name);
+      if(x&&y)XY[name]=[Number(x),Number(y)];
+    }
+    await post8765('/api/config',{gen_ui:{...ui,XY,window_keyword:$('s_window_keyword').value.trim()||'드롭샷'}});
+    $('s_xy_status').textContent='✓ 이미지 생성 좌표가 저장됐습니다';toast('좌표 저장됨');return true;
+  }catch(e){$('s_xy_status').textContent='좌표 저장 실패: '+e.message;toast(e.message,true);return false;}
+}
+async function captureEditorXY(name){
+  const label={prompt:'프롬프트 입력창',generate:'생성 버튼',download:'다운로드 버튼'}[name];
+  $('s_xy_status').textContent=`6초 안에 마우스를 드롭샷의 ${label} 위에 올려 두세요`;
+  try{const j=await post8765('/api/gen/capture',{seconds:6});$('s_'+name+'_x').value=j.x;$('s_'+name+'_y').value=j.y;await saveEditorXY();}
+  catch(e){$('s_xy_status').textContent='좌표 잡기 실패: '+e.message;}
+}
+async function testEditorXY(name){
+  const x=$('s_'+name+'_x').value,y=$('s_'+name+'_y').value;
+  if(x===''||y==='')return toast('좌표를 먼저 입력하거나 잡으세요',true);
+  try{await post8765('/api/gen/test',{x:Number(x),y:Number(y)});toast('마우스를 해당 좌표로 옮겼습니다');}
+  catch(e){toast('좌표 테스트 실패: '+e.message,true);}
 }
 let kieJobId=sessionStorage.getItem('kieJobId')||'', kieTimer=null;
 async function pollKieJob(){
