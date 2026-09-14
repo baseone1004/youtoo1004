@@ -88,6 +88,8 @@ def main():
             apply_editor_video(editor)
             from 편집프로그램_글꼴_연결 import apply as apply_editor_fonts
             apply_editor_fonts(editor)
+            from 편집프로그램_렌더_보호 import apply as apply_editor_render_guard
+            apply_editor_render_guard(editor)
         except (OSError, ValueError) as exc:
             print("편집프로그램 연결 설정을 확인하세요:", exc)
     if editor and not ready(8765):

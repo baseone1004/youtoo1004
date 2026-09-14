@@ -471,7 +471,7 @@ def make_variations(job, req):
                   "Use the image already uploaded in the Dropshot References panel as the primary visual guide: "
                   "match its character design, facial features, hairstyle, linework and palette where relevant. "
                   "Do not copy its pose or background. No watercolor texture, pastel wash, photorealism, 3D render, text or watermark.",
-    "파스텔": "soft pastel illustration, gentle watercolor texture, warm muted palette, 16:9 aspect ratio",
+    "파스텔": "hand-drawn 2D pastel illustration, soft colored-pencil and watercolor textures, clean illustrated faces and outlines, warm muted palette, 16:9 aspect ratio",
     "수묵": "traditional Korean ink wash painting style with subtle color, hanji paper texture, 16:9 aspect ratio",
     # ── 야담·민담·옛이야기용 (조선 배경 고정, 아동풍 금지)
     "사극 웹툰": "Korean historical manhwa webtoon illustration, Joseon dynasty setting, adults in period-accurate hanbok and gat, "
@@ -500,6 +500,16 @@ def make_variations(job, req):
 화풍_그룹 = {"공통": ["실사", "애니", "2D 일러스트", "파스텔", "수묵"],
           "야담·민담·옛이야기": ["사극 웹툰", "사극 실사", "민화", "풍속화", "수묵담채", "한지 동화", "목판화", "괴담 극화"]}
 
+def image_style_lock(style):
+    """선택한 화풍이 뒤의 장면 설명과 충돌해도 사진풍으로 바뀌지 않게 고정한다."""
+    base = 화풍.get(style, 화풍["2D 일러스트"])
+    if style in ("실사", "사극 실사"):
+        return base
+    return (f"STRICT STYLE LOCK: every image must be {style} style. {base} "
+            "Keep the same linework, character design, proportions and color palette as the uploaded Dropshot reference image. "
+            "If a later scene description conflicts, this style lock takes priority. "
+            "Never generate a photo, photorealistic face, live-action still, realistic skin texture, 3D render or mixed-media image.")
+
 def split_sentences(body):
     return 나레이션.split_sentences(body)      # 이미지 프롬프트·나레이션·자막이 같은 문장 번호를 쓰도록 한 곳에서 나눔
 
@@ -523,7 +533,7 @@ def make_image_prompts(job, req):
     if not sents:
         raise SystemExit("대본에서 문장을 찾지 못했습니다.")
     system = read_guideline(req.get("guideline") or "이미지프롬프트_변환지침(DeepSeek).txt")
-    style = 화풍.get(req.get("style", "실사"), 화풍["실사"])
+    style = image_style_lock(req.get("style", "2D 일러스트"))
     chunk = int(req.get("chunk") or 25)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 · {chunk}문장씩 · 화풍 {req.get('style', '실사')}")
     outs = []
@@ -594,7 +604,7 @@ def restyle_script_prompts_2d(script_file):
             prompt = re.sub(r"(?i)soft pastel style|pastel illustration|watercolor (?:texture|effect|wash)", "clean 2D cel-shaded illustration", prompt)
             prompt = re.sub(r"(?i)\bsoftly painted\b", "cleanly drawn", prompt)
             prompt = re.sub(r"\s{2,}", " ", prompt).strip()
-            return "프롬프트: " + 화풍["2D 일러스트"] + " " + role + prompt
+            return "프롬프트: " + image_style_lock("2D 일러스트") + " " + role + prompt
         block, n = re.subn(r"^프롬프트:\s*(.+)$", update_prompt, block, count=1, flags=re.M)
         if n != 1:
             raise ValueError("장면 프롬프트 형식이 올바르지 않습니다.")
@@ -885,7 +895,7 @@ def make_pipeline(job, req):
         job.stage = "④ 이미지 자동 생성"
         os.makedirs(images_dir, exist_ok=True)
         selected_style = req.get("style", "실사")
-        prefix = req.get("style_prefix") or (화풍["2D 일러스트"] if selected_style == "2D 일러스트" else "")
+        prefix = req.get("style_prefix") or image_style_lock(selected_style)
         run_image_generation(job, result["prompts"], images_dir, prefix)
         result["images"] = images_dir
     # 5) 후킹 영상
@@ -960,6 +970,7 @@ class H(BaseHTTPRequestHandler):
                                             후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30)),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items()}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
+                                style_prefixes={k: image_style_lock(k) for k in 화풍},
                                 job=job.to_dict() if job else None, reset_items=reset_items()))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
@@ -1672,7 +1683,7 @@ async function genBodyFromUI(){
   if(!XY.prompt||!XY.download)throw new Error('좌표(프롬프트 입력창·다운로드)가 없습니다 → [🖼 이미지 생성·좌표]에서 잡으세요');
   return {prompts_file:galPromptsPath,output_dir:galDir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt,generate_xy:XY.generate||XY.prompt,download_xy:XY.download,
     wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:+(ui.wait_next??2),start_no:1,end_no:0,skip_existing:true,
-    style_prefix:ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷',auto_generate:ui.auto_generate!==false};
+    style_prefix:(STATE.style_prefixes||{})[$('a_style').value]||ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷',auto_generate:ui.auto_generate!==false};
 }
 async function post8765(path,body){const r=await fetch('http://127.0.0.1:8765'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j;}
 async function refreshKieStatus(){
@@ -1791,7 +1802,7 @@ async function regenScene(no){
     const dir=galDir, prompts=galPromptsPath;
     if(!prompts)throw new Error('이미지 프롬프트 파일이 없습니다. 먼저 이미지 프롬프트를 만드세요.');
     const body={scene:no,prompts_file:prompts,output_dir:dir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt,generate_xy:XY.generate,download_xy:XY.download,
-      wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:1,start_no:no,end_no:no,skip_existing:false,style_prefix:ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷'};
+      wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:1,start_no:no,end_no:no,skip_existing:false,style_prefix:(STATE.style_prefixes||{})[$('a_style').value]||ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷'};
     const r=await fetch('http://127.0.0.1:8765/api/gen/regen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const jj=await r.json(); if(!r.ok)throw new Error(jj.detail||r.statusText);
     toast(String(no).padStart(3,'0')+'번 다시 생성 시작'); galKey='';
   }catch(e){toast(e.message,true);}
