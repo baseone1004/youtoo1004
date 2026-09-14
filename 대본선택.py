@@ -1201,7 +1201,8 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <div class="gonext" style="margin:12px 0"><b>🎬 앞 7장 KIE 영상화</b>
     <div class="row" style="margin-top:8px"><span id="g_kie_status" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="goTab('settings')">API 키·좌표 설정 →</button></div>
     <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 영상화 중단</button><span class="hint">7장 이미지가 완성된 뒤 실행 · 이미 만든 영상은 건너뜀 · KIE 크레딧 사용</span></div>
-    <div class="hint" id="g_kie_progress"></div>
+    <div id="g_kie_progress" role="status" aria-live="polite" style="font-weight:700;margin:10px 0">영상 파일 확인 중…</div>
+    <div class="row"><span class="hint" id="g_kie_scenes">1~7번 영상 확인 중…</span><button class="mini" onclick="refreshKieFiles()">영상 상태 새로고침</button><button class="mini" onclick="openPath(galDir)">영상 저장 폴더 열기</button></div>
   </div>
   <div class="row" style="gap:8px"><button class="primary" onclick="galStart(false)">▶ 빠진 장면 이어서 만들기</button><button onclick="galCtl('pause')">❚❚ 일시정지</button><button onclick="galCtl('resume')">▶ 재개</button><button onclick="galCtl('stop')" style="border-color:var(--warn);color:var(--warn)">■ 중단</button><button onclick="galStart(true)" style="border-color:var(--warn);color:var(--warn)">🔄 처음부터 다시 만들기</button>
     <span class="hint" id="gal_ctl"></span></div>
@@ -1610,6 +1611,7 @@ async function refreshGallery(force){
   galDir=dir; galPromptsPath=pr; $('gal_src').textContent=dir?dir:'대본을 고르면 그 대본의 이미지 폴더를 보여 줍니다';
   if(force)galKey='';
   await updateGallery({kind:'pipeline',result:{images:dir,prompts:pr}});
+  await refreshKieFiles();
 }
 $('c_file').addEventListener('change',()=>{ $('g_file').value=$('c_file').value;localStorage.setItem('selectedScript',$('c_file').value);refreshGallery(true); });
 $('g_file').addEventListener('change',()=>{ $('c_file').value=$('g_file').value;localStorage.setItem('selectedScript',$('g_file').value);refreshGallery(true); });
@@ -1695,12 +1697,24 @@ async function testEditorXY(name){
   catch(e){toast('좌표 테스트 실패: '+e.message,true);}
 }
 let kieJobId=sessionStorage.getItem('kieJobId')||'', kieTimer=null;
+async function refreshKieFiles(){
+  if(!galDir){$('g_kie_scenes').textContent='대본을 고르면 앞 7장 영상 상태를 표시합니다';if(!kieJobId)$('g_kie_progress').textContent='대본을 먼저 선택하세요';return;}
+  try{
+    const r=await fetch('http://127.0.0.1:8765/api/gen/images?dir='+encodeURIComponent(galDir));
+    if(!r.ok)throw new Error('파일 목록을 읽지 못했습니다');
+    const data=await r.json(),done=new Set((data.images||[]).filter(x=>x.video).map(x=>x.no));
+    const count=[1,2,3,4,5,6,7].filter(n=>done.has(n)).length;
+    $('g_kie_scenes').textContent=[1,2,3,4,5,6,7].map(n=>`${String(n).padStart(3,'0')} ${done.has(n)?'✓ 완료':'대기'}`).join(' · ');
+    if(!kieJobId)$('g_kie_progress').textContent=count===7?'✅ 앞 7장 영상 변환 완료 (7/7)':count?'🎬 영상 파일 '+count+'/7개 완료 · 나머지 확인 필요':'영상 파일 0/7개 · 아직 완료되지 않았습니다';
+  }catch(e){$('g_kie_scenes').textContent='영상 파일 확인 실패: '+e.message;}
+}
 async function pollKieJob(){
   if(!kieJobId)return;
   try{const r=await fetch('http://127.0.0.1:8765/api/jobs/'+encodeURIComponent(kieJobId));if(!r.ok)throw new Error('작업을 찾지 못했습니다');const j=await r.json();
     $('g_kie_progress').textContent=`KIE ${j.stage||j.status||'진행 중'}${j.progress!=null?' · '+Math.round(j.progress*100)+'%':''}${j.error?' · '+j.error:''}`;
-    if(['done','error','cancelled'].includes(j.status)){clearInterval(kieTimer);kieTimer=null;kieJobId='';sessionStorage.removeItem('kieJobId');refreshGallery(true);}
-  }catch(e){clearInterval(kieTimer);kieTimer=null;$('g_kie_progress').textContent='영상화 상태 확인 실패: '+e.message;}
+    await refreshKieFiles();
+    if(['done','error','cancelled'].includes(j.status)){clearInterval(kieTimer);kieTimer=null;kieJobId='';sessionStorage.removeItem('kieJobId');await refreshGallery(true);if(j.status==='error')$('g_kie_progress').textContent='❌ 영상화 오류: '+(j.error||'작업 로그를 확인하세요');else if(j.status==='cancelled')$('g_kie_progress').textContent='■ 영상화가 중단됐습니다';}
+  }catch(e){clearInterval(kieTimer);kieTimer=null;kieJobId='';sessionStorage.removeItem('kieJobId');await refreshKieFiles();if($('g_kie_scenes').textContent.includes('대기'))$('g_kie_progress').textContent+=' · 이전 작업 상태를 읽지 못했습니다';}
 }
 async function startFirstSevenVideos(){
   if(kieJobId)return toast('앞 7장 영상화가 이미 진행 중입니다',true);
