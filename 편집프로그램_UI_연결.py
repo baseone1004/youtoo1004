@@ -16,13 +16,29 @@ def move_preview_below_controls(source):
     return source.replace(anchor, anchor + '\n' + image.group().rstrip('\n'), 1)
 
 
+def warn_before_sample_render(source):
+    marker = "// youtoo-sample-render-warning"
+    if marker in source:
+        return source
+    old = "async function startRender() {\n  const req = collect();"
+    new = ("async function startRender() {\n"
+           "  // youtoo-sample-render-warning\n"
+           "  const req = collect();\n"
+           "  if ([req.srt, req.images, req.narration].some(p => /[\\\\/]samples[\\\\/]/i.test(p || ''))) {\n"
+           "    if (!confirm('현재 샘플 자료가 선택돼 있습니다. 이 샘플로 영상을 만들까요?')) return;\n"
+           "  }")
+    if old not in source:
+        raise ValueError("편집프로그램 영상 만들기 버튼 구조가 바뀌었습니다.")
+    return source.replace(old, new, 1)
+
+
 def apply(editor_dir):
     page = Path(editor_dir) / "static" / "index.html"
     if not page.is_file():
         return False
     source = page.read_text(encoding="utf-8")
     if "// youtoo-live-subtitle-preview" in source:
-        updated = move_preview_below_controls(source)
+        updated = warn_before_sample_render(move_preview_below_controls(source))
         if updated != source:
             page.write_text(updated, encoding="utf-8")
             return True
@@ -69,7 +85,7 @@ for (const id of ['srt_font','e_font_size','srt_font_size','srt_align','srt_colo
     updated = updated.replace(marker, marker + "\n" + extra, 1)
     updated = updated.replace("    applyCfg(info.config && info.config.ui);",
                               "    applyCfg(info.config && info.config.ui);\n    scheduleSubtitlePreview();", 1)
-    updated = move_preview_below_controls(updated)
+    updated = warn_before_sample_render(move_preview_below_controls(updated))
     backup = page.with_name("index.before-live-preview.html")
     if not backup.exists():
         shutil.copy2(page, backup)

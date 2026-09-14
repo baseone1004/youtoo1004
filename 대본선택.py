@@ -1296,6 +1296,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 
 <!-- 영상 만들기 (편집프로그램 8765 를 안에 띄움) -->
 <div class="card tab hidden" id="tab-video" style="padding:0;overflow:hidden">
+  <div id="video_source_status" class="gonext" style="margin:12px">편집할 대본을 확인하는 중…</div>
   <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:1500px;border:0;background:#fff"></iframe>
 </div>
 <div class="card tab hidden" id="tab-reset">
@@ -1387,7 +1388,27 @@ function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('hidden',t.id!=='tab-'+b.dataset.tab&&!(t.dataset.tabof||'').split(' ').includes(b.dataset.tab)));
   if(b.dataset.tab==='gallery')refreshGallery(true);
   if(b.dataset.tab==='settings')loadEditorSettings();
+  if(b.dataset.tab==='video'){prepareVideoEditor();return;}
   const fr=document.querySelector('#tab-'+b.dataset.tab+' iframe'); if(fr&&fr.src==='about:blank')fr.src=fr.dataset.src;});
+async function prepareVideoEditor(){
+  const fr=$('fr_video'),status=$('video_source_status'),script=$('g_file').value||$('c_file').value;
+  fr.src='about:blank';
+  if(!script){status.textContent='편집할 대본이 없습니다. [이미지 확인·재생성]에서 대본을 먼저 선택하세요.';return;}
+  status.textContent='선택한 대본의 나레이션·자막·이미지를 연결하는 중…';
+  try{
+    const a=await api('/api/assets?script='+encodeURIComponent(script));
+    const scan=await post8765('/api/scan_folder',{path:a.assets});
+    if(!scan.srt||!scan.narration||!scan.images)throw new Error('이 대본의 자막(SRT), 나레이션 또는 이미지가 없습니다. 먼저 제작을 완료하세요.');
+    const media=await fetch('http://127.0.0.1:8765/api/gen/images?dir='+encodeURIComponent(scan.images)).then(r=>r.json());
+    const kieCount=(media.images||[]).filter(x=>x.video).length;
+    const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json());
+    const ui={...((info.config||{}).ui||{}),easy:a.assets,srt:scan.srt,flow:scan.flow||'',images:scan.images,narration:scan.narration,
+      subtitle_mov:scan.subtitle_mov||'',output:a.assets+'\\최종.mp4'};
+    await post8765('/api/config',{ui});
+    status.textContent='✓ 선택한 대본: '+script.split(/[\\/]/).pop()+' · 이미지 '+scan.image_count+'장 · KIE 영상 '+kieCount+'개 · 결과는 이 대본의 자료 폴더에 저장됩니다.';
+    fr.src=fr.dataset.src+'?selected='+Date.now();
+  }catch(e){status.textContent='편집 자료 연결 실패: '+e.message;toast(e.message,true);}
+}
 window.addEventListener('message',e=>{ if(e.data&&e.data.aipHeight){ const f=$('fr_video');if(f&&f.contentWindow===e.source)f.style.height=(e.data.aipHeight+40)+'px'; } });
 async function checkReady(){
   const box=$('readyBox'); const items=[];   // [ok, 라벨, 고칠 탭]
