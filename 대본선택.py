@@ -1197,7 +1197,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <label><input type="radio" name="a_channel" value="mindam">민담·야담·옛이야기<small>1~2시간 · 옛이야기</small></label>
   </div></div></div>
   <div class="stepline"><span class="no">2</span><div><b>주제</b> <span class="hint">직접 적거나, 위 [2 주제 고르기]에서 클릭하면 여기로 들어옵니다</span>
-  <div class="row" style="margin-top:6px"><input type="text" id="a_title" placeholder="예) 나이 들수록 친구가 줄어드는 진짜 이유"><button class="mini" onclick="goTab(pipelineTopic()==='mindam'?'mindam':'person')">목록에서 고르기 →</button></div></div></div>
+  <div class="row" style="margin-top:6px"><input type="text" id="a_title" placeholder="예) 나이 들수록 친구가 줄어드는 진짜 이유"><button class="primary" onclick="pickAnotherTopic()">🎲 다른 주제 뽑기</button><button class="mini" onclick="goTab(pipelineTopic()==='mindam'?'mindam':'person')">목록에서 고르기 →</button></div></div></div>
   <div class="stepline"><span class="no">3</span><div><b>그림체</b> <span class="hint">클릭하면 저장됩니다</span>
   <div class="row" style="margin-top:6px"><input type="hidden" id="a_style"><div class="styles" id="a_styles"></div></div>
   <div class="row"><label>민담 길이 <select id="a_length"></select></label></div></div></div>
@@ -1207,7 +1207,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <div class="gonext" style="margin-top:14px"><b>이미 만든 대본이 있으면 →</b>
     <select id="c_file" style="min-width:380px"></select>
     <button class="primary" onclick="continuePipeline($('c_file').value)">🎬 이 대본으로 나레이션 → 이미지 → 영상까지 이어서 만들기</button>
-    <button class="danger" onclick="deleteSelectedScript('c_file')">선택한 대본 삭제</button>
+    <button class="danger" onclick="deleteSelectedScript('c_file')">🗑 대본·영상·이미지 전체 삭제</button>
     <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div>
 </div>
 
@@ -1308,6 +1308,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <!-- 영상 만들기 (편집프로그램 8765 를 안에 띄움) -->
 <div class="card tab hidden" id="tab-video" style="padding:0;overflow:hidden">
   <div id="video_source_status" class="gonext" style="margin:12px">편집할 대본을 확인하는 중…</div>
+  <div class="row" style="margin:0 12px 12px"><button class="danger" onclick="deleteCurrentCompletedWork()">🗑 현재 완료 작업 전체 삭제</button><span class="hint">대본·이미지·KIE 영상·음성·자막·최종 영상을 한 번에 _휴지통으로 옮깁니다.</span></div>
   <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:1500px;border:0;background:#fff"></iframe>
 </div>
 <div class="card tab hidden" id="tab-reset">
@@ -1517,6 +1518,25 @@ function selectTopic(t){selected=t;if(t){$('p_title').value=t.제목;}highlight(
 $('p_title').addEventListener('input',()=>{$('p_chosen').textContent=$('p_title').value||'(아직 없음)';});
 $('p_title').addEventListener('input',()=>{if(selected&&$('p_title').value!==selected.제목){selected=null;highlight();}});
 
+let topicDeck=[], topicDeckChannel='';
+function pickAnotherTopic(){
+  const ch=pipelineTopic();
+  const source=ch==='mindam'?(STATE.topics.mindam||[]):[...(STATE.topics.plan||[]),...(STATE.topics.candidates||[])];
+  const current=$('a_title').value.trim();
+  const unique=[...new Map(source.filter(x=>x&&x.제목).map(x=>[x.제목,x])).values()];
+  if(unique.length<2&&unique.every(x=>x.제목===current))return toast('다른 주제 후보가 없습니다. 주제 추천 목록을 먼저 추가하세요.',true);
+  if(topicDeckChannel!==ch||!topicDeck.length){
+    topicDeckChannel=ch;
+    topicDeck=unique.filter(x=>x.제목!==current);
+    for(let i=topicDeck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[topicDeck[i],topicDeck[j]]=[topicDeck[j],topicDeck[i]];}
+  }
+  const next=topicDeck.pop();
+  if(!next)return toast('다른 주제 후보가 없습니다.',true);
+  $('a_title').value=next.제목;
+  if(ch==='mindam'){bench=next;selected=null;}else{selected=next;bench=null;}
+  toast('새 주제로 변경했습니다: '+next.제목);
+}
+
 async function editGuide(selId){const name=$(selId).value;if(!name)return;const sub=selId==='m_guide'?'민담/':'';editing=sub+name;const j=await api('/api/guideline?name='+encodeURIComponent(editing));$('g_name').textContent=editing;$('g_text').value=j.text;$('guideCard').classList.remove('hidden');$('guideCard').scrollIntoView({behavior:'smooth'});}
 async function saveGuide(){await api('/api/guideline',{name:editing,text:$('g_text').value});toast('지침 저장됨: '+editing);}
 async function resetSelected(scope){
@@ -1541,6 +1561,18 @@ async function deleteSelectedScript(selectId){
   if(!confirm(`「${name}」 대본과 연결된 자료를 _휴지통으로 옮길까요?`))return;
   try{const result=await api('/api/delete-script',{script_file:file});$('progressCard').classList.add('hidden');await refresh();toast(`${result.count}개 항목을 _휴지통으로 옮겼습니다`);}
   catch(e){toast(e.message,true);}
+}
+async function deleteCurrentCompletedWork(){
+  const file=$('g_file').value||$('c_file').value||localStorage.getItem('selectedScript')||'';
+  if(!file)return toast('삭제할 완료 작업을 먼저 선택하세요.',true);
+  const item=(STATE.scripts||[]).find(x=>x.path===file), name=item?item.name:file;
+  if(!confirm(`「${name}」의 대본·이미지·영상·음성·자막을 모두 _휴지통으로 옮길까요?`))return;
+  try{
+    const result=await api('/api/delete-script',{script_file:file});
+    localStorage.removeItem('selectedScript'); $('fr_video').src='about:blank';
+    $('progressCard').classList.add('hidden'); await refresh();
+    toast(`${result.count}개 항목을 _휴지통으로 옮겼습니다.`);
+  }catch(e){toast(e.message,true);}
 }
 async function saveKey(k){
   const v=$('key_'+k).value.trim(); if(!v) return toast('새 키를 입력한 뒤 저장을 누르세요. (이미 저장된 키는 그대로 유지됩니다)',true);
