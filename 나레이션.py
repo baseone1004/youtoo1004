@@ -19,7 +19,7 @@ FFMPEG_후보 = [r"C:\Users\baseo\Downloads\DINO_7.5_고객용\필수 프로그�
             r"C:\Users\baseo\Downloads\편집프로그램\bin\ffmpeg.exe"]
 문장_간격 = 0.35          # 문장 사이 무음(초)
 동시_요청 = 3
-자막_최대_글자 = 22     # 화면에 한 번에 보여줄 자막 길이(공백 제외)
+자막_최대_글자 = 18     # 화면에 한 번에 보여줄 자막 길이(공백 제외)
 
 
 def find_ffmpeg(name="ffmpeg"):
@@ -119,29 +119,33 @@ def split_subtitle_text(text, max_chars=자막_최대_글자):
     units = [x.strip() for x in re.split(r"(?<=[,，;；:：])\s*|(?<=\uace0)\s+(?=[\uac00-\ud7a3])|(?<=\uba70)\s+(?=[\uac00-\ud7a3])", text) if x.strip()]
     out = []
     for unit in units:
-        words = unit.split()
-        current = ""
-        for word in words:
-            while len(word) > max_chars:
-                if current:
-                    out.append(current)
-                    current = ""
-                out.append(word[:max_chars])
-                word = word[max_chars:]
-            if not word:
-                continue
-            candidate = f"{current} {word}".strip()
-            if current and len(candidate.replace(" ", "")) > max_chars:
-                out.append(current)
-                current = word
-            else:
-                current = candidate
-        if current:
-            if out and len((out[-1] + " " + current).replace(" ", "")) <= max_chars:
-                out[-1] += " " + current
-            else:
-                out.append(current)
-    return out or [text]
+        words = []
+        for word in unit.split():
+            words.extend(word[i:i + max_chars] for i in range(0, len(word), max_chars))
+        best = [None] * (len(words) + 1)
+        best[len(words)] = []
+        for i in range(len(words) - 1, -1, -1):
+            candidates = []
+            size = 0
+            for j in range(i, len(words)):
+                size += len(words[j])
+                if size > max_chars:
+                    break
+                if best[j + 1] is not None:
+                    seq = [" ".join(words[i:j + 1])] + best[j + 1]
+                    lengths = [len(x.replace(" ", "")) for x in seq]
+                    score = (len(seq), max(lengths) - min(lengths), sum(x * x for x in lengths))
+                    candidates.append((score, seq))
+            if candidates:
+                best[i] = min(candidates, key=lambda item: item[0])[1]
+        out.extend(best[0] or [unit])
+    merged = []
+    for chunk in out:
+        if merged and len((merged[-1] + " " + chunk).replace(" ", "")) <= max_chars:
+            merged[-1] += " " + chunk
+        else:
+            merged.append(chunk)
+    return merged or [text]
 
 
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,

@@ -23,6 +23,12 @@ class SubtitleSplitTest(unittest.TestCase):
         self.assertEqual("".join(chunks), source)
         self.assertTrue(all(len(chunk) <= 5 for chunk in chunks))
 
+    def test_word_boundaries_never_break_the_hard_limit(self) -> None:
+        source = "가나다라마바사아 가나다라마바사아 가나다라마바사아"
+        chunks = split_subtitle_text(source, max_chars=10)
+        self.assertEqual("".join(chunks).replace(" ", ""), source.replace(" ", ""))
+        self.assertTrue(all(len(chunk.replace(" ", "")) <= 10 for chunk in chunks))
+
     def test_rejects_invalid_limit(self) -> None:
         with self.assertRaises(ValueError):
             split_subtitle_text("자막", max_chars=0)
