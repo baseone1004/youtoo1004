@@ -755,7 +755,7 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     body = dict(srt=os.path.abspath(srt), flow=os.path.abspath(flow), images=os.path.abspath(images_dir), narration=os.path.abspath(narration),
                 subtitle_mov="", match_mode="manual", output_mode="mp4", output=os.path.abspath(output), width=1920, height=1080, fps=30,
                 fit="cover", ken_burns=ken_burns, kb_zoom=0.12, transition="none", transition_duration=0.5, burn_srt=True,
-                srt_font="Malgun Gothic", srt_font_size=22, crf=18, preset="medium")
+                srt_font="Malgun Gothic", srt_font_size=22, srt_bold=True, srt_outline=3.5, crf=18, preset="medium")
     body.update(keep); body["burn_srt"] = True
     j = aip("/api/render", body, timeout=120)
     while True:

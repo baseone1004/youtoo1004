@@ -37,6 +37,7 @@ def apply(editor_dir):
     if not page.is_file():
         return False
     source = page.read_text(encoding="utf-8")
+    source = source.replace('id="srt_outline" value="2"', 'id="srt_outline" value="3.5"')
     if "// youtoo-live-subtitle-preview" in source:
         updated = warn_before_sample_render(move_preview_below_controls(source))
         if updated != source:
