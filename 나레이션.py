@@ -19,6 +19,7 @@ FFMPEG_후보 = [r"C:\Users\baseo\Downloads\DINO_7.5_고객용\필수 프로그�
             r"C:\Users\baseo\Downloads\편집프로그램\bin\ffmpeg.exe"]
 문장_간격 = 0.35          # 문장 사이 무음(초)
 동시_요청 = 3
+자막_최대_글자 = 22     # 화면에 한 번에 보여줄 자막 길이(공백 제외)
 
 
 def find_ffmpeg(name="ffmpeg"):
@@ -104,6 +105,45 @@ def fmt_srt(sec):
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
+def split_subtitle_text(text, max_chars=자막_최대_글자):
+    """긴 문장을 한 줄 자막으로 읽기 좋게 나눈다.
+
+    쉼표·접속 구간을 우선하고, 그래도 길면 단어 경계에서 나눈다.
+    원문의 문장부호는 그대로 보존한다.
+    """
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return []
+    if max_chars < 1:
+        raise ValueError("자막 최대 글자 수는 1 이상이어야 합니다.")
+    units = [x.strip() for x in re.split(r"(?<=[,，;；:：])\s*|(?<=\uace0)\s+(?=[\uac00-\ud7a3])|(?<=\uba70)\s+(?=[\uac00-\ud7a3])", text) if x.strip()]
+    out = []
+    for unit in units:
+        words = unit.split()
+        current = ""
+        for word in words:
+            while len(word) > max_chars:
+                if current:
+                    out.append(current)
+                    current = ""
+                out.append(word[:max_chars])
+                word = word[max_chars:]
+            if not word:
+                continue
+            candidate = f"{current} {word}".strip()
+            if current and len(candidate.replace(" ", "")) > max_chars:
+                out.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            if out and len((out[-1] + " " + current).replace(" ", "")) <= max_chars:
+                out[-1] += " " + current
+            else:
+                out.append(current)
+    return out or [text]
+
+
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,
                temperature=None, name="나레이션"):
     """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 문장 파일은 재사용."""
@@ -152,15 +192,25 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
                         "-c:a", "libmp3lame", "-b:a", "64k", silence], check=True)
     # 길이 계산 + SRT + concat 목록
     t = 0.0
-    srt, lst, flow = [], [], ["# 이미지번호: 자막번호 (문장 1개 = 이미지 1장)"]
+    srt, lst, flow = [], [], ["# 이미지번호: 자막번호 (긴 문장은 짧은 한 줄 자막으로 나눔)"]
     for i, s in enumerate(sentences):
         p = os.path.join(part_dir, f"{i + 1:04d}.mp3")
         if not os.path.exists(p):
             continue
         d = probe_duration(ffprobe, p)
-        srt.append(f"{len(srt) + 1}\n{fmt_srt(t)} --> {fmt_srt(t + d)}\n{s}\n")
+        cue_start = len(srt) + 1
+        chunks = split_subtitle_text(s)
+        weights = [max(1, len(re.sub(r"\s+", "", chunk))) for chunk in chunks]
+        total_weight = sum(weights)
+        elapsed = 0.0
+        for chunk_no, (chunk, weight) in enumerate(zip(chunks, weights)):
+            start = t + elapsed
+            elapsed += d * weight / total_weight
+            end = t + d if chunk_no == len(chunks) - 1 else t + elapsed
+            srt.append(f"{len(srt) + 1}\n{fmt_srt(start)} --> {fmt_srt(end)}\n{chunk}\n")
+        cue_end = len(srt)
         lst.append(f"file '{p.replace(os.sep, '/')}'"); lst.append(f"file '{silence.replace(os.sep, '/')}'")
-        flow.append(f"{i + 1}: {i + 1}")
+        flow.append(f"{i + 1}: {cue_start}" if cue_start == cue_end else f"{i + 1}: {cue_start}-{cue_end}")
         t += d + 문장_간격
     list_path = os.path.join(part_dir, "_list.txt")
     with open(list_path, "w", encoding="utf-8") as f:
