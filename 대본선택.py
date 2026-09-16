@@ -21,6 +21,7 @@ import 최적화
 import 나레이션
 import 웹큐
 import 채널_연동
+import 주제_추천
 import 썸네일_합성
 import requests as _rq
 from 제작대기열 import QueueStore, recent_chats, send_telegram
@@ -223,12 +224,64 @@ def topics():
     cands = [t for t in cands if t.get("제목", "").strip() not in used_person
              and t.get("제목", "").strip() not in plan_titles]
     mindam = [t for t in load_json("민담_후보.json", []) if t.get("제목", "").strip() not in used_mindam]
+    # [새 주제] 로 AI 가 만들어 둔 추천도 후보에 더한다 (사용한 주제는 제외)
+    extra = 주제_추천.load()
+    seen_titles = {t.get("제목", "").strip() for t in plan + cands}
+    cands = [t for t in extra["person"] if t.get("제목", "").strip() not in used_person and t.get("제목", "").strip() not in seen_titles] + cands
+    seen_m = {t.get("제목", "").strip() for t in mindam}
+    mindam = [t for t in extra["mindam"] if t.get("제목", "").strip() not in used_mindam and t.get("제목", "").strip() not in seen_m] + mindam
     # 내 유튜브 채널에 이미 올라간 제목과 겹치는 주제는 뺀다 (설정의 내_채널 · 민담_채널).
     cfg = load_json("설정.json", {})
-    plan = 채널_연동.filter_topics(cfg, "person", plan)[:6]
-    cands = 채널_연동.filter_topics(cfg, "person", cands)[:(6 - len(plan))]
-    mindam = 채널_연동.filter_topics(cfg, "mindam", mindam)[:6]
+    plan = 채널_연동.filter_topics(cfg, "person", plan)
+    cands = 채널_연동.filter_topics(cfg, "person", cands)
+    mindam = 채널_연동.filter_topics(cfg, "mindam", mindam)
+    # [새 주제] 를 누르면 이미 보여 준 것은 뒤로 미룬다 (계획+후보를 한 줄로 놓고 6개씩)
+    def unseen(items, channel):
+        return [t for t in items if t.get("제목", "").strip() not in SEEN_TOPICS[channel]]
+    person = unseen(plan + cands, "person")[:6]
+    plan_titles = {t.get("제목", "").strip() for t in plan}
+    plan = [t for t in person if t.get("제목", "").strip() in plan_titles]
+    cands = [t for t in person if t.get("제목", "").strip() not in plan_titles]
+    mindam = unseen(mindam, "mindam")[:6]
     return dict(plan=plan, candidates=cands, mindam=mindam)
+
+
+SEEN_TOPICS = {"person": set(), "mindam": set()}
+
+
+def refresh_topics(channel, shown):
+    """지금 보이는 주제를 '본 것'으로 표시하고, 남은 후보가 6개 미만이면 AI 로 새 주제를 만들어 채운다."""
+    channel = "mindam" if channel == "mindam" else "person"
+    SEEN_TOPICS[channel].update(str(t).strip() for t in (shown or []) if str(t).strip())
+    cfg = load_json("설정.json", {})
+    current = topics()
+    have = current["mindam"] if channel == "mindam" else current["plan"] + current["candidates"]
+    have = [t for t in have if t.get("제목", "").strip() not in SEEN_TOPICS[channel]]
+    generated = 0
+    if len(have) < 6:
+        exclude = list(SEEN_TOPICS[channel]) + [t.get("제목", "") for t in have]
+        for path in ("사용한_주제.txt", "민담_사용한_주제.txt"):
+            if os.path.exists(path):
+                with open(path, encoding="utf-8-sig") as f:
+                    exclude += [l.strip() for l in f if l.strip() and not l.startswith("#")]
+        exclude += 채널_연동.titles(cfg, channel)[:80]
+        exclude += [s["name"] for s in script_files()]
+        analysis = 채널_연동.analysis(cfg, channel)
+        try:
+            fresh = 주제_추천.generate(cfg, channel, 6 - len(have), list(dict.fromkeys(exclude)), analysis if analysis.get("ok") else None)
+        except Exception as exc:  # noqa: BLE001      # AI 가 안 되면 본 것부터 다시 보여 준다
+            if not have:
+                SEEN_TOPICS[channel].clear()
+                current = topics()
+                have = current["mindam"] if channel == "mindam" else current["plan"] + current["candidates"]
+            return dict(channel=channel, items=have[:6], generated=0, error=f"AI 추천 실패: {exc}")
+        generated = len(fresh)
+        have = fresh + have
+        if not have:                                  # 새 것이 하나도 없으면 처음부터 다시 돌린다
+            SEEN_TOPICS[channel].clear()
+            current = topics()
+            have = current["mindam"] if channel == "mindam" else current["plan"] + current["candidates"]
+    return dict(channel=channel, items=have[:6], generated=generated)
 
 def read_guideline(name):
     p = os.path.join(지침_폴더, name)
@@ -1393,7 +1446,7 @@ class H(BaseHTTPRequestHandler):
                                             인월드_속도_민담=cfg.get("인월드_속도_민담", cfg.get("인월드_속도", 1.0)),
                                             분당_글자수=cfg.get("분당_글자수", 270), 화풍=cfg.get("화풍", "실사"),
                                             후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
-                                            텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")),
+                                            텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
                                             텔레그램_알림=cfg.get("텔레그램_알림", True)),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
@@ -1414,6 +1467,9 @@ class H(BaseHTTPRequestHandler):
                     data = f.read()
                 self.send_response(200); self.send_header("Content-Type", IMAGE_MIME[ext]); self.send_header("Cache-Control", "max-age=3600")
                 self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            elif u.path == "/api/channel/analysis":
+                cfg = load_json("설정.json", {})
+                self._json(채널_연동.analysis(cfg, q.get("channel", ["person"])[0]))
             elif u.path == "/api/channel":
                 cfg = load_json("설정.json", {})
                 for ch in ("person", "mindam"):
@@ -1545,7 +1601,7 @@ class H(BaseHTTPRequestHandler):
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
-                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널"):
+                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널")):
                         cfg[k] = str(body[k]).strip() if isinstance(body[k], str) else body[k]
                 # 서비스별 키 ↔ 현재 AI 의 키 동기화 (AI 를 바꾸면 그 서비스에 저장된 키가 자동으로 쓰인다)
@@ -1559,9 +1615,11 @@ class H(BaseHTTPRequestHandler):
                 with open("설정.json", "w", encoding="utf-8") as f:
                     json.dump(cfg, f, ensure_ascii=False, indent=2)
                 for ch, key in 채널_연동.CONFIG_KEY.items():
-                    if key in body:
+                    if key in body or "유튜브_API_키" in body:
                         채널_연동.fetch_in_background(cfg, ch, force=True)
                 self._json({"ok": True})
+            elif u.path == "/api/topics/refresh":
+                self._json(refresh_topics(body.get("channel"), body.get("shown") or []))
             elif u.path == "/api/channel/refresh":
                 cfg = load_json("설정.json", {})
                 ch = body.get("channel") or "person"

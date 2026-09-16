@@ -61,7 +61,7 @@ function showView(name) {
   if (name === 'advanced') name = 'wizard';
   for (const v of ['wizard', 'settings']) $('view-' + v).classList.toggle('hidden', v !== name);
   document.querySelectorAll('.top-nav button[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === name));
-  if (name === 'settings') { loadEditorSettings(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+  if (name === 'settings') { loadEditorSettings(); loadAnalysis(); window.scrollTo({top: 0, behavior: 'smooth'}); }
 }
 // 한 페이지에 모두 펼쳐 두고, 단계 표시줄은 해당 위치로 스크롤한다.
 function goStep(n, instant) {
@@ -167,6 +167,8 @@ async function refresh() {
   $('tgChatStat').textContent = c.텔레그램_채팅_ID ? '연결된 채팅: ' + c.텔레그램_채팅_ID : '연결된 채팅 없음';
   $('tgEnabled').checked = c.텔레그램_알림 !== false;
   renderChannels(STATE.channels || {});
+  $('ytKeyStat').textContent = c.유튜브_API_키 ? '저장됨 ' + c.유튜브_API_키 : '없음'; $('ytKeyStat').className = 'stat ' + (c.유튜브_API_키 ? 'ok' : '');
+  loadAnalysis(channel);
   // 경고
   const warn = $('envwarn');
   if (isWeb && !STATE.web_alive) { warn.classList.remove('hidden'); warn.textContent = '딥시크 웹 확장이 연결되지 않았습니다. 크롬에서 chat.deepseek.com 탭을 열어 두거나, [설정]에서 "딥시크 웹 쓰는 법"을 보세요.'; }
@@ -184,7 +186,7 @@ function setChannel(ch) {
   document.querySelectorAll('#chSeg button').forEach(b => b.classList.toggle('on', b.dataset.ch === ch));
   $('chHint').textContent = ch === 'mindam' ? '1~2시간 · 옛이야기·야담' : '20~30분 · 심리·관계 이야기';
   $('genreChips').classList.toggle('hidden', ch !== 'mindam');
-  if (STATE) renderChannels(STATE.channels || {});
+  if (STATE) { renderChannels(STATE.channels || {}); loadAnalysis(ch); }
   $('customTitle').placeholder = ch === 'mindam' ? '예) 장터에서 아기를 백 냥에 사온 과부, 그 아이의 정체는' : '예) 나이 들수록 친구가 줄어드는 진짜 이유';
   renderTopics();
 }
@@ -199,6 +201,8 @@ function renderTopics() {
   const rows = list.map((t, i) => {
     const key = channel + '|' + t.제목, on = selection.has(key);
     const near = t.비슷한_내_영상 ? ` · ⚠ 내 채널의 "${t.비슷한_내_영상}"과 비슷함` : '';
+    if (!t._custom && t.생성) { const key = channel + '|' + t.제목, on = selection.has(key);
+      return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}<span class="m">${esc([t.카테고리 || t.장르, t.한줄].filter(Boolean).join(' · '))}${near}</span></span><span class="tag" style="color:#F5B942;background:#3A2E12">AI 추천</span></li>`; }
     const meta = (t._custom ? '' : channel === 'mindam' ? `${t.장르 || ''} · ${t.채널 || ''} · 조회수 ${((t.조회수 || 0) / 10000).toFixed(1)}만 (평소의 ${t.배수}배)` : (t.카테고리 || '') + (t.날짜 ? ` · ${t.날짜} 계획` : ' · 추천 후보')) + near;
     return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}${meta ? `<span class="m">${esc(meta)}</span>` : ''}</span>${t._custom ? `<span class="tag custom">직접 입력</span><button class="x" onclick="removeCustom('${channel}',${i},event)" title="목록에서 지우기">×</button>` : '<span class="tag">추천</span>'}</li>`;
   });
@@ -697,6 +701,42 @@ async function resetSelected() {
   if (!item) return toast('초기화할 작업을 고르세요', true);
   if (!confirm(`「${item.label}」의 대본과 생성 자료를 모두 휴지통으로 옮길까요?`)) return;
   try { const r = await api('/api/reset', {id, scope: 'all'}); await refresh(); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다`); } catch (e) { toast(e.message, true); }
+}
+
+// ── 새 주제 추천 (누를 때마다 안 본 후보 → 모자라면 AI 가 새로 만듦) ──
+async function refreshTopics() {
+  const btn = $('topicRefreshBtn'), stat = $('topicRefreshStat');
+  const shown = topicSource(channel).filter(t => !t._custom).map(t => t.제목);
+  btn.disabled = true; stat.textContent = '새 주제를 찾는 중… (AI가 만들 때는 30초 안팎)';
+  try {
+    const r = await api('/api/topics/refresh', {channel, shown});
+    if (channel === 'mindam') STATE.topics.mindam = r.items; else { STATE.topics.plan = []; STATE.topics.candidates = r.items; }
+    renderTopics();
+    stat.textContent = r.generated ? `AI가 새 주제 ${r.generated}개를 만들었습니다` : '아직 안 본 추천 주제를 보여 줍니다';
+    toast(r.generated ? `새 주제 ${r.items.length}개 (AI 생성 ${r.generated}개)` : `새 주제 ${r.items.length}개`);
+  } catch (e) { stat.textContent = ''; toast('새 주제를 만들지 못했습니다: ' + e.message, true); }
+  finally { btn.disabled = false; }
+}
+let analysisChannel = 'person';
+const fmtN = n => n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, '') + '만' : String(n);
+async function loadAnalysis(ch) {
+  if (ch) analysisChannel = ch;
+  document.querySelectorAll('[data-ach]').forEach(b => b.classList.toggle('on', b.dataset.ach === analysisChannel));
+  let a; try { a = await api('/api/channel/analysis?channel=' + analysisChannel); } catch (e) { $('chAnalysis').textContent = e.message; return; }
+  if (!a.ok) { $('chAnalysis').innerHTML = `<div class="hint">${esc(a.reason)}</div>`; $('chAnalysisLine').textContent = ''; return; }
+  const row = v => `<div><span class="v">${fmtN(v.views)}회</span><span class="t">${esc(v.title)}</span>${v.published ? `<span class="hint">${esc(v.published)}</span>` : ''}</div>`;
+  $('chAnalysis').innerHTML = `<div class="hint">${esc(a.name)} · ${a.source === 'api' ? '유튜브 API' : 'yt-dlp'} · ${esc(a.fetched)} 기준${a.first ? ` · ${esc(a.first)} ~ ${esc(a.last)}` : ''}</div>
+    <div class="kpis"><div class="kpi"><b>${a.count}</b><small>영상 수</small></div><div class="kpi"><b>${fmtN(a.subs)}</b><small>구독자</small></div><div class="kpi"><b>${fmtN(a.avg)}</b><small>평균 조회수</small></div><div class="kpi"><b>${fmtN(a.median)}</b><small>중간 조회수</small></div><div class="kpi"><b>${a.above_avg}/${a.count}</b><small>평균 이상 영상</small></div>${a.avg_minutes ? `<div class="kpi"><b>${a.avg_minutes}분</b><small>평균 길이</small></div>` : ''}${a.best_weekday ? `<div class="kpi"><b>${a.best_weekday}요일</b><small>반응 좋은 게시 요일</small></div>` : ''}</div>
+    <b>잘 된 영상 TOP 5</b><div class="rank">${a.top.map(row).join('')}</div>
+    ${a.bottom.length ? `<b>반응이 약했던 영상</b><div class="rank">${a.bottom.map(row).join('')}</div>` : ''}
+    <div style="margin-top:8px"><b>잘 되는 키워드</b> ${a.keywords.length ? a.keywords.map(k => `<span class="kw good">${esc(k.word)} · 평균 ${fmtN(Math.round(k.avg))}회</span>`).join('') : '<span class="hint">(아직 영상이 적어 뚜렷한 키워드가 없습니다)</span>'}</div>
+    ${a.weak.length ? `<div style="margin-top:6px"><b>반응이 약한 키워드</b> ${a.weak.map(k => `<span class="kw bad">${esc(k.word)}</span>`).join('')}</div>` : ''}
+    <p class="hint" style="margin-top:8px">[새 주제 추천]을 누르면 AI가 이 분석(잘 된 영상·키워드)을 참고해서 주제를 만듭니다.</p>`;
+  if (analysisChannel === channel) $('chAnalysisLine').textContent = `내 채널 분석: 영상 ${a.count}편 · 평균 조회수 ${fmtN(a.avg)}회` + (a.keywords.length ? ` · 잘 되는 키워드: ${a.keywords.slice(0, 5).map(k => k.word).join(', ')}` : '');
+}
+async function saveYtKey() {
+  const v = $('ytKey').value.trim(); if (!v) return toast('API 키를 입력하세요.', true);
+  try { await api('/api/config', {유튜브_API_키: v}); $('ytKey').value = ''; toast('유튜브 API 키 저장. 채널을 다시 읽어 옵니다…'); await refresh(); pollChannel('person'); pollChannel('mindam'); } catch (e) { toast(e.message, true); }
 }
 
 // ── 내 유튜브 채널 연동 ───────────────────────────────────
