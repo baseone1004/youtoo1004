@@ -4,28 +4,30 @@
   A 키워드 강조형 (사람의 이유 기본): 작은 앞말(흰) → 거대한 핵심어(노랑) → 마무리(빨강), 왼쪽 문구·오른쪽 인물
   C 숫자 배지형   (문구에 "3가지" 같은 숫자가 있으면): 빨간 원 배지 + 문구
   B 하단 띠형     (민담·야담): 아래쪽 어두운 띠 위에 큰 자막, 왼쪽 위 채널 태그
-글꼴은 assets/fonts/BlackHanSans-Regular.ttf 하나만 쓴다 (작은 화면에서 가장 굵고 잘 읽힘)."""
+글꼴: 사람의 이유는 Black Han Sans(굵은 고딕), 민담은 Nanum Brush Script(붓글씨) — 둘 다 assets/fonts/ 에 있다."""
 import os
 import re
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageStat
 
 W, H = 1280, 720
-FONT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts", "BlackHanSans-Regular.ttf")
+FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
+FONT = os.path.join(FONT_DIR, "BlackHanSans-Regular.ttf")
+BRUSH = os.path.join(FONT_DIR, "NanumBrushScript-Regular.ttf")
 YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#000000"
 NUMBER = re.compile(r"(\d+)\s*(가지|개|번|년|살|초|분|일|명|배|단계|시간)")
 
 
-def _font(size):
-    return ImageFont.truetype(FONT, max(20, int(size)))
+def _font(size, path=FONT):
+    return ImageFont.truetype(path, max(20, int(size)))
 
 
-def _fit(draw, text, size, max_w, min_size=48):
+def _fit(draw, text, size, max_w, min_size=48, path=FONT):
     """글자가 max_w 를 넘지 않는 가장 큰 크기의 글꼴."""
     size = int(size)
-    while size > min_size and draw.textlength(text, font=_font(size)) > max_w:
+    while size > min_size and draw.textlength(text, font=_font(size, path)) > max_w:
         size -= 4
-    return _font(size)
+    return _font(size, path)
 
 
 def _wrap(text, max_chars):
@@ -133,8 +135,17 @@ def layout_keyword(im, top, bottom, badge=""):
     return im
 
 
+def _brush_text(draw, xy, text, font, fill):
+    """붓글씨는 획이 가늘어서 굵은 검정 테두리 위에 획을 몇 번 겹쳐 그려 두껍게 만든다."""
+    x, y = xy
+    sw = max(10, font.size // 9)
+    draw.text((x, y), text, font=font, fill=BLACK, stroke_width=sw, stroke_fill=BLACK)
+    for dx, dy in ((0, 0), (2, 0), (0, 2), (2, 2), (-2, 0), (0, -2)):
+        draw.text((x + dx, y + dy), text, font=font, fill=fill)
+
+
 def layout_band(im, top, bottom, tag_text="옛이야기"):
-    """B"""
+    """B — 하단 띠 + 붓글씨"""
     im = _shade_bottom(im)
     draw = ImageDraw.Draw(im)
     tf = _font(40)
@@ -143,15 +154,16 @@ def layout_band(im, top, bottom, tag_text="옛이야기"):
     draw.text((58, 40), tag_text, font=tf, fill=WHITE)
     lines = []
     if top:
-        lines.append((top, WHITE, 96))
-    for ln in _wrap(bottom, 9):
-        lines.append((ln, GOLD, 132 if len(_wrap(bottom, 9)) == 1 else 112))
-    fonts = [_fit(draw, t, s, W - 120) for t, _, s in lines]
-    y = H - 60 - sum(int(f.size * 1.08) for f in fonts)
+        lines.append((top, WHITE, 120))
+    wrapped = _wrap(bottom, 10)
+    for ln in wrapped:
+        lines.append((ln, GOLD, 176 if len(wrapped) == 1 else 148))
+    fonts = [_fit(draw, t, s, W - 110, 64, BRUSH) for t, _, s in lines]
+    y = H - 56 - sum(int(f.size * 0.98) for f in fonts)
     for (t, color, _), f in zip(lines, fonts):
         lw = draw.textlength(t, font=f)
-        _outlined(draw, ((W - lw) / 2, y), t, f, color)
-        y += int(f.size * 1.08)
+        _brush_text(draw, ((W - lw) / 2, y), t, f, color)
+        y += int(f.size * 0.98)
     return im
 
 
