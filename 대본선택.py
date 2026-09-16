@@ -852,6 +852,21 @@ def parse_thumb_copies(opt_text):
     return out
 
 
+def fallback_thumb_copies(title):
+    """최적화 문구가 없어도 단어를 자르지 않고 서로 다른 썸네일 문구 3개를 만든다."""
+    title = re.sub(r"\s*\|\s*", " ", (title or "").strip())
+    words = title.split()
+    if not words:
+        return [("이 이야기를", "끝까지 보세요", "")]
+    split = max(1, min(len(words) - 1, (len(words) + 1) // 2)) if len(words) > 1 else 1
+    first = " ".join(words[:split])
+    second = " ".join(words[split:]) or "그 진짜 이유"
+    keyword = " ".join(words[:min(3, len(words))])
+    return [(first, second, ""),
+            (keyword, "생각부터 달랐습니다", ""),
+            ("대부분 놓치는", "그 진짜 이유", "")]
+
+
 def make_thumbnails(job, req):
     """대본 폴더 → 썸네일 프롬프트 3개(딥시크) → 이미지 생성(편집프로그램 좌표 클릭) → 문구 합성 → 썸네일_1~3.jpg"""
     cfg = 대본생성.load_cfg()
@@ -872,9 +887,7 @@ def make_thumbnails(job, req):
             title = re.sub(r"\s*\|.*$", "", m.group(1)).strip()
         elif is_mindam:
             title = re.sub(r"^\d{4}-\d\d-\d\d_", "", os.path.basename(assets))
-        words = title.split()
-        half = max(1, len(words) // 2)
-        copies = [(" ".join(words[:half])[:12], " ".join(words[half:])[:12], "")]
+        copies = fallback_thumb_copies(title)
         job.add("   최적화 파일이 없어 제목으로 문구를 만듦")
     brief = ""
     bp = os.path.join(assets, "thumbnail_brief.md")
@@ -882,7 +895,8 @@ def make_thumbnails(job, req):
         brief = open(bp, encoding="utf-8").read()[:1500]
     style = 화풍.get(req.get("style", "실사"), 화풍["실사"])
     position = req.get("position", "bottom")
-    user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n\n[썸네일 문구]\n"
+    user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n"
+            "[구도] 유튜브 썸네일용 강한 명암, 핵심 인물 또는 사물 하나를 크게, 복잡한 배경과 작은 소품 금지, 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
             + "\n".join(f"{i}. 상단: {t} / 하단: {b}" + (f" / 이미지: {d}" if d else "") for i, (t, b, d) in enumerate(copies, 1))
             + (f"\n\n[브리프]\n{brief}" if brief else ""))
     job.stage = "썸네일 프롬프트"
@@ -893,6 +907,15 @@ def make_thumbnails(job, req):
     if not prompts:
         raise RuntimeError("썸네일 프롬프트를 읽지 못했습니다:\n" + text[:300])
     tdir = os.path.abspath(os.path.join(assets, "썸네일")); os.makedirs(tdir, exist_ok=True)
+    if req.get("regenerate"):
+        old_files = glob.glob(os.path.join(tdir, "썸네일_*.jpg")) + glob.glob(os.path.join(tdir, "raw", "*"))
+        if old_files:
+            backup = os.path.join(tdir, "이전", datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+            os.makedirs(backup, exist_ok=True)
+            for old in old_files:
+                if os.path.isfile(old):
+                    shutil.move(old, os.path.join(backup, os.path.basename(old)))
+            job.add(f"   기존 썸네일은 이전 폴더에 보관 → {backup}")
     pf = os.path.join(tdir, "썸네일_프롬프트.txt")
     with open(pf, "w", encoding="utf-8") as f:
         f.write("\n".join(f"{i}. {p}" for i, p in enumerate(prompts, 1)) + "\n")
@@ -910,7 +933,8 @@ def make_thumbnails(job, req):
             job.add(f"   ! 썸네일 {i} 이미지 없음"); continue
         top, bottom, _ = copies[(i - 1) % len(copies)]
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
-        aip("/api/thumbnail/compose", dict(image=os.path.join(raw_dir, cands[0]), out=out, top=top, bottom=bottom, font=font, position=position))
+        aip("/api/thumbnail/compose", dict(image=os.path.join(raw_dir, cands[0]), out=out, top=top, bottom=bottom,
+                                            font=font, position=position, size=118, box=True))
         outs.append(out)
         job.add(f"   ✓ {out}  ({top} / {bottom})")
     job.add("비용: " + ai.cost_text())
@@ -2003,7 +2027,7 @@ function renderWorkspaceThumbnails(){
 }
 async function makeWorkspaceThumbnails(){
   if(!WORK)return toast('완성 자료에서 작업을 먼저 선택하세요.',true);
-  try{await api('/api/thumbnail',{script_file:WORK.script_file,style:$('a_style').value,position:$('a_thumb_pos').value});startPolling();toast('썸네일 3장 제작을 시작했습니다. 완료 후 새로고침하면 보입니다.');}catch(e){toast(e.message,true);}
+  try{await api('/api/thumbnail',{script_file:WORK.script_file,style:$('a_style').value,position:$('a_thumb_pos').value,regenerate:true});startPolling();toast('새 이미지와 굵은 한글 문구로 썸네일 3장을 다시 만듭니다.');}catch(e){toast(e.message,true);}
 }
 function openWorkspaceThumbnailFolder(){if(!WORK)return toast('작업을 먼저 선택하세요.',true);openPath(WORK.thumbnail_dir);}
 async function saveWorkspaceText(kind){
