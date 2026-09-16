@@ -9,6 +9,7 @@
   지침은 지침/ 폴더의 txt 를 골라 쓰고, 화면에서 바로 고쳐 저장할 수 있습니다.
 """
 import sys, os, re, io, json, glob, time, threading, datetime, webbrowser, urllib.parse, subprocess, shutil, uuid
+from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BASE = os.path.dirname(os.path.abspath(__file__)); os.chdir(BASE)
@@ -652,6 +653,56 @@ def channel_of(script_file):
     p = os.path.abspath(script_file or "").replace("\\", "/")
     return "mindam" if "/민담/" in p or os.path.basename(p) == "final.txt" else "person"
 
+def _block(text, name):
+    match = re.search(rf"\[{re.escape(name)}\]\s*(.*?)(?=\n\[[^\n]+\]|\Z)", text or "", re.S)
+    return match.group(1).strip() if match else ""
+
+def workspace_data(script_file):
+    """선택 대본의 편집 가능한 제작 결과와 업로드 정보를 모은다."""
+    if script_file not in {item["path"] for item in script_files()}:
+        raise ValueError("대본 목록에서 파일을 다시 선택하세요.")
+    assets = assets_dir(script_file)
+    prompts = (os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script_file) == "final.txt"
+               else re.sub(r"\.txt$", "", script_file) + "_이미지프롬프트.txt")
+    srt = os.path.join(assets, "나레이션.srt")
+    opt = (os.path.join(assets, "유튜브_최적화.txt") if os.path.basename(script_file) == "final.txt"
+           else re.sub(r"\.txt$", "", script_file) + "_유튜브최적화.txt")
+    script_text = Path(script_file).read_text(encoding="utf-8-sig", errors="replace")
+    opt_text = Path(opt).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(opt) else ""
+    saved = load_json(os.path.join(assets, "업로드_정보.json"), {})
+    title = saved.get("title") or _block(script_text, "제목")
+    return dict(script_file=os.path.abspath(script_file), assets=os.path.abspath(assets), script=script_text,
+                prompts=Path(prompts).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(prompts) else "",
+                prompts_file=os.path.abspath(prompts),
+                srt=Path(srt).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(srt) else "",
+                srt_file=os.path.abspath(srt), narration=os.path.abspath(os.path.join(assets, "나레이션.mp3")),
+                images=os.path.abspath(os.path.join(assets, "images")), title=title,
+                description=saved.get("description") or _block(script_text, "설명글") or _block(opt_text, "설명글"),
+                sources=saved.get("sources") or _block(script_text, "출처"),
+                tags=saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그"))
+
+def save_workspace(body):
+    script = body.get("script_file", "")
+    data = workspace_data(script)
+    kind = body.get("kind", "")
+    if kind == "script":
+        Path(script).write_text(str(body.get("text", "")), encoding="utf-8")
+    elif kind == "prompts":
+        Path(data["prompts_file"]).parent.mkdir(parents=True, exist_ok=True)
+        Path(data["prompts_file"]).write_text(str(body.get("text", "")), encoding="utf-8")
+    elif kind == "srt":
+        Path(data["srt_file"]).parent.mkdir(parents=True, exist_ok=True)
+        Path(data["srt_file"]).write_text(str(body.get("text", "")), encoding="utf-8")
+    elif kind == "metadata":
+        Path(data["assets"]).mkdir(parents=True, exist_ok=True)
+        target = Path(data["assets"]) / "업로드_정보.json"
+        temp = target.with_suffix(".tmp")
+        temp.write_text(json.dumps({k: str(body.get(k, "")) for k in ("title", "description", "sources", "tags")}, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp, target)
+    else:
+        raise ValueError("저장할 항목을 선택하세요.")
+    return {"ok": True}
+
 def voice_for(cfg, channel):
     """채널별 목소리·속도. 채널 전용 값이 없으면 공통(인월드_목소리/인월드_속도)을 쓴다."""
     suffix = "_민담" if channel == "mindam" else "_사람"
@@ -1168,6 +1219,8 @@ class H(BaseHTTPRequestHandler):
                                 prompts=os.path.abspath(pr) if os.path.exists(pr) else "",
                                 narration=os.path.abspath(os.path.join(a, "나레이션.mp3")) if os.path.exists(os.path.join(a, "나레이션.mp3")) else "",
                                 video=os.path.abspath(os.path.join(a, "최종.mp4")) if os.path.exists(os.path.join(a, "최종.mp4")) else ""))
+            elif u.path == "/api/workspace":
+                self._json(workspace_data(q.get("script", [""])[0]))
             elif u.path == "/api/file":
                 p = q["path"][0]
                 if not os.path.abspath(p).startswith(os.path.abspath(BASE)):
@@ -1198,6 +1251,8 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": 웹큐.heartbeat(body.get("id", ""), body.get("progress", ""))})
             elif u.path == "/api/tts":
                 run_job("tts", lambda job: make_tts(job, body)); self._json({"ok": True})
+            elif u.path == "/api/workspace/save":
+                self._json(save_workspace(body))
             elif u.path == "/api/pipeline":
                 run_job("pipeline", lambda job: make_pipeline(job, body)); self._json({"ok": True})
             elif u.path == "/api/queue/start":
@@ -1391,6 +1446,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 /* DINO 스타일의 한눈에 보는 제작 화면 */
 :root{--bg:#090b20;--surface:#171a36;--ink:#f3f4ff;--muted:#a9aecb;--line:#34395d;--accent:#16d5ca;--accent-soft:#153d43;--gold:#ffbe55;--warn:#ff6874;--warn-soft:#43232d;--box:#11152d;--ok:#65e6ad}
 body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14px}.wrap{max-width:980px;padding-top:18px}.hero{padding:22px 27px;border-radius:14px;margin-bottom:12px;background:linear-gradient(120deg,#173a47,#126e69);box-shadow:none}.hero h1{font-size:27px}.hero .sub{font-size:13px}.card{padding:18px 20px;border-radius:13px;background:var(--surface);box-shadow:none;margin-bottom:12px}h2{font-size:17px;padding-bottom:10px;margin-bottom:12px}.simple-guide{margin-bottom:9px}.simple-guide span{padding:5px 10px;background:#11152d}.view-switch{padding:7px 9px;margin-bottom:9px}.beginner-note{padding:10px 13px;margin-bottom:9px}.page-nav{padding:7px 0 9px;background:#090b20}.page-nav button{padding:7px 11px}.stepline{padding:6px 0}.styles{gap:6px}.styles button{min-height:43px;padding:7px 10px}.gonext{padding:11px 13px}.pipeline-overview{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#0c1024}.pipeline-step{padding:11px 5px;border:1px solid var(--line);border-radius:9px;text-align:center;background:#080c18}.pipeline-step b{display:block;font-size:12px}.pipeline-step small{display:block;margin-top:4px;color:var(--muted)}.pipeline-step.now{border-color:var(--accent);background:#15353d}.pipeline-step.done{border-color:var(--ok);color:var(--ok)}#tab-auto textarea#a_title{width:min(100%,620px);min-height:66px;resize:vertical;font-size:16px;line-height:1.5}.simple-mode #tab-auto{border-color:#4a527c}.simple-mode #tab-auto h2{color:var(--accent)}#tab-settings{background:transparent;border:0;padding:0}#tab-settings>h2,#tab-settings>p,#tab-settings>.row,#tab-settings>.ready,#tab-settings>.keyrow,#tab-settings>details{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px 15px;margin:8px 0}#tab-settings>h2{margin-top:13px;color:var(--accent)}@media(max-width:760px){.pipeline-overview{grid-template-columns:repeat(3,1fr)}}
+.work-editor textarea{width:100%;min-height:240px;font-family:var(--mono);font-size:13px;line-height:1.55}.work-editor .meta-field textarea{min-height:90px}.work-editor input[type=text]{flex:1;min-width:280px}.work-editor details{margin:8px 0;border:1px solid var(--line);border-radius:10px;background:var(--box)}.work-editor summary{padding:11px 13px;cursor:pointer;font-weight:800}.work-editor details>div{padding:0 13px 13px}.copyrow{display:flex;gap:7px;align-items:flex-start;margin:8px 0}.copyrow label{min-width:65px;padding-top:9px;font-weight:800}
 </style></head><body><div class="wrap">
 <header class="hero"><div class="eyebrow">CREATOR STUDIO · 사람의 이유 / 민담·야담</div>
 <button class="danger" style="float:right" onclick="exitProgram()">■ 프로그램 종료</button>
@@ -1428,6 +1484,24 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
     <button class="primary" onclick="continuePipeline($('c_file').value)">🎬 이 대본으로 나레이션 → 이미지 → 영상까지 이어서 만들기</button>
     <button class="danger" onclick="deleteSelectedScript('c_file')">🗑 대본·영상·이미지 전체 삭제</button>
     <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div></div></details>
+</div>
+
+<div class="card main-section work-editor" id="workCard">
+  <h2>📝 완성 자료 확인·수정 <small>대본과 프롬프트가 작성되면 여기에서 바로 보입니다</small></h2>
+  <div class="row"><label>작업 선택 <select id="work_file" style="min-width:390px" onchange="loadWorkspace(true)"></select></label><button onclick="loadWorkspace(true)">새로고침</button><button onclick="goTab('gallery')">생성 이미지 보기</button></div>
+  <div id="work_empty" class="hint">완성된 대본을 선택하면 편집 도구가 나타납니다.</div>
+  <div id="work_body" class="hidden">
+    <details open><summary>대본 보기·수정</summary><div><textarea id="work_script"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('work_script')">대본 복사</button><button onclick="rerunTTS()">🎙 수정한 대본으로 TTS 다시 만들기</button></div></div></details>
+    <details><summary>이미지 프롬프트 보기·수정</summary><div><textarea id="work_prompts"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('prompts')">프롬프트 저장</button><button onclick="copyField('work_prompts')">프롬프트 복사</button></div></div></details>
+    <details><summary>TTS 자막 보기·수정</summary><div><textarea id="work_srt" placeholder="TTS가 완성되면 SRT 자막이 표시됩니다."></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('work_srt')">자막 복사</button><button onclick="openPath(WORK.narration)">TTS 파일 열기</button></div></div></details>
+    <details open><summary>유튜브 제목·설명·출처·태그 복사/붙여넣기</summary><div>
+      <div class="copyrow"><label>제목</label><input type="text" id="work_title"><button onclick="copyField('work_title')">복사</button></div>
+      <div class="copyrow meta-field"><label>설명</label><textarea id="work_description"></textarea><button onclick="copyField('work_description')">복사</button></div>
+      <div class="copyrow meta-field"><label>출처</label><textarea id="work_sources"></textarea><button onclick="copyField('work_sources')">복사</button></div>
+      <div class="copyrow meta-field"><label>태그</label><textarea id="work_tags"></textarea><button onclick="copyField('work_tags')">복사</button></div>
+      <div class="row"><button class="primary" onclick="saveWorkspaceMeta()">제목·설명·출처·태그 저장</button><span class="hint">각 칸에 직접 붙여넣어 수정한 뒤 저장할 수 있습니다.</span></div>
+    </div></details>
+  </div>
 </div>
 
 <div class="card main-section" id="queueCard">
@@ -1620,7 +1694,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 </div>
 <script>
 const $=id=>document.getElementById(id);
-let STATE=null, selected=null, bench=null, editing=null, pollTimer=null, chosenVar=null, varRef='', queueSelected=new Map();
+let STATE=null, selected=null, bench=null, editing=null, pollTimer=null, chosenVar=null, varRef='', queueSelected=new Map(), WORK=null;
 async function api(p,body,method){const r=await fetch(p,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j;}
 async function exitProgram(){
   if(!confirm('이미지 생성과 다운로드를 중단하고 프로그램을 종료할까요?'))return;
@@ -1702,6 +1776,10 @@ async function refresh(){
   for(const [k,v] of Object.entries(STATE.keys||{})){const el=$('k_'+k);if(!el)continue;el.textContent=v?'✔ 저장됨 '+v:'없음';el.classList.toggle('ok',!!v);}
   const selected=$('g_file').value||$('c_file').value||localStorage.getItem('selectedScript')||'';
   $('i_file').innerHTML=STATE.scripts.map(s=>`<option value="${esc(s.path)}">${esc(s.name)}</option>`).join('')||'<option value="">(대본 폴더에 파일 없음)</option>';
+  const previousWork=$('work_file').value||localStorage.getItem('workScript')||'';
+  $('work_file').innerHTML=STATE.scripts.map(s=>`<option value="${esc(s.path)}">${esc(s.name)}</option>`).join('')||'<option value="">완성된 대본 없음</option>';
+  if(STATE.scripts.some(s=>s.path===previousWork))$('work_file').value=previousWork;
+  if($('work_file').value&&(!WORK||WORK.script_file!==$('work_file').value))loadWorkspace(false);
   $('c_file').innerHTML=$('g_file').innerHTML=$('i_file').innerHTML;
   if(STATE.scripts.some(s=>s.path===selected))$('c_file').value=$('g_file').value=selected;
   else $('g_file').value=$('c_file').value;
@@ -1887,6 +1965,32 @@ function setLen(id,min){const v=Math.round(min*(window._cpm||270));$(id).value=v
 function markLen(id){const v=+$(id).value,cpm=window._cpm||270;document.querySelectorAll(`.lenbtns[data-for=${id}] button`).forEach(b=>b.classList.toggle('on',Math.abs(v-Math.round(+b.dataset.min*cpm))<50));}
 document.addEventListener('input',e=>{if(e.target.id==='p_target'||e.target.id==='a_target')markLen(e.target.id);});
 async function startTTS(){try{await api('/api/tts',{script_file:$('i_file').value});startPolling();}catch(e){toast(e.message,true);}}
+async function loadWorkspace(showToast){
+  const file=$('work_file').value;if(!file){WORK=null;$('work_body').classList.add('hidden');$('work_empty').classList.remove('hidden');return;}
+  try{WORK=await api('/api/workspace?script='+encodeURIComponent(file));localStorage.setItem('workScript',file);
+    $('work_script').value=WORK.script||'';$('work_prompts').value=WORK.prompts||'';$('work_srt').value=WORK.srt||'';
+    $('work_title').value=WORK.title||'';$('work_description').value=WORK.description||'';$('work_sources').value=WORK.sources||'';$('work_tags').value=WORK.tags||'';
+    $('work_empty').classList.add('hidden');$('work_body').classList.remove('hidden');if(showToast)toast('완성 자료를 불러왔습니다.');
+  }catch(e){toast(e.message,true);}
+}
+async function saveWorkspaceText(kind){
+  if(!WORK)return toast('작업을 먼저 선택하세요.',true);const ids={script:'work_script',prompts:'work_prompts',srt:'work_srt'};
+  try{await api('/api/workspace/save',{script_file:WORK.script_file,kind,text:$(ids[kind]).value});toast(({script:'대본',prompts:'이미지 프롬프트',srt:'자막'})[kind]+' 저장 완료');}
+  catch(e){toast(e.message,true);}
+}
+async function saveWorkspaceMeta(){
+  if(!WORK)return toast('작업을 먼저 선택하세요.',true);
+  try{await api('/api/workspace/save',{script_file:WORK.script_file,kind:'metadata',title:$('work_title').value,description:$('work_description').value,sources:$('work_sources').value,tags:$('work_tags').value});toast('업로드 정보 저장 완료');}
+  catch(e){toast(e.message,true);}
+}
+async function copyField(id){
+  const el=$(id),text=el.value||'';if(!text)return toast('복사할 내용이 없습니다.',true);
+  try{await navigator.clipboard.writeText(text);toast('클립보드에 복사했습니다.');}catch(e){el.focus();el.select();document.execCommand('copy');toast('클립보드에 복사했습니다.');}
+}
+async function rerunTTS(){
+  if(!WORK)return toast('작업을 먼저 선택하세요.',true);
+  try{await saveWorkspaceText('script');await api('/api/tts',{script_file:WORK.script_file});startPolling();toast('수정한 대본으로 TTS를 다시 만듭니다.');}catch(e){toast(e.message,true);}
+}
 function pipelineTopic(){const ch=document.querySelector('input[name=a_channel]:checked').value;return ch;}
 async function continuePipeline(file){
   if(!file) return toast('대본 파일을 고르세요',true);
@@ -2158,6 +2262,7 @@ async function poll(){
   if(j.status==='done'&&j.kind==='variations'){if($('varBox')._shown!==j.started){$('varBox')._shown=j.started;renderVariations(j.result);}$('pg_result').classList.remove('hidden');$('pg_result').innerHTML=`<b>✅ 베리에이션 ${j.result.options.length}개</b> — 위에서 하나를 고르고 [민담 대본 만들기]를 누르세요. <div class="hint">${esc(j.result.cost||'')}</div>`;return;}
   if(j.status==='done'){
     const r=j.result,box=$('pg_result');box.classList.remove('hidden');
+    if(r.script||r.file){localStorage.setItem('workScript',r.script||r.file);WORK=null;}
     box.innerHTML=`<b>✅ 완료</b> ${r.title?esc(r.title):''}<br><code>${esc(r.file)}</code> ${r.chars?`(${r.chars.toLocaleString()}자)`:''} ${r.scenes?`(장면 ${r.scenes}개)`:''}<br>
       <button class="mini" onclick="openPath('${js(r.file)}')">폴더 열기</button> <button class="mini" onclick="showFile('${js(r.file)}')">내용 보기</button>
       ${r.flow?`<br><small>플로우: <code>${esc(r.flow)}</code></small>`:''}
