@@ -1539,7 +1539,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <div class="row"><label>작업 선택 <select id="work_file" style="min-width:390px" onchange="loadWorkspace(true)"></select></label><button onclick="loadWorkspace(true)">새로고침</button><button onclick="goTab('gallery')">생성 이미지 보기</button></div>
   <div id="work_empty" class="hint">완성된 대본을 선택하면 편집 도구가 나타납니다.</div>
   <div id="work_body" class="hidden">
-    <details open><summary>유튜브 썸네일 보기</summary><div><div id="work_thumbnails" class="gal"></div><div class="row"><button class="primary" onclick="makeWorkspaceThumbnails()">🖼 썸네일 3장 만들기·다시 만들기</button><button onclick="openWorkspaceThumbnailFolder()">📁 썸네일 폴더 열기</button><span class="hint">그림을 클릭하면 크게 볼 수 있습니다.</span></div></div></details>
+    <details open><summary>유튜브 썸네일 보기</summary><div><p class="hint">드롭샷 화면의 그림은 글씨 없는 원본입니다. 3장 다운로드가 끝나면 프로그램이 글씨를 합성하며, 아래에 표시되는 이미지가 유튜브용 최종 썸네일입니다.</p><div id="work_thumbnails" class="gal"></div><div class="row"><button class="primary" onclick="makeWorkspaceThumbnails()">🖼 썸네일 3장 만들기·다시 만들기</button><button onclick="openWorkspaceThumbnailFolder()">📁 썸네일 폴더 열기</button><span class="hint">그림을 클릭하면 크게 볼 수 있습니다.</span></div></div></details>
     <details open><summary>대본 보기·수정</summary><div><textarea id="work_script"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('work_script')">대본 복사</button><button onclick="rerunTTS()">🎙 수정한 대본으로 TTS 다시 만들기</button></div></div></details>
     <details><summary>이미지 프롬프트 보기·수정</summary><div><textarea id="work_prompts"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('prompts')">프롬프트 저장</button><button onclick="copyField('work_prompts')">프롬프트 복사</button></div></div></details>
     <details><summary>TTS 자막 보기·수정</summary><div><textarea id="work_srt" placeholder="TTS가 완성되면 SRT 자막이 표시됩니다."></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('work_srt')">자막 복사</button><button onclick="openPath(WORK.narration)">TTS 파일 열기</button></div></div></details>
@@ -2325,6 +2325,7 @@ async function poll(){
   if(j.status==='done'&&j.kind==='variations'){if($('varBox')._shown!==j.started){$('varBox')._shown=j.started;renderVariations(j.result);}$('pg_result').classList.remove('hidden');$('pg_result').innerHTML=`<b>✅ 베리에이션 ${j.result.options.length}개</b> — 위에서 하나를 고르고 [민담 대본 만들기]를 누르세요. <div class="hint">${esc(j.result.cost||'')}</div>`;return;}
   if(j.status==='done'){
     const r=j.result,box=$('pg_result');box.classList.remove('hidden');
+    if(j.kind==='thumbnail'&&$('work_file').value)loadWorkspace(false);
     if(r.script||r.file){localStorage.setItem('workScript',r.script||r.file);WORK=null;}
     box.innerHTML=`<b>✅ 완료</b> ${r.title?esc(r.title):''}<br><code>${esc(r.file)}</code> ${r.chars?`(${r.chars.toLocaleString()}자)`:''} ${r.scenes?`(장면 ${r.scenes}개)`:''}<br>
       <button class="mini" onclick="openPath('${js(r.file)}')">폴더 열기</button> <button class="mini" onclick="showFile('${js(r.file)}')">내용 보기</button>
