@@ -20,6 +20,7 @@ import 민담_대본
 import 최적화
 import 나레이션
 import 웹큐
+import 채널_연동
 import requests as _rq
 from 제작대기열 import QueueStore, recent_chats, send_telegram
 
@@ -215,12 +216,17 @@ def topics():
     for t in plan:
         t["done"] = bool(t.get("대본파일") and os.path.exists(t["대본파일"]))
     # 이미 대본을 만들었거나 사용 기록에 들어간 제목은 다시 선택하지 않도록 목록에서 숨긴다.
-    plan = [t for t in plan if not t.get("done") and t.get("제목", "").strip() not in used_person][:6]
+    plan = [t for t in plan if not t.get("done") and t.get("제목", "").strip() not in used_person]
     # 사람의 이유는 계획을 우선하고, 후보를 더해 화면 전체에서 최대 6개만 추천한다.
     plan_titles = {t.get("제목", "").strip() for t in plan}
     cands = [t for t in cands if t.get("제목", "").strip() not in used_person
-             and t.get("제목", "").strip() not in plan_titles][:(6 - len(plan))]
-    mindam = [t for t in load_json("민담_후보.json", []) if t.get("제목", "").strip() not in used_mindam][:6]
+             and t.get("제목", "").strip() not in plan_titles]
+    mindam = [t for t in load_json("민담_후보.json", []) if t.get("제목", "").strip() not in used_mindam]
+    # 내 유튜브 채널에 이미 올라간 제목과 겹치는 주제는 뺀다 (설정의 내_채널 · 민담_채널).
+    cfg = load_json("설정.json", {})
+    plan = 채널_연동.filter_topics(cfg, "person", plan)[:6]
+    cands = 채널_연동.filter_topics(cfg, "person", cands)[:(6 - len(plan))]
+    mindam = 채널_연동.filter_topics(cfg, "mindam", mindam)[:6]
     return dict(plan=plan, candidates=cands, mindam=mindam)
 
 def read_guideline(name):
@@ -1289,9 +1295,15 @@ class H(BaseHTTPRequestHandler):
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
-                                job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items()))
+                                job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items(),
+                                channels=채널_연동.status(cfg)))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
+            elif u.path == "/api/channel":
+                cfg = load_json("설정.json", {})
+                for ch in ("person", "mindam"):
+                    채널_연동.fetch_in_background(cfg, ch)
+                self._json(채널_연동.status(cfg))
             elif u.path == "/api/queue":
                 self._json(queue_snapshot())
             elif u.path == "/api/web/next":                       # 크롬 확장이 긴 폴링으로 작업을 가져감
@@ -1414,8 +1426,8 @@ class H(BaseHTTPRequestHandler):
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
-                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림"):
-                    if k in body and body[k] != "":
+                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널"):
+                    if k in body and (body[k] != "" or k in ("내_채널", "민담_채널")):
                         cfg[k] = str(body[k]).strip() if isinstance(body[k], str) else body[k]
                 # 서비스별 키 ↔ 현재 AI 의 키 동기화 (AI 를 바꾸면 그 서비스에 저장된 키가 자동으로 쓰인다)
                 ai = (cfg.get("AI") or "deepseek").strip().lower()
@@ -1427,7 +1439,22 @@ class H(BaseHTTPRequestHandler):
                     cfg["API_키"] = cfg["API_키_" + ai]
                 with open("설정.json", "w", encoding="utf-8") as f:
                     json.dump(cfg, f, ensure_ascii=False, indent=2)
+                for ch, key in 채널_연동.CONFIG_KEY.items():
+                    if key in body:
+                        채널_연동.fetch_in_background(cfg, ch, force=True)
                 self._json({"ok": True})
+            elif u.path == "/api/channel/refresh":
+                cfg = load_json("설정.json", {})
+                ch = body.get("channel") or "person"
+                if not 채널_연동.channel_url(cfg, ch):
+                    raise ValueError("먼저 채널 주소를 저장하세요.")
+                info = 채널_연동.fetch(cfg, ch)           # 몇 초 걸리므로 화면은 기다렸다가 결과를 받는다
+                if info.get("error"):
+                    raise ValueError(info["error"])
+                self._json(채널_연동.status(cfg)[ch])
+            elif u.path == "/api/channel/check":
+                cfg = load_json("설정.json", {})
+                self._json(채널_연동.check(cfg, body.get("channel") or "person", str(body.get("title", ""))))
             elif u.path == "/api/telegram/chats":
                 cfg = load_json("설정.json", {})
                 token = body.get("token") or cfg.get("텔레그램_봇_토큰", "")
@@ -1467,6 +1494,9 @@ def static_file(name):
 
 
 def main():
+    cfg = load_json("설정.json", {})
+    for ch in 채널_연동.CONFIG_KEY:
+        채널_연동.fetch_in_background(cfg, ch)      # 내 채널 제목을 미리 받아 둔다 (없거나 오래됐을 때만)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     print(f"대본 만들기 화면: {ADDR}  (종료: 이 창을 닫거나 Ctrl+C)")
     if "--no-browser" not in sys.argv:

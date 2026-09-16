@@ -144,6 +144,7 @@ async function refresh() {
   $('tgTokenStat').textContent = c.텔레그램_토큰 ? '저장됨 ' + c.텔레그램_토큰 : '없음'; $('tgTokenStat').className = 'stat ' + (c.텔레그램_토큰 ? 'ok' : '');
   $('tgChatStat').textContent = c.텔레그램_채팅_ID ? '연결된 채팅: ' + c.텔레그램_채팅_ID : '연결된 채팅 없음';
   $('tgEnabled').checked = c.텔레그램_알림 !== false;
+  renderChannels(STATE.channels || {});
   // 경고
   const warn = $('envwarn');
   if (isWeb && !STATE.web_alive) { warn.classList.remove('hidden'); warn.textContent = '딥시크 웹 확장이 연결되지 않았습니다. 크롬에서 chat.deepseek.com 탭을 열어 두거나, [설정]에서 "딥시크 웹 쓰는 법"을 보세요.'; }
@@ -161,6 +162,7 @@ function setChannel(ch) {
   document.querySelectorAll('#chSeg button').forEach(b => b.classList.toggle('on', b.dataset.ch === ch));
   $('chHint').textContent = ch === 'mindam' ? '1~2시간 · 옛이야기·야담' : '20~30분 · 심리·관계 이야기';
   $('genreChips').classList.toggle('hidden', ch !== 'mindam');
+  if (STATE) renderChannels(STATE.channels || {});
   $('customTitle').placeholder = ch === 'mindam' ? '예) 장터에서 아기를 백 냥에 사온 과부, 그 아이의 정체는' : '예) 나이 들수록 친구가 줄어드는 진짜 이유';
   renderTopics();
 }
@@ -174,7 +176,8 @@ function renderTopics() {
   const list = topicSource(channel);
   const rows = list.map((t, i) => {
     const key = channel + '|' + t.제목, on = selection.has(key);
-    const meta = t._custom ? '' : channel === 'mindam' ? `${t.장르 || ''} · ${t.채널 || ''} · 조회수 ${((t.조회수 || 0) / 10000).toFixed(1)}만 (평소의 ${t.배수}배)` : (t.카테고리 || '') + (t.날짜 ? ` · ${t.날짜} 계획` : ' · 추천 후보');
+    const near = t.비슷한_내_영상 ? ` · ⚠ 내 채널의 "${t.비슷한_내_영상}"과 비슷함` : '';
+    const meta = (t._custom ? '' : channel === 'mindam' ? `${t.장르 || ''} · ${t.채널 || ''} · 조회수 ${((t.조회수 || 0) / 10000).toFixed(1)}만 (평소의 ${t.배수}배)` : (t.카테고리 || '') + (t.날짜 ? ` · ${t.날짜} 계획` : ' · 추천 후보')) + near;
     return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}${meta ? `<span class="m">${esc(meta)}</span>` : ''}</span>${t._custom ? `<span class="tag custom">직접 입력</span><button class="x" onclick="removeCustom('${channel}',${i},event)" title="목록에서 지우기">×</button>` : '<span class="tag">추천</span>'}</li>`;
   });
   $('topicList').innerHTML = rows.join('') || `<li class="empty">추천 주제가 아직 없습니다. ${channel === 'mindam' ? '민담_주제뽑기.bat' : '실행.bat'} 으로 주제를 먼저 뽑거나, 아래에 직접 적어 추가하세요.</li>`;
@@ -191,8 +194,15 @@ function selectAllVisible(on) {
   for (const t of topicSource(channel)) { const key = channel + '|' + t.제목; if (on) selection.set(key, {channel, title: t.제목, topic: t._custom ? null : t}); else selection.delete(key); }
   renderTopics();
 }
-function addCustomTopic() {
+async function addCustomTopic() {
   const title = $('customTitle').value.trim(); if (!title) return toast('주제를 먼저 적어 주세요.', true);
+  try {
+    const r = await api('/api/channel/check', {channel, title});
+    if (r.status === 'dup' && !confirm(`내 채널에 이미 비슷한 영상이 있습니다:
+「${r.near}」
+그래도 추가할까요?`)) return;
+    if (r.status === 'similar') toast(`참고: 내 채널의 「${r.near}」과 조금 비슷합니다.`);
+  } catch (e) {}
   if (!custom[channel].includes(title)) custom[channel].unshift(title);
   selection.set(channel + '|' + title, {channel, title, topic: null});
   $('customTitle').value = ''; renderTopics(); toast('목록에 추가하고 선택했습니다.');
@@ -604,6 +614,35 @@ async function resetSelected() {
   try { const r = await api('/api/reset', {id, scope: 'all'}); await refresh(); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다`); } catch (e) { toast(e.message, true); }
 }
 
+// ── 내 유튜브 채널 연동 ───────────────────────────────────
+function renderChannels(ch) {
+  const P = ch.person || {}, M = ch.mindam || {};
+  const paint = (info, statId, infoId, urlId) => {
+    const st = $(statId), inf = $(infoId);
+    if (!info.url) { st.textContent = '연동 안 됨'; st.className = 'stat'; inf.textContent = ''; }
+    else if (info.error) { st.textContent = '읽기 실패'; st.className = 'stat bad'; inf.textContent = info.error; }
+    else if (info.busy && !info.fetched) { st.textContent = '읽는 중…'; st.className = 'stat'; inf.textContent = '채널 제목을 가져오는 중입니다. 잠시 뒤 새로고침하세요.'; }
+    else if (info.fetched) { st.textContent = '연동됨'; st.className = 'stat ok'; inf.textContent = `${info.name} · 영상 ${info.count}편 · ${info.fetched} 확인${info.busy ? ' · 다시 읽는 중…' : ''}`; }
+    else { st.textContent = '대기'; st.className = 'stat'; inf.textContent = '아직 읽지 않았습니다. [제목 다시 읽기]를 누르세요.'; }
+    if (document.activeElement !== $(urlId)) $(urlId).value = info.url || '';
+  };
+  paint(P, 'chStatP', 'chInfoP', 'chUrlP'); paint(M, 'chStatM', 'chInfoM', 'chUrlM');
+  const cur = channel === 'mindam' ? M : P;
+  $('chLinkStat').textContent = cur.fetched && !cur.error ? `✓ 내 채널(${cur.name}) 영상 ${cur.count}편과 겹치는 주제는 자동으로 뺐습니다` : cur.url ? (cur.error || '내 채널 제목을 읽는 중…') : '내 유튜브 채널을 연동하면 이미 올린 주제를 자동으로 뺍니다';
+}
+async function saveChannel(ch) {
+  const url = $(ch === 'mindam' ? 'chUrlM' : 'chUrlP').value.trim();
+  try { await api('/api/config', ch === 'mindam' ? {민담_채널: url} : {내_채널: url}); toast(url ? '채널 주소 저장. 제목을 읽어 옵니다…' : '채널 연동을 해제했습니다.'); await refresh(); if (url) pollChannel(ch); } catch (e) { toast(e.message, true); }
+}
+async function refreshChannel(ch) {
+  const st = $(ch === 'mindam' ? 'chStatM' : 'chStatP'); st.textContent = '읽는 중…'; st.className = 'stat';
+  try { await api('/api/channel/refresh', {channel: ch}); toast('채널 제목을 다시 읽었습니다.'); await refresh(); } catch (e) { toast(e.message, true); await refresh(); }
+}
+async function pollChannel(ch, tries) {
+  tries = tries || 0; if (tries > 20) return;
+  try { const s = await api('/api/channel'); renderChannels(s); const info = s[ch] || {}; if (info.busy || (!info.fetched && !info.error)) return setTimeout(() => pollChannel(ch, tries + 1), 2000); await refresh(); } catch (e) {}
+}
+
 // ── 설정 ─────────────────────────────────────────────
 async function saveAI() { await api('/api/config', {AI: $('sAI').value, 모델: $('sModel').value || ''}); toast('AI 저장: ' + $('sAI').options[$('sAI').selectedIndex].textContent); refresh(); }
 async function saveKey(k) {
@@ -666,6 +705,7 @@ async function detectGenerateButton() {
   try { await refresh(); } catch (e) { toast('서버 상태를 불러오지 못했습니다: ' + e.message, true); }
   const busy = STATE && ((STATE.job && STATE.job.status === 'running') || (STATE.queue && STATE.queue.status === 'running'));
   goStep(busy ? 3 : 1);
+  for (const ch of ['person', 'mindam']) { const info = (STATE && STATE.channels || {})[ch] || {}; if (info.url && (info.busy || (!info.fetched && !info.error))) pollChannel(ch); }
   if (busy) startPolling(false);
   setInterval(refreshQueue, 3000); setInterval(checkReady, 20000); setInterval(() => refreshGallery(false), 4000);
 })();
