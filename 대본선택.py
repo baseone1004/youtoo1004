@@ -215,9 +215,12 @@ def topics():
     for t in plan:
         t["done"] = bool(t.get("대본파일") and os.path.exists(t["대본파일"]))
     # 이미 대본을 만들었거나 사용 기록에 들어간 제목은 다시 선택하지 않도록 목록에서 숨긴다.
-    plan = [t for t in plan if not t.get("done") and t.get("제목", "").strip() not in used_person]
-    cands = [t for t in cands if t.get("제목", "").strip() not in used_person]
-    mindam = [t for t in load_json("민담_후보.json", []) if t.get("제목", "").strip() not in used_mindam]
+    plan = [t for t in plan if not t.get("done") and t.get("제목", "").strip() not in used_person][:6]
+    # 사람의 이유는 계획을 우선하고, 후보를 더해 화면 전체에서 최대 6개만 추천한다.
+    plan_titles = {t.get("제목", "").strip() for t in plan}
+    cands = [t for t in cands if t.get("제목", "").strip() not in used_person
+             and t.get("제목", "").strip() not in plan_titles][:(6 - len(plan))]
+    mindam = [t for t in load_json("민담_후보.json", []) if t.get("제목", "").strip() not in used_mindam][:6]
     return dict(plan=plan, candidates=cands, mindam=mindam)
 
 def read_guideline(name):
@@ -1611,7 +1614,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 
 <!-- 사람의 이유 -->
 <div class="card main-section advanced-section" id="tab-person">
-  <h2>① 주제 고르기 <small>계획.json(이번 주 14편) + 후보 · 또는 직접 입력</small></h2>
+  <h2>① 주제 고르기 <small>사람의 이유 추천 6개 · 또는 직접 입력</small></h2>
   <div class="row"><button class="mini" onclick="selectAllQueue('person',true)">모두 선택</button><button class="mini" onclick="selectAllQueue('person',false)">선택 해제</button><span class="hint">체크한 주제는 아래 연속 제작 버튼으로 차례대로 만듭니다.</span></div>
   <ul class="list" id="topicList"></ul>
   <div class="row" style="margin-top:10px"><input type="text" id="p_title" placeholder="직접 입력: 예) 나이 들수록 친구가 줄어드는 진짜 이유"><button class="mini" onclick="selectTopic(null)">목록 선택 해제</button></div>
