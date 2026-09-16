@@ -94,6 +94,8 @@ def main():
             apply_editor_ai_notice(editor)
             from 편집프로그램_드롭샷자동좌표_연결 import apply as apply_dropshot_autoxy
             apply_dropshot_autoxy(editor)
+            from 편집프로그램_썸네일스타일_연결 import apply as apply_thumbnail_style
+            apply_thumbnail_style(editor)
         except (OSError, ValueError) as exc:
             print("편집프로그램 연결 설정을 확인하세요:", exc)
     if editor and not ready(8765):
