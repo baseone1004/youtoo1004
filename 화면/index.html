@@ -10,7 +10,6 @@
   <div class="brand">🎬 유튜브 영상 자동 제작 <small>사람의 이유 · 민담·야담</small></div>
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
-    <button data-view="advanced" onclick="showView('advanced')">고급 기능</button>
     <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
     <button class="quit" onclick="exitProgram()">종료</button>
   </nav>
@@ -54,7 +53,7 @@
   </div>
 
   <!-- 2단계 -->
-  <div class="step-panel hidden" id="step-2">
+  <div class="step-panel" id="step-2">
     <div class="card">
       <h2>② 제작 설정</h2>
       <p class="lead">아래 순서대로 만들어집니다. 그림체만 고르고 <b>제작 시작</b>을 누르면 됩니다.</p>
@@ -65,7 +64,7 @@
       <div id="personLenRow" class="row" style="margin-top:12px"><label><b>사람의 이유</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
       <div id="mindamLenRow" class="row hidden"><label><b>민담·야담</b> 영상 길이</label><select id="mindamLen"></select></div>
       <div class="row"><label class="chk"><input type="checkbox" id="optThumb" checked> 영상마다 유튜브 썸네일 3장 자동 제작</label></div>
-      <details class="box soft"><summary>세부 옵션 (보통은 안 건드려도 됩니다)</summary><div>
+      <details class="box soft" open><summary>세부 옵션 (보통은 안 건드려도 됩니다)</summary><div>
         <div class="row"><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성(알고리즘 최적화)</label></div>
         <div class="row"><label>앞부분 움직이는 영상(KIE) <input type="number" id="optHook" value="7" min="0" max="30" style="width:80px"> 장면</label><span class="hint">0이면 만들지 않음 · KIE 크레딧 사용</span></div>
         <div class="row"><label>대본 지침 <select id="optGuide"></select></label><label>이미지 지침 <select id="optImgGuide"></select></label></div>
@@ -73,22 +72,21 @@
       </div></details>
       <div id="startHint" class="banner info">사람의 이유 한 편 약 30~60분, 민담 한 편 약 1~2시간 걸립니다. 이미지 생성 중에는 마우스·키보드를 쓰지 마세요.</div>
       <button class="primary big" id="startBtn" onclick="startProduction()">🚀 제작 시작</button>
-      <details class="box" style="margin-top:16px"><summary>이미 만든 대본으로 이어서 만들기</summary><div>
+      <details class="box" style="margin-top:16px" open><summary>이미 만든 대본으로 이어서 만들기</summary><div>
         <p class="hint">대본은 있는데 나레이션·이미지·영상이 없을 때 씁니다. 이미 있는 것은 건너뛰고 없는 것만 만듭니다.</p>
         <div class="row"><select id="contFile" style="min-width:min(100%,420px)"></select><button class="primary" onclick="continuePipeline()">이어서 만들기</button></div>
       </div></details>
-      <div class="nav-btns"><button onclick="goStep(1)">← 주제 다시 고르기</button><button class="ghost" onclick="goStep(3)">진행 상황 보기 →</button></div>
     </div>
   </div>
 
   <!-- 3단계 -->
-  <div class="step-panel hidden" id="step-3">
+  <div class="step-panel" id="step-3">
     <div class="card">
       <h2>③ 진행 상황 <span class="stat" id="pgKind">대기 중</span></h2>
       <div class="pipe" id="pipe">
         <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 이미지 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 움직이는 영상</b><small>대기</small></div><div data-stage="audio"><b>⑤ 나레이션·자막</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종 영상</b><small>대기</small></div>
       </div>
-      <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div>
+      <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div><div class="hint" id="pgSub"></div>
       <div class="bar"><i id="pgBar"></i></div>
       <div class="stepbar" id="pgSteps"></div>
       <div id="pgWeb" class="hint hidden"></div>
@@ -101,25 +99,35 @@
       <div id="pgResult" class="result hidden"></div>
       <div id="pgErr" class="banner err hidden"></div>
       <div id="pgPreview" class="preview hidden"></div>
-      <h3>지금 만들어지는 이미지 <span class="stat" id="galTitle"></span></h3>
-      <div class="gal" id="liveGal"><div class="hint">제작이 시작되면 여기에 이미지가 나타납니다.</div></div>
-      <details class="box" style="margin-top:14px"><summary>자세한 로그 보기 <span class="hint" id="pgLines"></span></summary><div>
+      <div id="galleryBlock">
+      <h3>이미지 <span class="stat" id="galStat"></span></h3>
+      <p class="hint">제작 중이면 지금 만드는 작업의 이미지가 자동으로 보입니다. 마음에 안 드는 장면은 <b>다시 만들기</b>로 그 장면만 새로 만듭니다.</p>
+    <div class="row"><label>어느 작업</label><select id="galFile" style="min-width:min(100%,420px)" onchange="onGalFileChange()"></select><button class="mini" onclick="refreshGallery(true)">새로고침</button><button class="mini" onclick="openPath(galDir)">이미지 폴더 열기</button></div>
+    <div class="row"><button class="primary" onclick="galStart(false)">▶ 빠진 장면 이어서 만들기</button><button onclick="galCtl('pause')">❚❚ 잠시 멈춤</button><button onclick="galCtl('resume')">▶ 계속</button><button onclick="galCtl('stop')">■ 중단</button><button class="danger" onclick="galStart(true)">🔄 처음부터 다시</button></div>
+    <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 (이전 그림은 이전/ 폴더로) · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
+    <details class="box soft" open><summary>앞 7장 움직이는 영상(KIE) 한 번에 만들기</summary><div>
+      <div class="row"><span id="kieStatus" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="showView('settings')">키 설정 →</button></div>
+      <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 중단</button></div>
+      <div id="kieProgress" style="font-weight:700;margin:8px 0"></div><div class="hint" id="kieScenes"></div>
+    </div></details>
+    <div class="gal" id="advGal"></div>
+      </div>
+      <details class="box" style="margin-top:14px" open><summary>자세한 로그 <span class="hint" id="pgLines"></span></summary><div>
         <div class="row"><label class="chk"><input type="checkbox" id="pgFollow" checked> 새 로그 따라가기</label></div>
         <div class="log" id="pgLog"></div>
       </div></details>
-      <div class="nav-btns"><button onclick="goStep(2)">← 제작 설정</button><button class="primary" onclick="goStep(4)">완성 확인 →</button></div>
     </div>
   </div>
 
   <!-- 4단계 -->
-  <div class="step-panel hidden" id="step-4">
+  <div class="step-panel" id="step-4">
     <div class="card">
       <h2>④ 완성 확인</h2>
       <p class="lead">완성된 작업을 고르면 썸네일과 유튜브에 붙여 넣을 제목·설명·태그가 나옵니다.</p>
       <div class="row"><label>작업 선택</label><select id="workFile" style="min-width:min(100%,460px)" onchange="loadWorkspace(true)"></select><button class="mini" onclick="refresh()">새로고침</button></div>
       <div id="workEmpty" class="hint">아직 완성된 대본이 없습니다. 제작이 끝나면 여기에 나타납니다.</div>
       <div id="workBody" class="hidden">
-        <div class="row"><button class="primary" onclick="openWork('assets')">📁 결과 폴더 열기</button><button onclick="openWork('video')">🎬 최종 영상 열기</button><button onclick="goAdvanced('gallery')">🖼 이미지 하나씩 수정</button></div>
+        <div class="row"><button class="primary" onclick="openWork('assets')">📁 결과 폴더 열기</button><button onclick="openWork('video')">🎬 최종 영상 열기</button><button onclick="goStep(3)">🖼 이미지 보기·수정</button></div>
         <h3>썸네일</h3>
         <div id="workThumbs" class="gal thumbs"></div>
         <div class="row"><button onclick="makeWorkspaceThumbnails()">🖼 썸네일 3장 다시 만들기</button><button class="mini" onclick="openWork('thumbs')">썸네일 폴더 열기</button></div>
@@ -129,41 +137,20 @@
         <div class="copyrow"><label>출처</label><textarea id="workSources" class="short"></textarea><button onclick="copyField('workSources')">복사</button></div>
         <div class="copyrow"><label>태그</label><textarea id="workTags" class="short"></textarea><button onclick="copyField('workTags')">복사</button></div>
         <div class="row"><button class="primary" onclick="saveWorkspaceMeta()">제목·설명·태그 저장</button><span class="hint">고쳐 쓴 내용은 저장을 눌러야 유지됩니다.</span></div>
-        <details class="box"><summary>대본 보기·고치기</summary><div><textarea id="workScript"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('workScript')">복사</button><button onclick="rerunTTS()">🎙 고친 대본으로 나레이션 다시 만들기</button></div></div></details>
-        <details class="box"><summary>이미지 프롬프트 보기·고치기</summary><div><textarea id="workPrompts"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('prompts')">프롬프트 저장</button><button onclick="copyField('workPrompts')">복사</button></div></div></details>
-        <details class="box"><summary>자막 보기·고치기</summary><div><textarea id="workSrt" placeholder="나레이션이 만들어지면 자막이 표시됩니다."></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('workSrt')">복사</button><button onclick="openWork('narration')">나레이션 파일 열기</button></div></div></details>
+        <details class="box" open><summary>대본 보기·고치기</summary><div><textarea id="workScript" class="work-text"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('workScript')">복사</button><button onclick="rerunTTS()">🎙 고친 대본으로 나레이션 다시 만들기</button></div></div></details>
+        <details class="box" open><summary>이미지 프롬프트 보기·고치기</summary><div><textarea id="workPrompts" class="work-text"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('prompts')">프롬프트 저장</button><button onclick="copyField('workPrompts')">복사</button></div></div></details>
+        <details class="box" open><summary>자막 보기·고치기</summary><div><textarea id="workSrt" class="work-text" placeholder="나레이션이 만들어지면 자막이 표시됩니다."></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('workSrt')">복사</button><button onclick="openWork('narration')">나레이션 파일 열기</button></div></div></details>
         <div class="row" style="margin-top:18px"><button class="danger" onclick="deleteCurrentWork()">🗑 이 작업 휴지통으로 보내기</button><span class="hint">바로 지우지 않고 대본/_휴지통 폴더로 옮깁니다.</span></div>
       </div>
-      <div class="nav-btns"><button onclick="goStep(3)">← 진행 상황</button><button class="primary" onclick="goStep(1)">새 영상 만들기 →</button></div>
     </div>
   </div>
-</section>
 
-<!-- ═══════════ 고급 기능 ═══════════ -->
-<section id="view-advanced" class="hidden">
-  <div class="subtabs" id="advTabs">
-    <button data-adv="gallery" class="on" onclick="goAdvanced('gallery')">이미지 하나씩 수정</button>
-    <button data-adv="video" onclick="goAdvanced('video')">영상·자막 설정</button>
-    <button data-adv="tools" onclick="goAdvanced('tools')">단계별 따로 실행</button>
-    <button data-adv="guide" onclick="goAdvanced('guide')">지침 수정</button>
-    <button data-adv="reset" onclick="goAdvanced('reset')">작업 초기화</button>
+  <!-- ═══════════ 아래는 필요할 때만 쓰는 기능 ═══════════ -->
+  <div class="divider" id="advStart"><span>아래는 필요할 때만 쓰는 기능입니다</span>
+    <div class="chips"><button onclick="goAdvanced('video')">영상·자막 설정</button><button onclick="goAdvanced('tools')">단계별 따로 실행</button><button onclick="goAdvanced('guide')">지침 수정</button><button onclick="goAdvanced('reset')">작업 초기화</button></div>
   </div>
 
-  <div class="card adv-panel" id="adv-gallery">
-    <h2>이미지 하나씩 수정 <span class="stat" id="galStat"></span></h2>
-    <p class="lead">장면별 이미지를 확인하고, 마음에 안 드는 장면만 다시 만들 수 있습니다.</p>
-    <div class="row"><label>대본</label><select id="galFile" style="min-width:min(100%,420px)" onchange="onGalFileChange()"></select><button class="mini" onclick="refreshGallery(true)">새로고침</button><button class="mini" onclick="openPath(galDir)">이미지 폴더 열기</button></div>
-    <div class="row"><button class="primary" onclick="galStart(false)">▶ 빠진 장면 이어서 만들기</button><button onclick="galCtl('pause')">❚❚ 잠시 멈춤</button><button onclick="galCtl('resume')">▶ 계속</button><button onclick="galCtl('stop')">■ 중단</button><button class="danger" onclick="galStart(true)">🔄 처음부터 다시</button></div>
-    <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 (이전 그림은 이전/ 폴더로) · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
-    <details class="box soft"><summary>앞 7장 움직이는 영상(KIE) 한 번에 만들기</summary><div>
-      <div class="row"><span id="kieStatus" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="showView('settings')">키 설정 →</button></div>
-      <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 중단</button></div>
-      <div id="kieProgress" style="font-weight:700;margin:8px 0"></div><div class="hint" id="kieScenes"></div>
-    </div></details>
-    <div class="gal" id="advGal"></div>
-  </div>
-
-  <div class="card adv-panel hidden" id="adv-video">
+  <div class="card adv-panel" id="adv-video">
     <h2>영상·자막 설정</h2>
     <p class="lead">자막 글꼴·크기·색상과 최종 영상 설정을 바꿉니다. (편집프로그램 화면)</p>
     <div id="videoStatus" class="banner info">대본을 고르지 않아도 자막 설정은 저장할 수 있습니다.</div>
@@ -171,7 +158,7 @@
     <iframe id="frVideo" class="editor" src="about:blank" data-src="http://127.0.0.1:8765/"></iframe>
   </div>
 
-  <div class="card adv-panel hidden" id="adv-tools">
+  <div class="card adv-panel" id="adv-tools">
     <h2>단계별 따로 실행</h2>
     <p class="lead">보통은 ② 제작 시작 한 번이면 됩니다. 특정 단계만 다시 하고 싶을 때 씁니다.</p>
     <h3>대본만 만들기</h3>
@@ -192,14 +179,14 @@
     <pre id="tsOut" class="hint" style="white-space:pre-wrap"></pre>
   </div>
 
-  <div class="card adv-panel hidden" id="adv-guide">
+  <div class="card adv-panel" id="adv-guide">
     <h2>지침 수정</h2>
     <p class="lead">AI에게 주는 대본·이미지 지침 파일을 바로 고칠 수 있습니다.</p>
     <div class="row"><label>지침 파일</label><select id="guideSel" style="min-width:min(100%,380px)"></select><button class="primary" onclick="openGuide()">열기</button></div>
     <div id="guideEditor" class="hidden"><p class="hint" id="guideName"></p><textarea id="guideText" style="min-height:420px"></textarea><div class="row"><button class="primary" onclick="saveGuide()">저장</button></div></div>
   </div>
 
-  <div class="card adv-panel hidden" id="adv-reset">
+  <div class="card adv-panel" id="adv-reset">
     <h2>작업 초기화</h2>
     <p class="lead">고른 작업의 대본·이미지·영상·음성·자막·썸네일을 모두 <code>대본/_휴지통</code>으로 옮깁니다. 설정은 그대로 남습니다.</p>
     <div class="row"><select id="resetFile" style="min-width:min(100%,460px)"></select><button class="mini" onclick="refresh()">새로고침</button></div>
@@ -219,7 +206,7 @@
     <h2>1. 대본을 쓰는 AI <span class="stat" id="aiStat"></span></h2>
     <div class="row"><label>AI <select id="sAI" onchange="saveAI()"><option value="deepseek-web">딥시크 웹 (무료 · 크롬 확장 필요)</option><option value="deepseek">딥시크 API</option><option value="gemini">제미나이 API</option><option value="claude">클로드 API</option></select></label><label>모델 <input type="text" id="sModel" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
     <p class="hint" id="sStatus"></p>
-    <details class="box soft" id="webHelp"><summary>딥시크 웹(무료) 쓰는 법</summary><div><ol class="guide hint">
+    <details class="box soft" id="webHelp" open><summary>딥시크 웹(무료) 쓰는 법</summary><div><ol class="guide hint">
       <li>크롬 주소창에 <code>chrome://extensions</code> → 오른쪽 위 <b>개발자 모드</b> 켜기 → <b>압축해제된 확장 프로그램을 로드</b> → 이 폴더의 <code>딥시크_확장</code> 선택</li>
       <li>크롬에서 <code>https://chat.deepseek.com</code> 을 열고 로그인 (탭을 닫지 말고 두세요 — 최소화는 괜찮음)</li>
       <li>위 AI를 <b>딥시크 웹</b>으로 저장. 아래 상태가 "확장 연결됨"이면 끝.</li></ol><div class="hint" id="sWeb"></div></div></details>

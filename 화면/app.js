@@ -29,6 +29,18 @@ async function post8765(path, body) {
   return j;
 }
 const get8765 = path => fetch(EDITOR + path).then(r => r.json());
+// 이미지 목록·파일은 이 서버(8766)가 직접 읽는다 → 편집프로그램이 바쁘거나 꺼져 있어도 다운로드된 그림이 바로 보인다.
+const listImages = dir => api('/api/images?dir=' + encodeURIComponent(dir)).then(j => j.images || []);
+const imageUrl = it => `/api/image?path=${encodeURIComponent(it.path)}&t=${it.mtime}`;
+const IDLE = {status: 'idle', current: 0, total: 0, failed: []};
+const norm = p => String(p || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+// 편집프로그램의 생성 상태 + 지금 어느 폴더에 만드는지 (다른 폴더의 상태를 이 갤러리에 잘못 표시하지 않도록)
+async function genStatus() {
+  try { const [st, info] = await Promise.all([get8765('/api/gen/status'), get8765('/api/info')]); const gen = (info.config || {}).gen || {}; return {...st, output_dir: gen.output_dir || '', prompts_file: gen.prompts_file || ''}; }
+  catch (e) { return {...IDLE, output_dir: ''}; }
+}
+// 대본 파일 → 이미지 폴더 (서버 assets_dir 규칙과 동일)
+const imagesDirOf = f => (f.endsWith('final.txt') ? f.slice(0, f.lastIndexOf('\\')) : f.replace(/\.txt$/, '') + '_자료') + '\\images';
 function toast(msg, err) {
   const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
   $('toastBox').appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3500);
@@ -46,20 +58,29 @@ async function exitProgram() {
 // ── 화면 전환 ──────────────────────────────────────────
 let currentStep = 1;
 function showView(name) {
-  for (const v of ['wizard', 'advanced', 'settings']) $('view-' + v).classList.toggle('hidden', v !== name);
+  if (name === 'advanced') name = 'wizard';
+  for (const v of ['wizard', 'settings']) $('view-' + v).classList.toggle('hidden', v !== name);
   document.querySelectorAll('.top-nav button[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === name));
-  if (name === 'settings') loadEditorSettings();
-  if (name === 'advanced') refreshGallery(true);
-  window.scrollTo({top: 0, behavior: 'smooth'});
+  if (name === 'settings') { loadEditorSettings(); window.scrollTo({top: 0, behavior: 'smooth'}); }
 }
-function goStep(n) {
-  currentStep = n;
-  for (let i = 1; i <= 4; i++) $('step-' + i).classList.toggle('hidden', i !== n);
-  renderStepBar();
+// 한 페이지에 모두 펼쳐 두고, 단계 표시줄은 해당 위치로 스크롤한다.
+function goStep(n, instant) {
+  currentStep = n; renderStepBar();
   if (n === 2) renderSelection();
   if (n === 4 && $('workFile').value && !WORK) loadWorkspace(false);
   showView('wizard');
+  if (instant && n === 1) return;
+  setTimeout(() => $('step-' + n).scrollIntoView({behavior: instant ? 'auto' : 'smooth', block: 'start'}), 30);
 }
+// 화면에 보이는 단계에 맞춰 표시줄을 자동으로 갱신한다.
+const stepWatcher = new IntersectionObserver(entries => {
+  const visible = entries.filter(e => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+  if (visible) { currentStep = +visible.target.id.split('-')[1]; renderStepBar(); }
+}, {rootMargin: '-35% 0px -55% 0px', threshold: [0, 0.2, 0.5, 1]});
+for (let i = 1; i <= 4; i++) stepWatcher.observe($('step-' + i));
+let galleryVisible = false, videoLoaded = false;
+new IntersectionObserver(entries => { galleryVisible = entries[0].isIntersecting; if (galleryVisible) refreshGallery(true); }, {threshold: 0.02}).observe($('galleryBlock'));
+document.querySelectorAll('#adv-video').forEach(el => new IntersectionObserver(entries => { if (entries[0].isIntersecting && !videoLoaded) { videoLoaded = true; prepareVideoEditor(); } }, {threshold: 0.05}).observe(el));
 function renderStepBar() {
   const busy = STATE && ((STATE.job && STATE.job.status === 'running') || (STATE.queue && STATE.queue.status === 'running'));
   document.querySelectorAll('#stepBar li').forEach(li => {
@@ -70,11 +91,11 @@ function renderStepBar() {
   });
 }
 function goAdvanced(name) {
-  showView('advanced');
-  document.querySelectorAll('#advTabs button').forEach(b => b.classList.toggle('on', b.dataset.adv === name));
-  document.querySelectorAll('.adv-panel').forEach(p => p.classList.toggle('hidden', p.id !== 'adv-' + name));
-  if (name === 'video') prepareVideoEditor();
+  if (name === 'gallery') return goStep(3);
+  showView('wizard');
+  if (name === 'video') { videoLoaded = true; prepareVideoEditor(); }
   if (name === 'gallery') refreshGallery(true);
+  setTimeout(() => $('adv-' + name).scrollIntoView({behavior: 'smooth', block: 'start'}), 30);
 }
 
 // ── 준비 상태 ─────────────────────────────────────────
@@ -331,7 +352,9 @@ async function poll() {
   if (log.textContent !== txt) { log.textContent = txt; if ($('pgFollow').checked) log.scrollTop = log.scrollHeight; }
   $('pgLines').textContent = `(${j.log.length}줄)`;
   $('pgStage').textContent = j.status === 'running' ? humanStage(j) : j.status === 'done' ? '✅ 완료' : '❌ 중단됨';
-  renderSteps(j); refreshLiveGallery(false);
+  const cur = ((STATE && STATE.queue && STATE.queue.items) || []).find(x => x.status === 'working');
+  $('pgSub').textContent = cur ? `지금 만드는 편: ${cur.title}` : (j.result && j.result.title ? `작업: ${j.result.title}` : '');
+  renderSteps(j); refreshGallery(false);
   if (j.status === 'running' && STATE && STATE.config.AI === 'deepseek-web') {
     try { const w = await api('/api/web/status'); const t = (w.taken || [])[0]; $('pgWeb').classList.remove('hidden');
       $('pgWeb').textContent = !w.alive ? '🔴 딥시크 확장이 끊겼습니다 — chat.deepseek.com 창을 열어 두세요' : (t ? `🌐 딥시크 웹 응답 중 · ${t.progress || '전송 중'} · ${t.since}초` : '🌐 딥시크 웹 연결됨'); } catch (e) {}
@@ -385,22 +408,6 @@ function renderQueue(q) {
 }
 async function refreshQueue() { try { const q = await api('/api/queue'); if (STATE) STATE.queue = q; renderQueue(q); renderStepBar(); } catch (e) {} }
 
-// 진행 중 이미지 미리보기 (실행 중인 작업의 이미지 폴더)
-let liveKey = '';
-async function refreshLiveGallery(force) {
-  const j = STATE && STATE.job; const dir = j && ['pipeline', 'queue_pipeline'].includes(j.kind) && (j.result || {}).images;
-  if (!dir) { if (force) $('liveGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다.</div>'; return; }
-  try {
-    const [st, im] = await Promise.all([get8765('/api/gen/status'), get8765('/api/gen/images?dir=' + encodeURIComponent(dir))]);
-    const imgs = (im.images || []).filter(i => !i.video).sort((a, b) => a.no - b.no);
-    const total = Math.max(st.total || 0, ...imgs.map(i => i.no), 0);
-    $('galTitle').textContent = `${imgs.length}/${total}${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}`;
-    const key = JSON.stringify([st.current, imgs.map(i => i.mtime)]); if (key === liveKey && !force) return; liveKey = key;
-    const recent = imgs.slice(-12);
-    $('liveGal').innerHTML = recent.map(it => { const src = `${EDITOR}/api/gen/image?path=${encodeURIComponent(it.path)}&t=${it.mtime}`; return `<div class="g done"><div class="no">${pad3(it.no)}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; }).join('') || '<div class="hint">첫 이미지를 기다리는 중…</div>';
-  } catch (e) { $('galTitle').textContent = '편집프로그램 연결 안 됨'; }
-}
-
 // ── 4단계: 완성 확인 ────────────────────────────────────
 async function loadWorkspace(showToast) {
   const file = $('workFile').value;
@@ -410,7 +417,7 @@ async function loadWorkspace(showToast) {
     $('workScript').value = WORK.script || ''; $('workPrompts').value = WORK.prompts || ''; $('workSrt').value = WORK.srt || '';
     $('workTitle').value = WORK.title || ''; $('workDesc').value = WORK.description || ''; $('workSources').value = WORK.sources || ''; $('workTags').value = WORK.tags || '';
     const items = WORK.thumbnails || [];
-    $('workThumbs').innerHTML = items.map((p, i) => { const src = `${EDITOR}/api/gen/image?path=${encodeURIComponent(p)}&t=${Date.now()}`; return `<div class="g done"><div class="no">썸네일 ${i + 1}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; }).join('') || '<div class="hint">아직 썸네일이 없습니다. 아래 버튼으로 만들 수 있습니다.</div>';
+    $('workThumbs').innerHTML = items.map((p, i) => { const src = `/api/image?path=${encodeURIComponent(p)}&t=${Date.now()}`; return `<div class="g done"><div class="no">썸네일 ${i + 1}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; }).join('') || '<div class="hint">아직 썸네일이 없습니다. 아래 버튼으로 만들 수 있습니다.</div>';
     $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('완성 자료를 불러왔습니다.');
   } catch (e) { toast(e.message, true); }
 }
@@ -449,20 +456,37 @@ async function deleteCurrentWork() {
 
 // ── 고급: 이미지 갤러리 ─────────────────────────────────
 function onGalFileChange() { localStorage.setItem('selectedScript', $('galFile').value); refreshGallery(true); }
+let galAssets = {script: '', images: '', prompts: ''};
+async function assetsOf(script) {
+  if (galAssets.script !== script) { galAssets = {script, images: '', prompts: ''}; try { const a = await api('/api/assets?script=' + encodeURIComponent(script)); galAssets.images = a.images; galAssets.prompts = a.prompts; } catch (e) {} }
+  return galAssets;
+}
 async function refreshGallery(force) {
-  if ($('view-advanced').classList.contains('hidden') && !force) return;
+  if ((!galleryVisible || $('view-wizard').classList.contains('hidden')) && !force) return;
   const j = STATE && STATE.job; let dir = '', pr = '';
-  if (j && ['pipeline', 'queue_pipeline'].includes(j.kind) && j.status === 'running' && (j.result || {}).images) { dir = j.result.images; pr = j.result.prompts || ''; }
-  else { const f = $('galFile').value; if (f) { try { const a = await api('/api/assets?script=' + encodeURIComponent(f)); dir = a.images; pr = a.prompts; } catch (e) {} } }
+  const active = j && ['pipeline', 'queue_pipeline'].includes(j.kind) && j.status === 'running';
+  if (active && (j.result || {}).images) { dir = j.result.images; pr = j.result.prompts || ''; }
+  else if (active && (j.result || {}).script) { const a = await assetsOf(j.result.script); dir = a.images; pr = a.prompts; }
+  if (active && (j.result || {}).script && [...$('galFile').options].some(o => o.value === j.result.script) && $('galFile').value !== j.result.script) $('galFile').value = j.result.script;
+  if (!active) {                                   // 여기 작업이 없어도 편집프로그램이 만드는 중이면 그 폴더를 따라간다
+    const st = await genStatus();
+    if (['running', 'paused'].includes(st.status) && st.output_dir) {
+      const match = [...$('galFile').options].find(o => o.value && norm(st.output_dir).endsWith('\\' + norm(imagesDirOf(o.value))));
+      if (match && $('galFile').value !== match.value) { $('galFile').value = match.value; localStorage.setItem('selectedScript', match.value); }
+      if (!match) { dir = st.output_dir; pr = st.prompts_file; }
+    }
+  }
+  if (!dir) { const f = $('galFile').value; if (f) { const a = await assetsOf(f); dir = a.images; pr = a.prompts; } }
   galDir = dir; galPromptsPath = pr; if (force) galKey = '';
   await updateGallery(dir, pr); await refreshKieFiles();
 }
 async function updateGallery(dir, pr) {
-  if (!dir) { $('advGal').innerHTML = '<div class="hint">대본을 고르세요.</div>'; $('galStat').textContent = ''; return; }
+  if (!dir) { $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>'; $('galStat').textContent = ''; return; }
   if (galBusy) return; galBusy = true;
   try {
-    const [st, im] = await Promise.all([get8765('/api/gen/status'), get8765('/api/gen/images?dir=' + encodeURIComponent(dir))]);
-    const imgs = {}; (im.images || []).forEach(i => { if (!i.video) imgs[i.no] = i; });
+    let [st, all] = await Promise.all([genStatus(), listImages(dir)]);
+    if (norm(st.output_dir) !== norm(dir)) st = IDLE;      // 다른 폴더를 만드는 중이면 이 폴더는 '대기'로 표시
+    const imgs = {}; all.forEach(i => { if (!i.video) imgs[i.no] = i; });
     if (pr && galPrompts.path !== pr) { try { const pj = await post8765('/api/gen/prompts', {path: pr}); galPrompts = {path: pr, count: pj.count || 0}; } catch (e) { galPrompts = {path: pr, count: 0}; } }
     const total = Math.max(st.total || 0, galPrompts.count || 0, ...Object.keys(imgs).map(Number), 0);
     const key = JSON.stringify([st.status, st.current, Object.values(imgs).map(i => i.mtime)]);
@@ -471,13 +495,13 @@ async function updateGallery(dir, pr) {
     const busy = st.status === 'running' || st.status === 'paused', failed = new Set(st.failed || []); const out = [];
     for (let i = 1; i <= total; i++) {
       const it = imgs[i], now = busy && st.current === i, fail = !it && failed.has(i);
-      const src = it ? `${EDITOR}/api/gen/image?path=${encodeURIComponent(it.path)}&t=${it.mtime}` : '';
+      const src = it ? imageUrl(it) : '';
       const stTxt = it ? '완료' : (now ? '만드는 중' : (fail ? '실패' : '대기'));
       const btns = it ? `<button class="re" onclick="regenScene(${i})">다시 만들기</button><button class="vi" onclick="hookScene(${i})">움직이기</button>` : `<button class="re" onclick="regenScene(${i})">${fail ? '다시 시도' : '만들기'}</button>`;
       out.push(`<div class="g${it ? ' done' : ''}${now ? ' now' : ''}${fail ? ' fail' : ''}"><div class="no">${pad3(i)}</div><div class="pic">${it ? `<img src="${src}" loading="lazy" onclick="showBig('${src}')">` : (fail ? '실패' : (now ? '…' : '대기'))}</div><div class="st">${stTxt}</div><div class="bt">${btns}</div></div>`);
     }
     $('advGal').innerHTML = out.join('') || '<div class="hint">아직 이미지 프롬프트가 없습니다.</div>';
-  } catch (e) { $('galStat').textContent = '편집프로그램 연결 안 됨'; $('advGal').innerHTML = '<div class="hint">편집프로그램(8765)에 연결할 수 없습니다. 유튜브_자동화_시작 파일로 다시 실행하세요.</div>'; galKey = ''; } finally { galBusy = false; }
+  } catch (e) { $('galStat').textContent = '이미지 목록을 읽지 못했습니다'; galKey = ''; } finally { galBusy = false; }
 }
 async function genBodyFromUI() {
   const info = await get8765('/api/info'); const ui = (info.config || {}).gen_ui || {}; const XY = ui.XY || {};
@@ -524,7 +548,7 @@ async function ensureKieReady() { if (await refreshKieStatus()) return true; sho
 async function refreshKieFiles() {
   if (!galDir) { $('kieScenes').textContent = ''; if (!kieJobId) $('kieProgress').textContent = ''; return; }
   try {
-    const data = await get8765('/api/gen/images?dir=' + encodeURIComponent(galDir)); const done = new Set((data.images || []).filter(x => x.video).map(x => x.no));
+    const done = new Set((await listImages(galDir)).filter(x => x.video).map(x => x.no));
     const count = [1, 2, 3, 4, 5, 6, 7].filter(n => done.has(n)).length;
     $('kieScenes').textContent = [1, 2, 3, 4, 5, 6, 7].map(n => `${pad3(n)} ${done.has(n) ? '✓' : '대기'}`).join(' · ');
     if (!kieJobId) $('kieProgress').textContent = count === 7 ? '✅ 앞 7장 영상 변환 완료' : `영상 ${count}/7개 완료`;
@@ -543,7 +567,7 @@ async function startFirstSevenVideos() {
   if (!galDir || !galPromptsPath) return toast('대본과 이미지 프롬프트를 먼저 고르세요', true);
   if (!await ensureKieReady()) return;
   try {
-    const im = await get8765('/api/gen/images?dir=' + encodeURIComponent(galDir)); const ready = new Set((im.images || []).filter(x => !x.video).map(x => x.no));
+    const ready = new Set((await listImages(galDir)).filter(x => !x.video).map(x => x.no));
     const missing = [1, 2, 3, 4, 5, 6, 7].filter(no => !ready.has(no));
     if (missing.length) return toast('앞 7장 이미지가 먼저 필요합니다. 없는 장면: ' + missing.map(pad3).join(', '), true);
     if (!confirm('앞 7장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.')) return;
@@ -565,7 +589,7 @@ async function prepareVideoEditor() {
     const a = await api('/api/assets?script=' + encodeURIComponent(script));
     const scan = await post8765('/api/scan_folder', {path: a.assets});
     if (!scan.srt || !scan.narration || !scan.images) throw new Error('이 대본의 자막, 나레이션 또는 이미지가 없습니다. 먼저 제작을 완료하세요.');
-    const media = await get8765('/api/gen/images?dir=' + encodeURIComponent(scan.images)); const kieCount = (media.images || []).filter(x => x.video).length;
+    const kieCount = (await listImages(scan.images)).filter(x => x.video).length;
     const info = await get8765('/api/info');
     const ui = {...((info.config || {}).ui || {}), easy: a.assets, srt: scan.srt, flow: scan.flow || '', images: scan.images, narration: scan.narration, subtitle_mov: scan.subtitle_mov || '', output: a.assets + '\\최종.mp4'};
     await post8765('/api/config', {ui});
@@ -704,8 +728,9 @@ async function detectGenerateButton() {
   setChannel('person');
   try { await refresh(); } catch (e) { toast('서버 상태를 불러오지 못했습니다: ' + e.message, true); }
   const busy = STATE && ((STATE.job && STATE.job.status === 'running') || (STATE.queue && STATE.queue.status === 'running'));
-  goStep(busy ? 3 : 1);
+  goStep(busy ? 3 : 1, true);
   for (const ch of ['person', 'mindam']) { const info = (STATE && STATE.channels || {})[ch] || {}; if (info.url && (info.busy || (!info.fetched && !info.error))) pollChannel(ch); }
   if (busy) startPolling(false);
   setInterval(refreshQueue, 3000); setInterval(checkReady, 20000); setInterval(() => refreshGallery(false), 4000);
+  refreshGallery(true);
 })();

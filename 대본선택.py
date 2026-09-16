@@ -785,8 +785,16 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix=""):
                 wait_generate=float(ui.get("wait_generate") or 60), wait_download=float(ui.get("wait_download") or 120), window_keyword=ui.get("window_keyword") or "드롭샷", auto_generate=ui.get("auto_generate", True) is not False,
                 wait_next=0.5, start_no=1, end_no=0, skip_existing=True,
                 style_prefix=style_prefix or ui.get("style_prefix") or "", retries=1)
-    aip("/api/gen/start", body)
-    job.add(f"   편집프로그램에 이미지 생성 요청 · 저장 {images_dir}")
+    current = aip("/api/gen/status")
+    if current.get("status") in ("running", "paused"):
+        running_dir = ((info.get("config") or {}).get("gen") or {}).get("output_dir") or ""
+        if os.path.normcase(os.path.abspath(running_dir)) == os.path.normcase(os.path.abspath(images_dir)):
+            job.add(f"   편집프로그램이 이미 이 폴더에 이미지를 만드는 중 ({len(current.get('done', []))}/{current.get('total')}) → 이어서 기다림")
+        else:
+            raise RuntimeError(f"편집프로그램이 다른 작업의 이미지를 만드는 중입니다 ({running_dir}). 끝나거나 [이미지 하나씩 수정]에서 중단한 뒤 계속을 누르세요.")
+    else:
+        aip("/api/gen/start", body)
+        job.add(f"   편집프로그램에 이미지 생성 요청 · 저장 {images_dir}")
     last = -1
     while True:
         if job.cancel_requested:
@@ -1049,8 +1057,17 @@ def make_pipeline(job, req):
     # 3) 나레이션
     if steps.get("tts", True):
         job.stage = "③ 나레이션"
-        t = make_tts(job, dict(script_file=script, out_dir=assets, channel=req.get("channel") or channel_of(script)))
-        result.update(narration=t["mp3"], srt=t["srt"], flow=t["flow"], duration=t["duration"])
+        existing_tts = {k: os.path.join(assets, n) for k, n in (("mp3", "나레이션.mp3"), ("srt", "나레이션.srt"), ("flow", "플로우.txt"))}
+        if req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values()):
+            try:
+                duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), existing_tts["mp3"])
+            except (FileNotFoundError, OSError):
+                duration = 0.0
+            job.add(f"   나레이션이 이미 있어 재사용: {existing_tts['mp3']}")
+            result.update(narration=existing_tts["mp3"], srt=existing_tts["srt"], flow=existing_tts["flow"], duration=duration)
+        else:
+            t = make_tts(job, dict(script_file=script, out_dir=assets, channel=req.get("channel") or channel_of(script)))
+            result.update(narration=t["mp3"], srt=t["srt"], flow=t["flow"], duration=t["duration"])
     check_cancelled()
     # 4) 이미지 생성
     images_dir = os.path.join(assets, "images")
@@ -1295,6 +1312,17 @@ class H(BaseHTTPRequestHandler):
                                 channels=채널_연동.status(cfg)))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
+            elif u.path == "/api/images":
+                self._json(dict(images=list_images(q.get("dir", [""])[0])))
+            elif u.path == "/api/image":
+                p = os.path.realpath(q.get("path", [""])[0])
+                ext = os.path.splitext(p)[1].lower()
+                if os.path.commonpath((os.path.realpath(BASE), p)) != os.path.realpath(BASE) or ext not in IMAGE_MIME or not os.path.isfile(p):
+                    self._json({"detail": "이미지가 없습니다."}, 404); return
+                with open(p, "rb") as f:
+                    data = f.read()
+                self.send_response(200); self.send_header("Content-Type", IMAGE_MIME[ext]); self.send_header("Cache-Control", "max-age=3600")
+                self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
             elif u.path == "/api/channel":
                 cfg = load_json("설정.json", {})
                 for ch in ("person", "mindam"):
@@ -1474,6 +1502,25 @@ class H(BaseHTTPRequestHandler):
 
 
 화면_폴더 = os.path.join(BASE, "화면")
+
+
+IMAGE_NAME = re.compile(r"^(\d{1,4})\.(png|jpe?g|webp|avif|mp4)$", re.I)
+IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".avif": "image/avif"}
+
+
+def list_images(folder):
+    """이미지 폴더의 NNN.jpg / NNN.mp4 목록 (편집프로그램 없이도 화면에 바로 보이도록 이 서버가 직접 읽는다)."""
+    root = os.path.realpath(BASE)
+    path = os.path.realpath(folder or "")
+    if not folder or os.path.commonpath((root, path)) != root or not os.path.isdir(path):
+        return []
+    out = []
+    for name in sorted(os.listdir(path)):
+        m = IMAGE_NAME.match(name)
+        if m:
+            full = os.path.join(path, name)
+            out.append(dict(no=int(m.group(1)), name=name, video=name.lower().endswith(".mp4"), path=full, mtime=int(os.path.getmtime(full))))
+    return out
 
 
 def static_file(name):

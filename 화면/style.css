@@ -44,7 +44,7 @@ code{font-family:var(--mono);font-size:.85em;background:var(--bg);padding:1px 6p
 .banner.err{background:var(--red-soft);color:#FFB3B3;border:1px solid #5A2A2E;white-space:pre-wrap}
 
 /* ── 단계 표시줄 ───────────────────────────────────── */
-.steps{list-style:none;margin:6px 0 18px;padding:6px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.steps{position:sticky;top:62px;z-index:25;list-style:none;margin:6px 0 18px;padding:6px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
 .steps li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;color:var(--muted);font-weight:600;font-size:15px;transition:background .15s}
 .steps li:hover{background:var(--bg)}
 .steps li .n{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--bg);color:var(--muted);font-weight:800;font-size:14px;flex:none;border:1.5px solid var(--line-strong)}
@@ -172,7 +172,7 @@ details.box.soft{background:var(--bg)}
 .qitem.error{border-color:#5A2A2E;background:var(--red-soft)}
 .qitem .err{width:100%;font-size:13px;color:#FFB3B3}
 .qitem progress{width:110px;height:10px;accent-color:var(--blue)}
-.log{background:#0B0D11;color:#D5DCE6;border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.6;max-height:360px;min-height:120px;overflow:auto;white-space:pre-wrap}
+.log{background:#0B0D11;color:#D5DCE6;border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.6;max-height:240px;min-height:90px;overflow:auto;white-space:pre-wrap}
 .result{margin-top:12px;padding:14px 16px;background:var(--green-soft);border:1px solid #1F5A3C;border-radius:12px;font-size:14.5px;line-height:1.7}
 .preview{white-space:pre-wrap;font-size:14.5px;line-height:1.75;max-height:420px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:10px}
 
@@ -199,6 +199,7 @@ details.box.soft{background:var(--bg)}
 .copyrow label{min-width:56px;padding-top:10px;font-weight:700}
 .copyrow input,.copyrow textarea{flex:1}
 .copyrow textarea{min-height:90px}
+.work-text{min-height:160px}
 .stat{font-size:13px;font-weight:600;color:var(--muted);background:var(--bg);border-radius:999px;padding:3px 10px;white-space:nowrap}
 .stat.ok{color:var(--green);background:var(--green-soft)}
 .stat.bad{color:var(--red);background:var(--red-soft)}
@@ -212,6 +213,8 @@ details.box.soft{background:var(--bg)}
 @keyframes pulse{to{transform:scale(1.06)}}
 ol.guide{margin:6px 0 0;padding-left:22px;line-height:1.8}
 
+.step-panel,.adv-panel{scroll-margin-top:150px}
+.divider{margin:36px 0 14px;padding-top:22px;border-top:2px dashed var(--line-strong);color:var(--muted);font-weight:700;display:flex;flex-direction:column;gap:10px}
 /* 고급 탭 */
 .subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .subtabs button{border-radius:999px}
