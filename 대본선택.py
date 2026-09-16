@@ -970,6 +970,38 @@ def make_thumbnails(job, req):
     return dict(thumbnails=outs, dir=tdir, cost=ai.cost_text())
 
 
+def make_upload_package(script_file, result):
+    """완성된 한 편의 업로드 필수 파일을 프로젝트의 업로드 폴더 한곳에 모은다."""
+    assets = assets_dir(script_file)
+    is_mindam = channel_of(script_file) == "mindam"
+    opt_path = (os.path.join(assets, "유튜브_최적화.txt") if is_mindam
+                else re.sub(r"\.txt$", "", script_file) + "_유튜브최적화.txt")
+    script_text = Path(script_file).read_text(encoding="utf-8-sig", errors="replace")
+    opt_text = Path(opt_path).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(opt_path) else ""
+    saved = load_json(os.path.join(assets, "업로드_정보.json"), {})
+    title = (saved.get("title") or _block(opt_text, "최종 추천") or
+             _block(script_text, "제목") or result.get("title") or Path(script_file).stem)
+    title = title.splitlines()[0].strip()
+    description = saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글")
+    tags = saved.get("tags") or _block(opt_text, "태그") or _block(script_text, "태그")
+    channel_dir = "민담" if is_mindam else "사람의 이유"
+    package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
+    package.mkdir(parents=True, exist_ok=True)
+    (package / "제목.txt").write_text(title, encoding="utf-8")
+    (package / "설명.txt").write_text(description.strip(), encoding="utf-8")
+    (package / "태그.txt").write_text(tags.strip(), encoding="utf-8")
+    (package / "업로드정보.txt").write_text(
+        f"[제목]\n{title}\n\n[설명]\n{description.strip()}\n\n[태그]\n{tags.strip()}\n", encoding="utf-8")
+    video = result.get("video") or os.path.join(assets, "최종.mp4")
+    if os.path.isfile(video):
+        shutil.copy2(video, package / "최종.mp4")
+    thumbnails = result.get("thumbnails") or sorted(glob.glob(os.path.join(assets, "썸네일", "썸네일_*.jpg")))
+    for index, thumb in enumerate(thumbnails, 1):
+        if os.path.isfile(thumb):
+            shutil.copy2(thumb, package / f"썸네일_{index}.jpg")
+    return os.path.abspath(package)
+
+
 # ── 작업 5: 원클릭 파이프라인 ─────────────────────────────────
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
@@ -1048,6 +1080,9 @@ def make_pipeline(job, req):
         out = os.path.join(assets, "최종.mp4")
         run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out)
         result["video"] = out
+    job.stage = "⑦ 업로드 폴더 정리"
+    result["upload_dir"] = make_upload_package(script, result)
+    job.add("   ✓ 업로드 폴더: " + result["upload_dir"])
     job.stage = "완료"; job.progress = 1.0
     job.add("✅ 파이프라인 완료 · " + assets)
     result["assets"] = assets
@@ -1149,7 +1184,7 @@ def start_queue_worker():
                     item.update(status="done", stage="완료", progress=1.0, result=result, duration=duration, error="")
                     QUEUE.data["current_id"] = ""
                     QUEUE.save()
-                telegram_notice(f"✅ 영상 한 편이 완성됐습니다.\n주제: {item['title']}\n길이: {duration / 60:.1f}분\n저장: {result.get('video') or result.get('assets', '')}")
+                telegram_notice(f"✅ 영상 한 편이 완성됐습니다.\n주제: {item['title']}\n길이: {duration / 60:.1f}분\n업로드 폴더: {result.get('upload_dir') or result.get('assets', '')}\n다음 주제를 자동으로 시작합니다.")
             except Exception as exc:  # noqa: BLE001
                 message = str(exc)
                 shared = is_shared_failure(message)
@@ -1578,7 +1613,8 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 
 <div class="card main-section" id="queueCard">
   <h2>📚 연속 제작 대기열 <small>선택한 주제를 한 편씩 끝까지 만든 뒤 다음 주제로 넘어갑니다</small></h2>
-  <div class="row"><button class="primary" onclick="startSelectedQueue()">▶ 선택한 주제 연속 제작</button><span class="hidden row" id="queue_manage"><button onclick="queueControl('pause')">일시정지</button><button onclick="queueControl('resume')">계속</button><button class="danger" onclick="queueControl('cancel')">전체 중단</button></span><span id="queue_summary" class="hint">대기열 없음</span></div>
+  <div class="row"><button class="primary" onclick="startSelectedQueue()">▶ 체크한 주제 순서대로 자동 제작</button><span class="hidden row" id="queue_manage"><button onclick="queueControl('pause')">일시정지</button><button onclick="queueControl('resume')">계속</button><button class="danger" onclick="queueControl('cancel')">전체 중단</button></span><span id="queue_summary" class="hint">대기열 없음</span></div>
+  <p class="hint">한 편의 최종 영상과 업로드 폴더 저장이 끝나면 다음 체크 주제를 자동으로 시작합니다.</p>
   <div id="queue_list" style="margin-top:10px"></div>
 </div>
 
@@ -1936,7 +1972,7 @@ function renderQueue(q){
   if(!q)return;const items=q.items||[],done=items.filter(x=>x.status==='done').length,failed=items.filter(x=>x.status==='error').length;
   $('queue_manage').classList.toggle('hidden',!items.length);
   $('queue_summary').textContent=`상태: ${q.status_text||'대기 없음'} · 전체 ${items.length}편 · 완료 ${done}편 · 실패 ${failed}편`;
-  $('queue_list').innerHTML=items.length?items.map((x,i)=>`<div class="row" style="border-top:1px solid var(--line);padding:8px 0"><b style="min-width:42px">${i+1}편</b><span style="flex:1">${esc(x.title)}</span><span class="hint" style="min-width:120px">${esc(x.status_text||'대기 중')} · ${esc(x.stage||'')}</span>${x.status==='working'?`<progress max="1" value="${x.progress||0}" style="width:120px"></progress>`:''}${x.result&&x.result.assets?`<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>`:''}${x.status==='pending'?`<button class="mini" onclick="removeQueueItem('${x.id}')">목록에서 빼기</button>`:''}${x.error?`<small style="color:var(--warn)">${esc(x.error)}</small>`:''}</div>`).join(''):'<span class="hint">대기열이 없습니다. 주제 목록에서 여러 개를 체크하세요.</span>';
+  $('queue_list').innerHTML=items.length?items.map((x,i)=>`<div class="row" style="border-top:1px solid var(--line);padding:8px 0"><b style="min-width:42px">${i+1}편</b><span style="flex:1">${esc(x.title)}</span><span class="hint" style="min-width:120px">${esc(x.status_text||'대기 중')} · ${esc(x.stage||'')}</span>${x.status==='working'?`<progress max="1" value="${x.progress||0}" style="width:120px"></progress>`:''}${x.result&&x.result.upload_dir?`<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>`:(x.result&&x.result.assets?`<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>`:'')}${x.status==='pending'?`<button class="mini" onclick="removeQueueItem('${x.id}')">목록에서 빼기</button>`:''}${x.error?`<small style="color:var(--warn)">${esc(x.error)}</small>`:''}</div>`).join(''):'<span class="hint">대기열이 없습니다. 주제 목록에서 여러 개를 체크하세요.</span>';
 }
 async function refreshQueue(){try{renderQueue(await api('/api/queue'));}catch(e){}}
 

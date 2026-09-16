@@ -17,6 +17,27 @@ class WorkspaceEditorTest(unittest.TestCase):
         self.assertIn("인간관계, 친구관계, 중년심리", context)
         self.assertIn("40~60대", context)
 
+    def test_upload_package_collects_metadata_thumbnail_and_video(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script = root / "작업.txt"
+            script.write_text("[제목]\n원래 제목\n[대본]\n본문", encoding="utf-8")
+            assets = root / "작업_자료"
+            thumbs = assets / "썸네일"
+            thumbs.mkdir(parents=True)
+            (thumbs / "썸네일_1.jpg").write_bytes(b"image")
+            video = assets / "최종.mp4"
+            video.write_bytes(b"video")
+            (root / "작업_유튜브최적화.txt").write_text(
+                "[최종 추천]\n검색에 맞춘 제목\n[설명글]\n영상 설명\n[태그]\n인생, 심리", encoding="utf-8")
+            with patch.object(app, "BASE", str(root)):
+                package = Path(app.make_upload_package(str(script), {"video": str(video)}))
+            self.assertEqual((package / "제목.txt").read_text(encoding="utf-8"), "검색에 맞춘 제목")
+            self.assertTrue((package / "설명.txt").is_file())
+            self.assertTrue((package / "태그.txt").is_file())
+            self.assertTrue((package / "썸네일_1.jpg").is_file())
+            self.assertTrue((package / "최종.mp4").is_file())
+
     def test_load_and_save_script_subtitle_and_metadata(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
