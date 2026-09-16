@@ -1486,12 +1486,11 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <button data-nav="gallery" onclick="goTab('gallery')"><span class="nav-icon">🖼</span><span class="nav-label">이미지</span></button>
   <button data-nav="video" onclick="goTab('video')"><span class="nav-icon">🎬</span><span class="nav-label">영상·자막 설정</span></button>
   <div class="studio-divider"></div>
-  <button data-nav="reset" onclick="goTab('reset')"><span class="nav-icon">🗑</span><span class="nav-label">삭제·초기화</span></button>
   <button data-nav="settings" onclick="goTab('settings')"><span class="nav-icon">⚙</span><span class="nav-label">설정</span></button>
   <small>필요한 메뉴만 눌러 작업하세요.</small>
 </aside>
 <header class="hero"><div class="eyebrow">CREATOR STUDIO · 사람의 이유 / 민담·야담</div>
-<button class="danger" style="float:right" onclick="exitProgram()">■ 프로그램 종료</button>
+<div style="float:right;display:flex;gap:8px"><button class="danger" onclick="goTab('reset')">🗑 삭제·초기화</button><button onclick="exitProgram()">■ 프로그램 종료</button></div>
 <h1>이야기를 영상으로 만드는 공간</h1>
 <p class="sub">주제 선택부터 대본, 나레이션, 이미지와 영상까지. 필요한 단계를 차례로 진행하세요.</p></header>
 <div id="envwarn" class="warn hidden"></div>
@@ -1499,7 +1498,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 <div class="simple-guide"><span>① 여러 주제 선택</span><span>② 연속 제작</span><span>③ 이미지 확인</span><span>④ 영상 확인</span><span>⑤ 완료 작업 정리</span></div>
 <div class="view-switch"><b>화면 선택</b><button id="simple_mode_btn" onclick="setViewMode('simple')">초보자 간단 화면</button><button id="detail_mode_btn" onclick="setViewMode('detail')">상세 기능 모두 보기</button><span class="hint">처음에는 간단 화면을 권장합니다.</span></div>
 <div class="beginner-note" id="beginner_note"><b>처음 사용 순서:</b> 아래에서 채널과 주제, 그림체를 고른 뒤 <b>대본부터 영상까지 자동 실행</b>만 누르세요. 이미지 수정이나 민담 세부 설정은 위 메뉴에서 필요한 항목만 열면 됩니다.</div>
-<div class="page-nav"><button onclick="goTab('person')">주제 고르기</button><button onclick="goTab('auto')">자동 제작</button><button class="advanced-nav" onclick="goTab('gallery')">이미지 수정</button><button class="advanced-nav" onclick="goTab('video')">영상 편집</button><button onclick="goTab('reset')">삭제·초기화</button><button class="settings" onclick="goTab('settings')">⚙ 설정</button></div>
+<div class="page-nav"><button onclick="goTab('person')">주제 고르기</button><button onclick="goTab('auto')">자동 제작</button><button class="advanced-nav" onclick="goTab('gallery')">이미지 수정</button><button class="advanced-nav" onclick="goTab('video')">영상 편집</button><button class="settings" onclick="goTab('settings')">⚙ 설정</button></div>
 <div class="pipeline-overview" id="pipeline_overview">
   <div class="pipeline-step" data-stage="script"><b>① 대본</b><small>대기</small></div><div class="pipeline-step" data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div class="pipeline-step" data-stage="image"><b>③ 이미지</b><small>대기</small></div><div class="pipeline-step" data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div class="pipeline-step" data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div class="pipeline-step" data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
 </div>
@@ -1523,10 +1522,9 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <div class="stepline"><span class="no">4</span><div>
   <div class="row"><button class="primary" id="a_go" onclick="startPipeline()" style="font-size:17px;padding:14px 26px">🚀 대본부터 영상까지 자동 실행</button><button class="mini hidden" id="a_cancel" onclick="api('/api/cancel',{})">현재 작업 취소</button>
   <span class="hint">끝나면 아래 진행 칸에 결과 폴더가 나옵니다 (사람의 이유 30~60분 · 민담 1~2시간)</span></div></div></div>
-  <details class="advanced-options"><summary>이미 만든 대본 이어서 만들기 또는 삭제</summary><div class="advanced-options-body"><div class="gonext"><b>이미 만든 대본이 있으면 →</b>
+  <details class="advanced-options"><summary>이미 만든 대본 이어서 만들기</summary><div class="advanced-options-body"><div class="gonext"><b>이미 만든 대본이 있으면 →</b>
     <select id="c_file" style="min-width:380px"></select>
     <button class="primary" onclick="continuePipeline($('c_file').value)">🎬 이 대본으로 나레이션 → 이미지 → 영상까지 이어서 만들기</button>
-    <button class="danger" onclick="deleteSelectedScript('c_file')">🗑 대본·영상·이미지 전체 삭제</button>
     <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div></div></details>
 </div>
 
@@ -1634,7 +1632,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 <!-- 이미지 프롬프트 -->
 <div class="card main-section advanced-section" id="tab-images">
   <h2>대본 → 문장별 이미지 프롬프트 <small>DINO 형식 ===001=== 블록</small></h2>
-  <div class="row"><label>대본 파일 <select id="i_file" style="min-width:420px"></select></label><button class="mini" onclick="refresh()">새로고침</button><button class="danger" onclick="deleteSelectedScript('i_file')">선택한 대본 삭제</button></div>
+  <div class="row"><label>대본 파일 <select id="i_file" style="min-width:420px"></select></label><button class="mini" onclick="refresh()">새로고침</button></div>
   <div class="row"><label>변환 지침 <select id="i_guide"></select></label><label>화풍 (클릭)</label><input type="hidden" id="i_style"><div class="styles" id="i_styles"></div><label>한 번에 <input type="number" id="i_chunk" value="30" min="5" max="60" style="width:70px" onchange="api('/api/config',{프롬프트_묶음:+this.value});toast('한 번에 '+this.value+'문장씩 저장됨')"> 문장</label><button class="mini" onclick="editGuide('i_guide')">지침 열어 수정</button></div>
   <p class="hint">문장은 마침표 기준으로 나눕니다(대본 1문장 = 이미지 1장). 결과는 대본 옆에 <code>…_이미지프롬프트.txt</code> 와 Auto-Image Placer 용 <code>…_플로우.txt</code> 로 저장됩니다.</p>
   <div class="row" style="margin-top:14px"><button class="primary" id="i_go" onclick="startImages()">▶ 이미지 프롬프트 만들기</button></div>
@@ -1652,15 +1650,15 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 <!-- 영상 만들기 (편집프로그램 8765 를 안에 띄움) -->
 <div class="card main-section advanced-section" id="tab-video" style="padding:0;overflow:hidden">
   <div id="video_source_status" class="gonext" style="margin:12px">아래에서 자막 글꼴·크기·굵기·색상과 영상 설정을 바로 바꿀 수 있습니다.</div>
-  <div class="row" style="margin:0 12px 12px"><button class="primary" onclick="prepareVideoEditor()">🎬 선택한 대본 연결·새로고침</button><button class="danger" onclick="deleteCurrentCompletedWork()">🗑 현재 완료 작업 전체 삭제</button><span class="hint">자막 설정은 대본이 없어도 저장할 수 있습니다.</span></div>
+  <div class="row" style="margin:0 12px 12px"><button class="primary" onclick="prepareVideoEditor()">🎬 선택한 대본 연결·새로고침</button><span class="hint">자막 설정은 대본이 없어도 저장할 수 있습니다.</span></div>
   <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:950px;border:0;background:#fff"></iframe>
 </div>
 <div class="card main-section" id="tab-reset">
-  <h2>🗑 대본·영상·이미지 삭제 및 초기화 <small>완료한 작업을 한 번에 정리</small></h2>
-  <p class="hint">선택한 작업만 <code>대본/_휴지통</code>으로 옮깁니다. 다른 대본과 설정은 유지되며, 필요하면 휴지통 폴더에서 직접 복구할 수 있습니다.</p>
+  <h2>🗑 작업 전체 삭제 및 초기화 <small>오른쪽 상단 버튼으로만 들어오는 정리 화면</small></h2>
+  <p class="hint">선택한 작업의 대본과 저장 폴더에 있는 이미지·KIE 영상·최종 영상·음성·자막·썸네일까지 모두 <code>대본/_휴지통</code>으로 옮깁니다. 다른 작업과 프로그램 설정은 유지됩니다.</p>
   <div class="row"><label>초기화할 작업 <select id="reset_file" style="min-width:min(100%,520px)"></select></label><button class="mini" onclick="refresh()">목록 새로고침</button></div>
-  <div class="row"><button onclick="resetSelected('assets')">이미지·영상·음성만 초기화</button><button class="danger" onclick="resetSelected('all')">🗑 대본·영상·이미지 전부 삭제</button></div>
-  <p class="hint">자료만 초기화는 일반 대본에서 사용할 수 있습니다. 민담은 작성 중인 챕터와 완성본을 한 폴더에 보관하므로 함께 초기화합니다. 실행 중인 작업은 초기화할 수 없습니다.</p>
+  <div class="row"><button class="danger" onclick="resetSelected('all')">🗑 선택한 작업 전체 초기화</button></div>
+  <p class="hint">실행 중인 작업은 중단한 뒤 초기화할 수 있습니다. 삭제 파일은 바로 지우지 않고 _휴지통에 보관합니다.</p>
 </div>
 
 <!-- 설정 -->
