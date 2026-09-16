@@ -104,10 +104,10 @@ def layout_keyword(im, top, bottom, badge=""):
         im = ImageOps.mirror(im)
     im = _shade_left(im, 0.58, 0.45)          # 그림은 밝게 두고 글자 뒤만 살짝 어둡게
     draw = ImageDraw.Draw(im)
-    x, max_w = 48, int(W * 0.58)
+    x, max_w = 88, int(W * 0.56)              # 글자를 왼쪽 끝에 붙이지 않고 살짝 안쪽에
     y = 64
     if badge:
-        cx, cy, r = 168, 176, 112
+        cx, cy, r = 204, 176, 112
         draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=RED, outline=WHITE, width=9)
         bf = _fit(draw, badge, 104, r * 2 - 36, 56)
         bw, bh = draw.textlength(badge, font=bf), bf.size
