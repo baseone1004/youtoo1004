@@ -12,6 +12,11 @@ def apply(editor_dir):
     if bundled_font.is_file() and (not font_target.is_file() or font_target.read_bytes() != bundled_font.read_bytes()):
         font_target.write_bytes(bundled_font.read_bytes())
         font_changed = True
+    dohyeon_font = Path(__file__).with_name("assets") / "fonts" / "DoHyeon-Regular.ttf"
+    dohyeon_target = editor / "user_fonts" / "DoHyeon-Regular.ttf"
+    if dohyeon_font.is_file() and (not dohyeon_target.is_file() or dohyeon_target.read_bytes() != dohyeon_font.read_bytes()):
+        dohyeon_target.write_bytes(dohyeon_font.read_bytes())
+        font_changed = True
     target = editor / "core" / "thumbnail.py"
     source = target.read_text(encoding="utf-8")
     original = source
@@ -33,14 +38,14 @@ def apply(editor_dir):
         source = source.replace(anchor, anchor + '    if (name or "").lower() == "black han sans":\n'
                                 '        custom = Path(__file__).resolve().parents[1] / "user_fonts" / "BlackHanSans-Regular.ttf"\n'
                                 '        if custom.is_file():\n            return str(custom)\n', 1)
+    if 'if (name or "").lower() == "do hyeon":' not in source:
+        source = source.replace(anchor, anchor + '    if (name or "").lower() == "do hyeon":\n'
+                                '        custom = Path(__file__).resolve().parents[1] / "user_fonts" / "DoHyeon-Regular.ttf"\n'
+                                '        if custom.is_file():\n            return str(custom)\n', 1)
     if 'if (name or "").lower() == "malgun gothic bold":' not in source:
         source = source.replace(anchor, anchor + '    if (name or "").lower() == "malgun gothic bold":\n        return r"C:\\Windows\\Fonts\\malgunbd.ttf"\n', 1)
     source = source.replace("    gap = 12\n", "    gap = 30\n", 1)
-    bold_marker = "    # Regular 글꼴도 썸네일에서 힘 있게 보이도록 안쪽 획을 겹쳐 그린다.\n"
-    if bold_marker not in source:
-        old_draw = '''    draw.text((x, y), text, font=font, fill=fill)
-'''
-        bold_draw = '''    # Regular 글꼴도 썸네일에서 힘 있게 보이도록 안쪽 획을 겹쳐 그린다.
+    bold_draw = '''    # Regular 글꼴도 썸네일에서 힘 있게 보이도록 안쪽 획을 겹쳐 그린다.
     bold_width = 3
     for dx in range(-bold_width, bold_width + 1):
         for dy in range(-bold_width, bold_width + 1):
@@ -48,9 +53,7 @@ def apply(editor_dir):
                 draw.text((x + dx, y + dy), text, font=font, fill=fill)
     draw.text((x, y), text, font=font, fill=fill)
 '''
-        if old_draw not in source:
-            raise ValueError("썸네일 굵기 연결 위치를 찾지 못했습니다.")
-        source = source.replace(old_draw, bold_draw, 1)
+    source = source.replace(bold_draw, '    draw.text((x, y), text, font=font, fill=fill)\n', 1)
     if "def _thumbnail_lines(top: str, bottom: str)" not in source:
         compose_anchor = "\ndef compose(image: str, out: str = \"\""
         if compose_anchor not in source:
