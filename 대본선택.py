@@ -1447,7 +1447,20 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 :root{--bg:#090b20;--surface:#171a36;--ink:#f3f4ff;--muted:#a9aecb;--line:#34395d;--accent:#16d5ca;--accent-soft:#153d43;--gold:#ffbe55;--warn:#ff6874;--warn-soft:#43232d;--box:#11152d;--ok:#65e6ad}
 body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14px}.wrap{max-width:980px;padding-top:18px}.hero{padding:22px 27px;border-radius:14px;margin-bottom:12px;background:linear-gradient(120deg,#173a47,#126e69);box-shadow:none}.hero h1{font-size:27px}.hero .sub{font-size:13px}.card{padding:18px 20px;border-radius:13px;background:var(--surface);box-shadow:none;margin-bottom:12px}h2{font-size:17px;padding-bottom:10px;margin-bottom:12px}.simple-guide{margin-bottom:9px}.simple-guide span{padding:5px 10px;background:#11152d}.view-switch{padding:7px 9px;margin-bottom:9px}.beginner-note{padding:10px 13px;margin-bottom:9px}.page-nav{padding:7px 0 9px;background:#090b20}.page-nav button{padding:7px 11px}.stepline{padding:6px 0}.styles{gap:6px}.styles button{min-height:43px;padding:7px 10px}.gonext{padding:11px 13px}.pipeline-overview{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#0c1024}.pipeline-step{padding:11px 5px;border:1px solid var(--line);border-radius:9px;text-align:center;background:#080c18}.pipeline-step b{display:block;font-size:12px}.pipeline-step small{display:block;margin-top:4px;color:var(--muted)}.pipeline-step.now{border-color:var(--accent);background:#15353d}.pipeline-step.done{border-color:var(--ok);color:var(--ok)}#tab-auto textarea#a_title{width:min(100%,620px);min-height:66px;resize:vertical;font-size:16px;line-height:1.5}.simple-mode #tab-auto{border-color:#4a527c}.simple-mode #tab-auto h2{color:var(--accent)}#tab-settings{background:transparent;border:0;padding:0}#tab-settings>h2,#tab-settings>p,#tab-settings>.row,#tab-settings>.ready,#tab-settings>.keyrow,#tab-settings>details{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px 15px;margin:8px 0}#tab-settings>h2{margin-top:13px;color:var(--accent)}@media(max-width:760px){.pipeline-overview{grid-template-columns:repeat(3,1fr)}}
 .work-editor textarea{width:100%;min-height:240px;font-family:var(--mono);font-size:13px;line-height:1.55}.work-editor .meta-field textarea{min-height:90px}.work-editor input[type=text]{flex:1;min-width:280px}.work-editor details{margin:8px 0;border:1px solid var(--line);border-radius:10px;background:var(--box)}.work-editor summary{padding:11px 13px;cursor:pointer;font-weight:800}.work-editor details>div{padding:0 13px 13px}.copyrow{display:flex;gap:7px;align-items:flex-start;margin:8px 0}.copyrow label{min-width:65px;padding-top:9px;font-weight:800}
+.studio-sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;z-index:40;background:#0f0f0f;border-right:1px solid #303030;padding:18px 12px;overflow-y:auto}.studio-brand{display:flex;align-items:center;gap:10px;padding:5px 10px 22px;font-size:17px;font-weight:900}.studio-logo{display:grid;place-items:center;width:34px;height:24px;border-radius:7px;background:#ff0033;color:#fff;font-size:13px}.studio-sidebar button{display:flex;width:100%;align-items:center;gap:12px;margin:3px 0;padding:11px 13px;border:0;border-radius:9px;text-align:left;background:transparent;color:#e5e5e5}.studio-sidebar button:hover,.studio-sidebar button.on{background:#272727;color:#fff}.studio-sidebar button.on{font-weight:800}.studio-sidebar .nav-icon{width:22px;text-align:center;font-size:17px}.studio-divider{height:1px;background:#303030;margin:13px 6px}.studio-sidebar small{display:block;padding:8px 13px;color:#888}.page-nav,.simple-guide,.view-switch,.beginner-note{display:none!important}.studio-panel-mode .main-section:not(.studio-selected){display:none!important}.wrap{max-width:1180px;width:calc(100% - 260px);margin:0 auto 0 240px;padding:18px 22px 80px}.hero{background:#212121;border:1px solid #343434;border-radius:12px;padding:19px 24px}.hero:after{display:none}.hero .eyebrow{color:#aaa;letter-spacing:.08em}.hero h1{font-size:25px}.card{background:#212121;border-color:#383838}.pipeline-overview{background:#181818;border-color:#383838}.pipeline-step{background:#121212;border-color:#383838}:root{--bg:#0f0f0f;--surface:#212121;--ink:#f1f1f1;--muted:#aaa;--line:#3f3f3f;--accent:#3ea6ff;--accent-soft:#263850;--box:#181818;--ok:#2ed39a;--warn:#ff6673;--warn-soft:#47242b}.simple-mode #tab-auto{border-color:#3f3f3f}.simple-mode #tab-auto h2,#tab-settings>h2{color:#f1f1f1}@media(max-width:820px){.studio-sidebar{position:sticky;top:0;width:auto;height:auto;display:flex;gap:4px;padding:7px;overflow-x:auto;border-right:0;border-bottom:1px solid #303030}.studio-brand,.studio-divider,.studio-sidebar small{display:none}.studio-sidebar button{width:auto;min-width:max-content;margin:0;padding:8px 11px}.wrap{width:auto;margin:0;padding:12px}.studio-sidebar .nav-label{font-size:12px}}
 </style></head><body><div class="wrap">
+<aside class="studio-sidebar">
+  <div class="studio-brand"><span class="studio-logo">▶</span><span>사람의 이유 Studio</span></div>
+  <button data-nav="auto" class="on" onclick="goTab('auto')"><span class="nav-icon">🏠</span><span class="nav-label">자동 제작</span></button>
+  <button data-nav="person" onclick="goTab('person')"><span class="nav-icon">💡</span><span class="nav-label">주제 고르기</span></button>
+  <button data-nav="work" onclick="goTab('work')"><span class="nav-icon">📝</span><span class="nav-label">완성 자료</span></button>
+  <button data-nav="gallery" onclick="goTab('gallery')"><span class="nav-icon">🖼</span><span class="nav-label">이미지</span></button>
+  <button data-nav="video" onclick="goTab('video')"><span class="nav-icon">🎬</span><span class="nav-label">영상 편집</span></button>
+  <div class="studio-divider"></div>
+  <button data-nav="reset" onclick="goTab('reset')"><span class="nav-icon">🗑</span><span class="nav-label">삭제·초기화</span></button>
+  <button data-nav="settings" onclick="goTab('settings')"><span class="nav-icon">⚙</span><span class="nav-label">설정</span></button>
+  <small>필요한 메뉴만 눌러 작업하세요.</small>
+</aside>
 <header class="hero"><div class="eyebrow">CREATOR STUDIO · 사람의 이유 / 민담·야담</div>
 <button class="danger" style="float:right" onclick="exitProgram()">■ 프로그램 종료</button>
 <h1>이야기를 영상으로 만드는 공간</h1>
@@ -1622,7 +1635,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 
 <!-- 설정 -->
 <div class="card tab hidden" id="tab-settings">
-  <div class="row" style="justify-content:space-between"><h2 style="flex:1">⚙ 설정</h2><button class="primary" onclick="showMainScreen()">← 제작 화면으로 돌아가기</button></div>
+  <div class="row" style="justify-content:space-between"><h2 style="flex:1">⚙ 설정</h2><button class="primary" onclick="goTab('auto')">← 제작 화면으로 돌아가기</button></div>
   <h2>처음 사용 순서</h2>
   <p class="hint">① API 키를 저장하세요. ② 드롭샷 입력·생성·다운로드 좌표를 확인하세요. ③ [영상 만들기]에서 주제를 입력하면 됩니다.</p>
   <div id="setupReady" class="ready"></div>
@@ -1710,10 +1723,13 @@ function setViewMode(mode){
 }
 function showMainScreen(){ $('tab-settings').classList.add('hidden');document.querySelectorAll('.main-section').forEach(x=>x.classList.remove('settings-hidden'));window.scrollTo({top:0,behavior:'smooth'}); }
 function showSettings(){document.querySelectorAll('.main-section').forEach(x=>x.classList.add('settings-hidden'));$('tab-settings').classList.remove('hidden');loadEditorSettings();window.scrollTo({top:0,behavior:'smooth'});}
+function markStudioNav(name){document.querySelectorAll('.studio-sidebar button[data-nav]').forEach(b=>b.classList.toggle('on',b.dataset.nav===(name==='mindam'?'person':name)));}
 function goTab(name){
+  markStudioNav(name);
+  document.body.classList.add('studio-panel-mode');document.querySelectorAll('.main-section').forEach(x=>x.classList.remove('studio-selected'));
   if(name==='settings'){showSettings();return;}
-  showMainScreen();const ids={auto:'tab-auto',person:'tab-person',mindam:'tab-mindam',images:'tab-images',gallery:'galleryCard',video:'tab-video',reset:'tab-reset'};
-  const target=$(ids[name]||'tab-auto');if(target){document.querySelectorAll('.advanced-section').forEach(x=>x.classList.remove('focused-section'));if(document.body.classList.contains('simple-mode')&&target.classList.contains('advanced-section'))target.classList.add('focused-section');setTimeout(()=>target.scrollIntoView({behavior:'smooth',block:'start'}),50);}
+  showMainScreen();const ids={auto:'tab-auto',person:'tab-person',mindam:'tab-mindam',work:'workCard',images:'tab-images',gallery:'galleryCard',video:'tab-video',reset:'tab-reset'};
+  const target=$(ids[name]||'tab-auto');if(target){target.classList.add('studio-selected');if(name==='auto'){ $('queueCard').classList.add('studio-selected');$('progressCard').classList.add('studio-selected'); }document.querySelectorAll('.advanced-section').forEach(x=>x.classList.remove('focused-section'));if(document.body.classList.contains('simple-mode')&&target.classList.contains('advanced-section'))target.classList.add('focused-section');setTimeout(()=>target.scrollIntoView({behavior:'smooth',block:'start'}),50);}
   if(name==='gallery')refreshGallery(true);if(name==='video')prepareVideoEditor();
 }
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
@@ -2031,7 +2047,7 @@ async function startImages(){
   const body={script_file:$('i_file').value,guideline:$('i_guide').value,style:$('i_style').value,chunk:+$('i_chunk').value};
   try{await api('/api/images',body);startPolling();}catch(e){toast(e.message,true);}
 }
-function startPolling(){clearInterval(pollTimer);$('progressCard').classList.remove('hidden');$('pg_result').classList.add('hidden');$('pg_err').classList.add('hidden');$('pg_preview').classList.add('hidden');['p_go','m_go','i_go'].forEach(i=>$(i).disabled=true);poll();pollTimer=setInterval(poll,1500);$('progressCard').scrollIntoView({behavior:'smooth'});}
+function startPolling(){goTab('auto');clearInterval(pollTimer);$('progressCard').classList.remove('hidden');$('progressCard').classList.add('studio-selected');$('pg_result').classList.add('hidden');$('pg_err').classList.add('hidden');$('pg_preview').classList.add('hidden');['p_go','m_go','i_go'].forEach(i=>$(i).disabled=true);poll();pollTimer=setInterval(poll,1500);$('progressCard').scrollIntoView({behavior:'smooth'});}
 const PIPE_STEPS=['① 대본','② 이미지 프롬프트','③ 나레이션','④ 이미지 자동 생성','⑤ 후킹 영상',"⑤' 썸네일",'⑥ 최종 렌더','완료'];
 // 단계 → (결과 키, 여는 방법). 클릭하면 그 단계가 만든 파일/폴더를 연다
 const STEP_OUT=[['script','file'],['prompts','file'],['narration','folder'],['images','folder'],['hook','folder'],['thumbnails','folder'],['video','folder'],['assets','folder']];
@@ -2294,7 +2310,7 @@ const js=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 async function openPath(p){await api('/api/open',{path:p});}
 async function showFile(p){const j=await api('/api/file?path='+encodeURIComponent(p));const v=$('pg_preview');v.textContent=j.text;v.classList.remove('hidden');}
 function toast(msg,err){const t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--surface);border:1px solid '+(err?'var(--warn)':'var(--accent)')+';padding:10px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9';document.body.appendChild(t);setTimeout(()=>t.remove(),4000);}
-setViewMode(localStorage.getItem('creatorViewMode')||'simple');refresh(); setInterval(refreshQueue,2000);
+setViewMode('simple');goTab('auto');refresh(); setInterval(refreshQueue,2000);
 </script></body></html>"""
 
 
