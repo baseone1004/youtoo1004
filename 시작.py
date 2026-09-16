@@ -15,7 +15,7 @@ PACKAGES = {
     "yt_dlp": "yt-dlp", "openai": "openai", "ddgs": "ddgs",
     "anthropic": "anthropic", "requests": "requests", "fastapi": "fastapi",
     "uvicorn": "uvicorn", "PIL": "pillow", "pyautogui": "pyautogui",
-    "pyperclip": "pyperclip", "pywinauto": "pywinauto",
+    "pyperclip": "pyperclip",
 }
 
 
