@@ -22,6 +22,8 @@ class ContinuousPipelineTest(unittest.TestCase):
     def wait_done(self, store):
         for _ in range(100):
             if store.data["status"] == "done":
+                if app.QUEUE_THREAD:
+                    app.QUEUE_THREAD.join(timeout=1)
                 return
             time.sleep(0.01)
         self.fail("대기열 작업이 끝나지 않았습니다.")

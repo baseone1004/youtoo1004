@@ -203,9 +203,21 @@ def delete_script(script_file):
 def topics():
     plan = load_json("계획.json", [])
     cands = load_json("후보.json", [])
+    def used_titles(path):
+        if not os.path.exists(path):
+            return set()
+        with open(path, encoding="utf-8-sig") as f:
+            return {line.strip() for line in f if line.strip() and not line.lstrip().startswith("#")}
+
+    used_person = used_titles("사용한_주제.txt")
+    used_mindam = used_titles("민담_사용한_주제.txt")
     for t in plan:
         t["done"] = bool(t.get("대본파일") and os.path.exists(t["대본파일"]))
-    return dict(plan=plan, candidates=cands, mindam=load_json("민담_후보.json", []))
+    # 이미 대본을 만들었거나 사용 기록에 들어간 제목은 다시 선택하지 않도록 목록에서 숨긴다.
+    plan = [t for t in plan if not t.get("done") and t.get("제목", "").strip() not in used_person]
+    cands = [t for t in cands if t.get("제목", "").strip() not in used_person]
+    mindam = [t for t in load_json("민담_후보.json", []) if t.get("제목", "").strip() not in used_mindam]
+    return dict(plan=plan, candidates=cands, mindam=mindam)
 
 def read_guideline(name):
     p = os.path.join(지침_폴더, name)
@@ -1348,6 +1360,8 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .hidden{display:none!important}
 .page-nav{position:sticky;top:0;z-index:20;display:flex;gap:7px;flex-wrap:wrap;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);padding:10px 0 12px;margin-bottom:10px}.page-nav button{background:var(--surface);font-weight:700}.page-nav button.settings{margin-left:auto;background:var(--accent);color:#fff}
 .settings-hidden{display:none!important}.main-section{scroll-margin-top:82px}
+.xy-countdown{display:inline-flex;align-items:center;justify-content:center;min-width:250px;padding:9px 14px;border-radius:12px;background:var(--accent-soft);color:var(--accent);font-size:20px;font-weight:900;letter-spacing:3px}.xy-countdown.active{background:var(--accent);color:#fff;animation:pulse .8s infinite alternate}@keyframes pulse{to{transform:scale(1.03)}}
+.view-switch{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 13px;border:1px solid var(--line);border-radius:13px;background:var(--surface)}.view-switch button.on{background:var(--accent);color:#fff}.simple-mode .advanced-section:not(.focused-section){display:none}.beginner-note{margin-bottom:14px;padding:14px 18px;border-radius:14px;background:var(--accent-soft);color:var(--ink);line-height:1.65}.beginner-note b{color:var(--accent)}
 .styles{display:flex;gap:8px;flex-wrap:wrap}.styles button{border:1px solid var(--line);background:var(--box);border-radius:9px;padding:8px 14px;font-weight:600;cursor:pointer}
 .styles button.on{background:var(--accent);color:#fff;border-color:transparent}.styles button small{display:block;font-weight:400;font-size:11px;color:var(--muted)}.styles button.on small{color:#fff;opacity:.85}
 .keyrow{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}.keyrow b{width:90px}.keyrow input{flex:1;min-width:240px;max-width:420px}
@@ -1384,6 +1398,8 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <div id="envwarn" class="warn hidden"></div>
 
 <div class="simple-guide"><span>① 여러 주제 선택</span><span>② 연속 제작</span><span>③ 이미지 확인</span><span>④ 영상 확인</span><span>⑤ 완료 작업 정리</span></div>
+<div class="view-switch"><b>화면 선택</b><button id="simple_mode_btn" onclick="setViewMode('simple')">초보자 간단 화면</button><button id="detail_mode_btn" onclick="setViewMode('detail')">상세 기능 모두 보기</button><span class="hint">처음에는 간단 화면을 권장합니다.</span></div>
+<div class="beginner-note" id="beginner_note"><b>처음 사용 순서:</b> 아래에서 채널과 주제, 그림체를 고른 뒤 <b>대본부터 영상까지 자동 실행</b>만 누르세요. 이미지 수정이나 민담 세부 설정은 위 메뉴에서 필요한 항목만 열면 됩니다.</div>
 <div class="page-nav"><button onclick="goTab('person')">주제 선택</button><button onclick="goTab('auto')">바로 만들기</button><button onclick="goTab('gallery')">이미지</button><button onclick="goTab('video')">영상</button><button onclick="goTab('reset')">삭제·초기화</button><button class="settings" onclick="goTab('settings')">⚙ 설정</button></div>
 
 <!-- 원클릭 -->
@@ -1416,7 +1432,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <div id="queue_list" style="margin-top:10px"></div>
 </div>
 
-<div class="card main-section" id="galleryCard">
+<div class="card main-section advanced-section" id="galleryCard">
   <h2>🖼 이미지 <small id="pg_imgs_t">장면별 생성 현황 — 위에서 고른 대본 기준</small></h2>
   <div class="row"><label>확인할 대본 <select id="g_file" style="min-width:380px"></select></label><span class="hint">그림 아래의 재생성을 누르면 해당 장면만 다시 만듭니다.</span></div>
   <div class="gonext" style="margin:12px 0"><b>🎬 앞 7장 KIE 영상화</b>
@@ -1449,7 +1465,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 사람의 이유 -->
-<div class="card main-section" id="tab-person">
+<div class="card main-section advanced-section" id="tab-person">
   <h2>① 주제 고르기 <small>계획.json(이번 주 14편) + 후보 · 또는 직접 입력</small></h2>
   <div class="row"><button class="mini" onclick="selectAllQueue('person',true)">모두 선택</button><button class="mini" onclick="selectAllQueue('person',false)">선택 해제</button><span class="hint">체크한 주제는 아래 연속 제작 버튼으로 차례대로 만듭니다.</span></div>
   <ul class="list" id="topicList"></ul>
@@ -1468,7 +1484,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 민담 -->
-<div class="card main-section" id="tab-mindam">
+<div class="card main-section advanced-section" id="tab-mindam">
   <h2>① 주제 <small>민담_주제뽑기.bat 으로 모은 "터진 제목"을 고르거나 제목·장르를 직접 입력. 고른 제목은 슬롯 분해 → 알맹이 교체로 재창조</small></h2>
   <div class="row"><button class="mini" onclick="selectAllQueue('mindam',true)">모두 선택</button><button class="mini" onclick="selectAllQueue('mindam',false)">선택 해제</button><span class="hint">사람의 이유와 민담을 함께 선택해도 선택 순서대로 제작됩니다.</span></div>
   <ul class="list" id="mindamList" style="margin-bottom:10px"></ul>
@@ -1495,7 +1511,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 이미지 프롬프트 -->
-<div class="card main-section" id="tab-images">
+<div class="card main-section advanced-section" id="tab-images">
   <h2>대본 → 문장별 이미지 프롬프트 <small>DINO 형식 ===001=== 블록</small></h2>
   <div class="row"><label>대본 파일 <select id="i_file" style="min-width:420px"></select></label><button class="mini" onclick="refresh()">새로고침</button><button class="danger" onclick="deleteSelectedScript('i_file')">선택한 대본 삭제</button></div>
   <div class="row"><label>변환 지침 <select id="i_guide"></select></label><label>화풍 (클릭)</label><input type="hidden" id="i_style"><div class="styles" id="i_styles"></div><label>한 번에 <input type="number" id="i_chunk" value="30" min="5" max="60" style="width:70px" onchange="api('/api/config',{프롬프트_묶음:+this.value});toast('한 번에 '+this.value+'문장씩 저장됨')"> 문장</label><button class="mini" onclick="editGuide('i_guide')">지침 열어 수정</button></div>
@@ -1513,7 +1529,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 영상 만들기 (편집프로그램 8765 를 안에 띄움) -->
-<div class="card main-section" id="tab-video" style="padding:0;overflow:hidden">
+<div class="card main-section advanced-section" id="tab-video" style="padding:0;overflow:hidden">
   <div id="video_source_status" class="gonext" style="margin:12px">편집할 대본을 확인하는 중…</div>
   <div class="row" style="margin:0 12px 12px"><button class="primary" onclick="prepareVideoEditor()">🎬 선택한 대본 편집기 불러오기</button><button class="danger" onclick="deleteCurrentCompletedWork()">🗑 현재 완료 작업 전체 삭제</button><span class="hint">대본·이미지·KIE 영상·음성·자막·최종 영상을 한 번에 _휴지통으로 옮깁니다.</span></div>
   <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:950px;border:0;background:#fff"></iframe>
@@ -1555,7 +1571,8 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <li>딥시크 웹은 한 번에 쓸 수 있는 답변 길이가 API 보다 짧을 수 있어, 글자수를 5,000자 단위로 나눠 요청합니다. 서버 혼잡 시 자동 재시도.</li></ol></details>
   <h2 style="margin-top:14px">드롭샷 이미지 생성 좌표 <small>입력창 → 생성 버튼 → 다운로드 버튼 순서로 잡으세요</small></h2>
   <div class="row"><button type="button" class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board', '_blank', 'noopener')">↗ 드롭샷 AI 열기</button></div>
-  <p class="hint">[6초 좌표]를 누른 뒤 6초 안에 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 잡힌 좌표는 자동 저장됩니다.</p>
+  <div class="row"><b>좌표 잡기 순서</b><span class="xy-countdown" id="xy_countdown">6 → 5 → 4 → 3 → 2 → 1</span></div>
+  <p class="hint">[6초 좌표]를 누르면 위 숫자가 6부터 1까지 줄어듭니다. 1이 끝날 때까지 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 잡힌 좌표는 자동 저장됩니다.</p>
   <div class="row"><label>드롭샷 창 제목 <input type="text" id="s_window_keyword" value="드롭샷" style="width:150px"></label><button class="mini" onclick="saveEditorXY()">제목·좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
   <div class="row"><b style="min-width:130px">프롬프트 입력창</b><label>X <input type="number" id="s_prompt_x" style="width:90px"></label><label>Y <input type="number" id="s_prompt_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('prompt')">6초 좌표</button><button class="mini" onclick="testEditorXY('prompt')">테스트</button></div>
   <div class="row"><b style="min-width:130px">생성 버튼</b><label>X <input type="number" id="s_generate_x" style="width:90px"></label><label>Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('generate')">6초 좌표</button><button class="mini" onclick="testEditorXY('generate')">테스트</button></div>
@@ -1607,12 +1624,18 @@ async function exitProgram(){
   catch(e){toast('종료 요청 실패: '+e.message,true);}
 }
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function setViewMode(mode){
+  const simple=mode!=='detail';document.body.classList.toggle('simple-mode',simple);
+  document.querySelectorAll('.advanced-section').forEach(x=>x.classList.remove('focused-section'));
+  $('simple_mode_btn').classList.toggle('on',simple);$('detail_mode_btn').classList.toggle('on',!simple);
+  $('beginner_note').classList.toggle('hidden',!simple);localStorage.setItem('creatorViewMode',simple?'simple':'detail');
+}
 function showMainScreen(){ $('tab-settings').classList.add('hidden');document.querySelectorAll('.main-section').forEach(x=>x.classList.remove('settings-hidden'));window.scrollTo({top:0,behavior:'smooth'}); }
 function showSettings(){document.querySelectorAll('.main-section').forEach(x=>x.classList.add('settings-hidden'));$('tab-settings').classList.remove('hidden');loadEditorSettings();window.scrollTo({top:0,behavior:'smooth'});}
 function goTab(name){
   if(name==='settings'){showSettings();return;}
   showMainScreen();const ids={auto:'tab-auto',person:'tab-person',mindam:'tab-mindam',images:'tab-images',gallery:'galleryCard',video:'tab-video',reset:'tab-reset'};
-  const target=$(ids[name]||'tab-auto');if(target)setTimeout(()=>target.scrollIntoView({behavior:'smooth',block:'start'}),50);
+  const target=$(ids[name]||'tab-auto');if(target){document.querySelectorAll('.advanced-section').forEach(x=>x.classList.remove('focused-section'));if(document.body.classList.contains('simple-mode')&&target.classList.contains('advanced-section'))target.classList.add('focused-section');setTimeout(()=>target.scrollIntoView({behavior:'smooth',block:'start'}),50);}
   if(name==='gallery')refreshGallery(true);if(name==='video')prepareVideoEditor();
 }
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
@@ -2002,9 +2025,15 @@ async function saveEditorXY(){
 }
 async function captureEditorXY(name){
   const label={prompt:'프롬프트 입력창',generate:'생성 버튼',download:'다운로드 버튼'}[name];
-  $('s_xy_status').textContent=`6초 안에 마우스를 드롭샷의 ${label} 위에 올려 두세요`;
-  try{const j=await post8765('/api/gen/capture',{seconds:6});$('s_'+name+'_x').value=j.x;$('s_'+name+'_y').value=j.y;await saveEditorXY();}
-  catch(e){$('s_xy_status').textContent='좌표 잡기 실패: '+e.message;}
+  const counter=$('xy_countdown');
+  $('s_xy_status').textContent=`마우스를 드롭샷의 ${label} 위에 올려 두세요`;
+  counter.classList.add('active');
+  try{
+    const capture=post8765('/api/gen/capture',{seconds:6});
+    for(let second=6;second>=1;second--){counter.textContent=String(second);await new Promise(resolve=>setTimeout(resolve,1000));}
+    const j=await capture;$('s_'+name+'_x').value=j.x;$('s_'+name+'_y').value=j.y;await saveEditorXY();
+  }catch(e){$('s_xy_status').textContent='좌표 잡기 실패: '+e.message;}
+  finally{counter.classList.remove('active');counter.textContent='6 → 5 → 4 → 3 → 2 → 1';}
 }
 async function testEditorXY(name){
   const x=$('s_'+name+'_x').value,y=$('s_'+name+'_y').value;
@@ -2135,7 +2164,7 @@ const js=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 async function openPath(p){await api('/api/open',{path:p});}
 async function showFile(p){const j=await api('/api/file?path='+encodeURIComponent(p));const v=$('pg_preview');v.textContent=j.text;v.classList.remove('hidden');}
 function toast(msg,err){const t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--surface);border:1px solid '+(err?'var(--warn)':'var(--accent)')+';padding:10px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9';document.body.appendChild(t);setTimeout(()=>t.remove(),4000);}
-refresh(); setInterval(refreshQueue,2000);
+setViewMode(localStorage.getItem('creatorViewMode')||'simple');refresh(); setInterval(refreshQueue,2000);
 </script></body></html>"""
 
 
