@@ -937,10 +937,10 @@ def make_thumbnails(job, req):
         top, bottom, _ = copies[(i - 1) % len(copies)]
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
         aip("/api/thumbnail/compose", dict(image=os.path.join(raw_dir, cands[0]), out=out, top=top, bottom=bottom,
-                                            font="Do Hyeon",
+                                            font="Hakgyoansim Nalgae R",
                                             top_color="#FF3B30" if is_mindam else "#FFE45C",
                                             bottom_color="#63FF66" if is_mindam else "#FF3B30",
-                                            position=position, size=106, box=False))
+                                            position=position, size=118, box=True))
         outs.append(out)
         job.add(f"   ✓ {out}  ({top} / {bottom})")
     job.add("비용: " + ai.cost_text())

@@ -17,10 +17,26 @@ def apply(editor_dir):
     if dohyeon_font.is_file() and (not dohyeon_target.is_file() or dohyeon_target.read_bytes() != dohyeon_font.read_bytes()):
         dohyeon_target.write_bytes(dohyeon_font.read_bytes())
         font_changed = True
+    brush_font = Path(__file__).with_name("assets") / "fonts" / "NanumBrushScript-Regular.ttf"
+    brush_target = editor / "user_fonts" / "NanumBrushScript-Regular.ttf"
+    if brush_font.is_file() and (not brush_target.is_file() or brush_target.read_bytes() != brush_font.read_bytes()):
+        brush_target.write_bytes(brush_font.read_bytes())
+        font_changed = True
+    nalgae_font = Path(__file__).with_name("assets") / "fonts" / "HakgyoansimNalgaeR.ttf"
+    nalgae_target = editor / "user_fonts" / "HakgyoansimNalgaeR.ttf"
+    if nalgae_font.is_file() and (not nalgae_target.is_file() or nalgae_target.read_bytes() != nalgae_font.read_bytes()):
+        nalgae_target.write_bytes(nalgae_font.read_bytes())
+        font_changed = True
     target = editor / "core" / "thumbnail.py"
     source = target.read_text(encoding="utf-8")
     original = source
+    source = source.replace("from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps\n",
+                            "from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageStat\n", 1)
     anchor = "def font_file(name: str) -> str:\n"
+    if 'in ("hakgyoansim nalgae r", "학교안심 날개 r"):' not in source:
+        source = source.replace(anchor, anchor + '    if (name or "").lower() in ("hakgyoansim nalgae r", "학교안심 날개 r"):\n'
+                                '        custom = Path(__file__).resolve().parents[1] / "user_fonts" / "HakgyoansimNalgaeR.ttf"\n'
+                                '        if custom.is_file():\n            return str(custom)\n', 1)
     custom = '''def font_file(name: str) -> str:
     try:
         from .user_fonts import FONT_DIR, list_fonts
@@ -41,6 +57,10 @@ def apply(editor_dir):
     if 'if (name or "").lower() == "do hyeon":' not in source:
         source = source.replace(anchor, anchor + '    if (name or "").lower() == "do hyeon":\n'
                                 '        custom = Path(__file__).resolve().parents[1] / "user_fonts" / "DoHyeon-Regular.ttf"\n'
+                                '        if custom.is_file():\n            return str(custom)\n', 1)
+    if 'if (name or "").lower() == "nanum brush script":' not in source:
+        source = source.replace(anchor, anchor + '    if (name or "").lower() == "nanum brush script":\n'
+                                '        custom = Path(__file__).resolve().parents[1] / "user_fonts" / "NanumBrushScript-Regular.ttf"\n'
                                 '        if custom.is_file():\n            return str(custom)\n', 1)
     if 'if (name or "").lower() == "malgun gothic bold":' not in source:
         source = source.replace(anchor, anchor + '    if (name or "").lower() == "malgun gothic bold":\n        return r"C:\\Windows\\Fonts\\malgunbd.ttf"\n', 1)
@@ -84,6 +104,47 @@ def _thumbnail_lines(top: str, bottom: str) -> list[str]:
         source = source[:at + 1] + helper + source[at + 1:]
     source = source.replace('    lines = [t for t in (top, bottom) if t and t.strip()]\n',
                             '    lines = _thumbnail_lines(top, bottom)\n', 1)
+    mirror_marker = '        left_detail = sum(ImageStat.Stat(edges.crop((0, 0, W // 2, H))).mean)\n'
+    if mirror_marker not in source:
+        fit_line = '        im = ImageOps.fit(im, (W, H), Image.LANCZOS, centering=(0.5, 0.45))\n'
+        mirror_code = '''    # 왼쪽 글자 배치에서는 인물/피사체가 오른쪽에 오도록 자동 보정한다.
+    if position == "left":
+        edges = im.convert("L").filter(ImageFilter.FIND_EDGES)
+        left_detail = sum(ImageStat.Stat(edges.crop((0, 0, W // 2, H))).mean)
+        right_detail = sum(ImageStat.Stat(edges.crop((W // 2, 0, W, H))).mean)
+        if left_detail > right_detail * 1.12:
+            im = ImageOps.mirror(im)
+'''
+        source = source.replace(fit_line, fit_line + mirror_code, 1)
+    brush_marker = '        brush = Image.new("RGBA", (W, H), (0, 0, 0, 0))\n'
+    if brush_marker not in source:
+        y_anchor = '''    # 참고 썸네일처럼 강한 빨간 포인트 바를 넣어 작은 화면에서도 시선을 끈다.
+'''
+        brush_code = '''    if box:
+        max_tw = max(draw.textlength(t, font=f) for t, f in zip(lines, fonts))
+        x0 = 20 if position == "left" else max(20, int((W - max_tw) / 2) - 35)
+        x1 = min(W - 20, int(x0 + max_tw + 80))
+        y0, y1 = max(8, int(y) - 28), min(H - 8, int(y + block_h) + 28)
+        brush = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        bd = ImageDraw.Draw(brush)
+        bd.polygon([(x0, y0 + 16), (x0 + 35, y0), (x1 - 50, y0 + 8), (x1, y0 + 25),
+                    (x1 - 18, y1 - 5), (x0 + 22, y1), (x0, y1 - 18)], fill=(8, 6, 5, 205))
+        for offset, inset in ((10, 16), (24, 3), (y1 - y0 - 15, 22)):
+            bd.line((x0 + inset, y0 + offset, x1 - inset, y0 + offset), fill=(20, 14, 10, 150), width=9)
+        im = Image.alpha_composite(im.convert("RGBA"), brush).convert("RGB")
+        draw = ImageDraw.Draw(im)
+'''
+        if y_anchor not in source:
+            raise ValueError("썸네일 붓 배경 연결 위치를 찾지 못했습니다.")
+        source = source.replace(y_anchor, brush_code + y_anchor, 1)
+    old_box = '''        if box:
+            pad = 14
+            bx = Image.new("RGBA", (int(tw) + pad * 2, h + pad), (0, 0, 0, 170))
+            im.paste(bx, (int(x) - pad, int(y) - pad // 2), bx)
+            draw = ImageDraw.Draw(im)
+'''
+    source = source.replace(old_box, "", 1)
+    source = source.replace("    outline_w = max(4, size // 18)\n", "    outline_w = max(3, size // 32)\n", 1)
     marker = "    # 참고 썸네일처럼 강한 빨간 포인트 바를 넣어 작은 화면에서도 시선을 끈다.\n"
     if marker not in source:
         before = '''    colors = [top_color, bottom_color] if len(lines) == 2 else [bottom_color]
