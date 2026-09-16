@@ -708,14 +708,12 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix=""):
     info = aip("/api/info")
     ui = (info.get("config") or {}).get("gen_ui") or {}
     xy = ui.get("XY") or {}
-    if not (xy.get("prompt") and xy.get("download")):
-        raise SystemExit("설정에서 드롭샷 프롬프트 입력창과 다운로드 버튼 좌표를 먼저 잡아 두세요. 생성하기 버튼은 자동으로 찾습니다.")
     dl = (ui.get("P") or {}).get("download") or info.get("downloads_dir")
     if not dl or not os.path.isdir(dl):          # 저장된 폴더가 없으면 실제 다운로드 폴더로
         dl = info.get("downloads_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
         job.add(f"   브라우저 다운로드 폴더 → {dl}")
     body = dict(prompts_file=os.path.abspath(prompts_file), output_dir=os.path.abspath(images_dir), download_dir=dl,
-                prompt_xy=xy["prompt"], generate_xy=xy.get("generate") or xy["prompt"], download_xy=xy["download"],
+                prompt_xy=xy.get("prompt") or [0, 0], generate_xy=xy.get("generate") or [0, 0], download_xy=xy.get("download") or [0, 0],
                 wait_generate=float(ui.get("wait_generate") or 60), wait_download=float(ui.get("wait_download") or 120), window_keyword=ui.get("window_keyword") or "드롭샷", auto_generate=ui.get("auto_generate", True) is not False,
                 wait_next=0.5, start_no=1, end_no=0, skip_existing=True,
                 style_prefix=style_prefix or ui.get("style_prefix") or "", retries=1)
@@ -1141,7 +1139,7 @@ class H(BaseHTTPRequestHandler):
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
                                             텔레그램_알림=cfg.get("텔레그램_알림", True)),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
-                                lengths={k: v["이름"] for k, v in 민담_대본.길이.items()}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
+                                lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
                                 job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items()))
             elif u.path == "/api/job":
@@ -1361,7 +1359,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .page-nav{position:sticky;top:0;z-index:20;display:flex;gap:7px;flex-wrap:wrap;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);padding:10px 0 12px;margin-bottom:10px}.page-nav button{background:var(--surface);font-weight:700}.page-nav button.settings{margin-left:auto;background:var(--accent);color:#fff}
 .settings-hidden{display:none!important}.main-section{scroll-margin-top:82px}
 .xy-countdown{display:inline-flex;align-items:center;justify-content:center;min-width:250px;padding:9px 14px;border-radius:12px;background:var(--accent-soft);color:var(--accent);font-size:20px;font-weight:900;letter-spacing:3px}.xy-countdown.active{background:var(--accent);color:#fff;animation:pulse .8s infinite alternate}@keyframes pulse{to{transform:scale(1.03)}}
-.view-switch{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 13px;border:1px solid var(--line);border-radius:13px;background:var(--surface)}.view-switch button.on{background:var(--accent);color:#fff}.simple-mode .advanced-section:not(.focused-section){display:none}.beginner-note{margin-bottom:14px;padding:14px 18px;border-radius:14px;background:var(--accent-soft);color:var(--ink);line-height:1.65}.beginner-note b{color:var(--accent)}
+.view-switch{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 13px;border:1px solid var(--line);border-radius:13px;background:var(--surface)}.view-switch button.on{background:var(--accent);color:#fff}.simple-mode .advanced-section:not(.focused-section),.simple-mode .advanced-nav{display:none}.beginner-note{margin-bottom:14px;padding:14px 18px;border-radius:14px;background:var(--accent-soft);color:var(--ink);line-height:1.65}.beginner-note b{color:var(--accent)}.advanced-options{margin:10px 0;border:1px solid var(--line);border-radius:12px;background:var(--box)}.advanced-options summary{padding:11px 14px;cursor:pointer;font-weight:700;color:var(--muted)}.advanced-options[open] summary{border-bottom:1px solid var(--line)}.advanced-options-body{padding:12px 14px}
 .styles{display:flex;gap:8px;flex-wrap:wrap}.styles button{border:1px solid var(--line);background:var(--box);border-radius:9px;padding:8px 14px;font-weight:600;cursor:pointer}
 .styles button.on{background:var(--accent);color:#fff;border-color:transparent}.styles button small{display:block;font-weight:400;font-size:11px;color:var(--muted)}.styles button.on small{color:#fff;opacity:.85}
 .keyrow{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}.keyrow b{width:90px}.keyrow input{flex:1;min-width:240px;max-width:420px}
@@ -1390,6 +1388,9 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 .stepline{gap:15px;padding:8px 0}.stepline .no{width:32px;height:32px;border-radius:10px}.gonext{padding:16px 18px;border:1px solid rgba(8,126,121,.15);border-radius:14px}.list{border-radius:12px}.list li{padding:12px 15px}.list li.sel{outline:0;box-shadow:inset 3px 0 var(--accent)}.ready button{padding:7px 12px}.log{border-radius:12px}.result{border-radius:12px}
 @media(max-width:850px){.tabs.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.wrap{padding:16px 14px 60px}.hero{padding:27px 25px;border-radius:18px}.card{padding:18px}}
 @media(max-width:520px){.tabs.steps{grid-template-columns:1fr 1fr;gap:7px}.tabs.steps button{padding:10px;gap:7px;font-size:12px}.tabs.steps button small{display:none}.tabs.steps .no{width:24px;height:24px;font-size:11px}.hero{padding:24px 20px}.hero .sub{font-size:12px}.tabs.tools .hint{display:none}.tabs.tools button{flex:1}.keyrow input{min-width:0;width:100%}}
+/* DINO 스타일의 한눈에 보는 제작 화면 */
+:root{--bg:#090b20;--surface:#171a36;--ink:#f3f4ff;--muted:#a9aecb;--line:#34395d;--accent:#16d5ca;--accent-soft:#153d43;--gold:#ffbe55;--warn:#ff6874;--warn-soft:#43232d;--box:#11152d;--ok:#65e6ad}
+body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14px}.wrap{max-width:980px;padding-top:18px}.hero{padding:22px 27px;border-radius:14px;margin-bottom:12px;background:linear-gradient(120deg,#173a47,#126e69);box-shadow:none}.hero h1{font-size:27px}.hero .sub{font-size:13px}.card{padding:18px 20px;border-radius:13px;background:var(--surface);box-shadow:none;margin-bottom:12px}h2{font-size:17px;padding-bottom:10px;margin-bottom:12px}.simple-guide{margin-bottom:9px}.simple-guide span{padding:5px 10px;background:#11152d}.view-switch{padding:7px 9px;margin-bottom:9px}.beginner-note{padding:10px 13px;margin-bottom:9px}.page-nav{padding:7px 0 9px;background:#090b20}.page-nav button{padding:7px 11px}.stepline{padding:6px 0}.styles{gap:6px}.styles button{min-height:43px;padding:7px 10px}.gonext{padding:11px 13px}.pipeline-overview{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px;padding:8px;border:1px solid var(--line);border-radius:12px;background:#0c1024}.pipeline-step{padding:11px 5px;border:1px solid var(--line);border-radius:9px;text-align:center;background:#080c18}.pipeline-step b{display:block;font-size:12px}.pipeline-step small{display:block;margin-top:4px;color:var(--muted)}.pipeline-step.now{border-color:var(--accent);background:#15353d}.pipeline-step.done{border-color:var(--ok);color:var(--ok)}#tab-auto textarea#a_title{width:min(100%,620px);min-height:66px;resize:vertical;font-size:16px;line-height:1.5}.simple-mode #tab-auto{border-color:#4a527c}.simple-mode #tab-auto h2{color:var(--accent)}#tab-settings{background:transparent;border:0;padding:0}#tab-settings>h2,#tab-settings>p,#tab-settings>.row,#tab-settings>.ready,#tab-settings>.keyrow,#tab-settings>details{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px 15px;margin:8px 0}#tab-settings>h2{margin-top:13px;color:var(--accent)}@media(max-width:760px){.pipeline-overview{grid-template-columns:repeat(3,1fr)}}
 </style></head><body><div class="wrap">
 <header class="hero"><div class="eyebrow">CREATOR STUDIO · 사람의 이유 / 민담·야담</div>
 <button class="danger" style="float:right" onclick="exitProgram()">■ 프로그램 종료</button>
@@ -1400,7 +1401,10 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <div class="simple-guide"><span>① 여러 주제 선택</span><span>② 연속 제작</span><span>③ 이미지 확인</span><span>④ 영상 확인</span><span>⑤ 완료 작업 정리</span></div>
 <div class="view-switch"><b>화면 선택</b><button id="simple_mode_btn" onclick="setViewMode('simple')">초보자 간단 화면</button><button id="detail_mode_btn" onclick="setViewMode('detail')">상세 기능 모두 보기</button><span class="hint">처음에는 간단 화면을 권장합니다.</span></div>
 <div class="beginner-note" id="beginner_note"><b>처음 사용 순서:</b> 아래에서 채널과 주제, 그림체를 고른 뒤 <b>대본부터 영상까지 자동 실행</b>만 누르세요. 이미지 수정이나 민담 세부 설정은 위 메뉴에서 필요한 항목만 열면 됩니다.</div>
-<div class="page-nav"><button onclick="goTab('person')">주제 선택</button><button onclick="goTab('auto')">바로 만들기</button><button onclick="goTab('gallery')">이미지</button><button onclick="goTab('video')">영상</button><button onclick="goTab('reset')">삭제·초기화</button><button class="settings" onclick="goTab('settings')">⚙ 설정</button></div>
+<div class="page-nav"><button onclick="goTab('person')">주제 고르기</button><button onclick="goTab('auto')">자동 제작</button><button class="advanced-nav" onclick="goTab('gallery')">이미지 수정</button><button class="advanced-nav" onclick="goTab('video')">영상 편집</button><button onclick="goTab('reset')">삭제·초기화</button><button class="settings" onclick="goTab('settings')">⚙ 설정</button></div>
+<div class="pipeline-overview" id="pipeline_overview">
+  <div class="pipeline-step" data-stage="script"><b>① 대본</b><small>대기</small></div><div class="pipeline-step" data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div class="pipeline-step" data-stage="image"><b>③ 이미지</b><small>대기</small></div><div class="pipeline-step" data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div class="pipeline-step" data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div class="pipeline-step" data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
+</div>
 
 <!-- 원클릭 -->
 <div class="card main-section" id="tab-auto">
@@ -1412,23 +1416,23 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <label><input type="radio" name="a_channel" value="mindam">민담·야담·옛이야기<small>1~2시간 · 옛이야기</small></label>
   </div></div></div>
   <div class="stepline"><span class="no">2</span><div><b>주제</b> <span class="hint">직접 적거나, 위 [2 주제 고르기]에서 클릭하면 여기로 들어옵니다</span>
-  <div class="row" style="margin-top:6px"><input type="text" id="a_title" placeholder="예) 나이 들수록 친구가 줄어드는 진짜 이유"><button class="primary" onclick="pickAnotherTopic()">🎲 다른 주제 뽑기</button><button class="mini" onclick="goTab(pipelineTopic()==='mindam'?'mindam':'person')">목록에서 고르기 →</button></div></div></div>
-  <div class="stepline"><span class="no">3</span><div><b>그림체</b> <span class="hint">클릭하면 저장됩니다</span>
+  <div class="row" style="margin-top:6px"><textarea id="a_title" rows="2" placeholder="예) 나이 들수록 친구가 줄어드는 진짜 이유"></textarea><button class="primary" onclick="pickAnotherTopic()">🎲 다른 주제</button><button class="mini" onclick="goTab(pipelineTopic()==='mindam'?'mindam':'person')">목록 열기</button></div></div></div>
+  <details class="advanced-options"><summary>선택 설정 · 그림체와 민담 영상 길이 바꾸기</summary><div class="advanced-options-body"><div class="stepline"><span class="no">3</span><div><b>그림체</b> <span class="hint">클릭하면 저장됩니다</span>
   <div class="row" style="margin-top:6px"><input type="hidden" id="a_style"><div class="styles" id="a_styles"></div></div>
-  <div class="row"><label>민담 길이 <select id="a_length"></select></label></div></div></div>
+  <div class="row"><label>민담 길이 <select id="a_length"></select></label></div></div></div></div></details>
   <div class="stepline"><span class="no">4</span><div>
-  <div class="row"><button class="primary" id="a_go" onclick="startPipeline()" style="font-size:17px;padding:14px 26px">🚀 대본부터 영상까지 자동 실행</button><button class="mini" onclick="api('/api/cancel',{})">취소</button>
+  <div class="row"><button class="primary" id="a_go" onclick="startPipeline()" style="font-size:17px;padding:14px 26px">🚀 대본부터 영상까지 자동 실행</button><button class="mini hidden" id="a_cancel" onclick="api('/api/cancel',{})">현재 작업 취소</button>
   <span class="hint">끝나면 아래 진행 칸에 결과 폴더가 나옵니다 (사람의 이유 30~60분 · 민담 1~2시간)</span></div></div></div>
-  <div class="gonext" style="margin-top:14px"><b>이미 만든 대본이 있으면 →</b>
+  <details class="advanced-options"><summary>이미 만든 대본 이어서 만들기 또는 삭제</summary><div class="advanced-options-body"><div class="gonext"><b>이미 만든 대본이 있으면 →</b>
     <select id="c_file" style="min-width:380px"></select>
     <button class="primary" onclick="continuePipeline($('c_file').value)">🎬 이 대본으로 나레이션 → 이미지 → 영상까지 이어서 만들기</button>
     <button class="danger" onclick="deleteSelectedScript('c_file')">🗑 대본·영상·이미지 전체 삭제</button>
-    <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div>
+    <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div></div></details>
 </div>
 
 <div class="card main-section" id="queueCard">
   <h2>📚 연속 제작 대기열 <small>선택한 주제를 한 편씩 끝까지 만든 뒤 다음 주제로 넘어갑니다</small></h2>
-  <div class="row"><button class="primary" onclick="startSelectedQueue()">▶ 선택한 주제 연속 제작</button><button onclick="queueControl('pause')">현재 편 완료 후 일시정지</button><button onclick="queueControl('resume')">계속 제작</button><button class="danger" onclick="queueControl('cancel')">전체 중단</button><span id="queue_summary" class="hint">대기열 없음</span></div>
+  <div class="row"><button class="primary" onclick="startSelectedQueue()">▶ 선택한 주제 연속 제작</button><span class="hidden row" id="queue_manage"><button onclick="queueControl('pause')">일시정지</button><button onclick="queueControl('resume')">계속</button><button class="danger" onclick="queueControl('cancel')">전체 중단</button></span><span id="queue_summary" class="hint">대기열 없음</span></div>
   <div id="queue_list" style="margin-top:10px"></div>
 </div>
 
@@ -1569,14 +1573,14 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <li>크롬에서 <code>https://chat.deepseek.com</code> 을 열고 로그인 (탭을 닫지 않고 둡니다 — 최소화는 괜찮음)</li>
     <li>여기 AI 를 <b>deepseek-web</b> 으로 저장. 아래 상태가 "확장 연결됨"이면 끝. 대본을 만들면 그 탭에서 자동으로 새 대화 → 지침+요청 입력 → 답변 수집을 반복합니다.</li>
     <li>딥시크 웹은 한 번에 쓸 수 있는 답변 길이가 API 보다 짧을 수 있어, 글자수를 5,000자 단위로 나눠 요청합니다. 서버 혼잡 시 자동 재시도.</li></ol></details>
-  <h2 style="margin-top:14px">드롭샷 이미지 생성 좌표 <small>입력창 → 생성 버튼 → 다운로드 버튼 순서로 잡으세요</small></h2>
+  <h2 style="margin-top:14px">드롭샷 자동 탐색 <small>입력창·생성하기·다운로드 버튼을 프로그램이 알아서 찾습니다</small></h2>
   <div class="row"><button type="button" class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board', '_blank', 'noopener')">↗ 드롭샷 AI 열기</button></div>
   <div class="row"><b>좌표 잡기 순서</b><span class="xy-countdown" id="xy_countdown">6 → 5 → 4 → 3 → 2 → 1</span></div>
   <p class="hint">[6초 좌표]를 누르면 위 숫자가 6부터 1까지 줄어듭니다. 1이 끝날 때까지 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 잡힌 좌표는 자동 저장됩니다.</p>
   <div class="row"><label>드롭샷 창 제목 <input type="text" id="s_window_keyword" value="드롭샷" style="width:150px"></label><button class="mini" onclick="saveEditorXY()">제목·좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
-  <div class="row"><b style="min-width:130px">프롬프트 입력창</b><label>X <input type="number" id="s_prompt_x" style="width:90px"></label><label>Y <input type="number" id="s_prompt_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('prompt')">6초 좌표</button><button class="mini" onclick="testEditorXY('prompt')">테스트</button></div>
+  <div class="row"><b style="min-width:130px">프롬프트 입력창</b><span class="pill">자동으로 찾음</span><label>예비 X <input type="number" id="s_prompt_x" style="width:90px"></label><label>예비 Y <input type="number" id="s_prompt_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('prompt')">예비 좌표 잡기</button></div>
   <div class="row"><b style="min-width:130px">생성하기 버튼</b><span class="pill">자동으로 찾음</span><label>예비 X <input type="number" id="s_generate_x" style="width:90px"></label><label>예비 Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini primary" onclick="detectGenerateButton()">지금 자동 찾기</button><button class="mini" onclick="captureEditorXY('generate')">예비 좌표 잡기</button></div>
-  <div class="row"><b style="min-width:130px">다운로드 버튼</b><label>X <input type="number" id="s_download_x" style="width:90px"></label><label>Y <input type="number" id="s_download_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('download')">6초 좌표</button><button class="mini" onclick="testEditorXY('download')">테스트</button></div>
+  <div class="row"><b style="min-width:130px">다운로드 버튼</b><span class="pill">자동으로 찾음</span><label>예비 X <input type="number" id="s_download_x" style="width:90px"></label><label>예비 Y <input type="number" id="s_download_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('download')">예비 좌표 잡기</button></div>
   <p class="hint" id="s_xy_status">저장된 좌표를 읽는 중…</p>
   <h2 style="margin-top:14px">인월드(Inworld) 목소리 <small>채널마다 다른 목소리로 저장됩니다</small></h2>
   <div class="row"><label>모델 <select id="s_inworld_model"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>
@@ -1667,8 +1671,8 @@ async function checkReady(){
     if(info.config.AI==='deepseek-web') items.push([!!info.web_alive, info.web_alive?'딥시크 웹 연결 ✓':'딥시크 창 안 보임 (chat.deepseek.com 열기)', 'settings']);
     else items.push([!!info.config.키있음, info.config.키있음?(info.config.AI+' 키 ✓'):(info.config.AI+' 키 없음'), 'settings']);
   }catch(e){}
-  try{ const r=await fetch('http://127.0.0.1:8765/api/info'); const j=await r.json(); const xy=((j.config||{}).gen_ui||{}).XY||{}; const ok=!!(xy.prompt&&xy.download);
-    items.push([ok, ok?'드롭샷 준비 ✓ · 생성 버튼 자동 탐색':'드롭샷 입력·다운로드 좌표 없음', 'settings']); }
+  try{ const r=await fetch('http://127.0.0.1:8765/api/info'); await r.json(); const ok=r.ok;
+    items.push([ok, ok?'드롭샷 버튼 3개 자동 탐색 ✓':'드롭샷 자동 탐색 준비 안 됨', 'settings']); }
   catch(e){ items.push([false,'편집프로그램(8765) 꺼짐 — 유튜브_자동화_시작.bat 다시 실행', null]); }
   const markup='<span class="hint" style="align-self:center">준비 상태:</span>'+items.map(([ok,label,tab])=>`<button type="button" class="${ok?'ok':'bad'}" ${tab&&!ok?`onclick="goTab('${tab}')"`:''}>${ok?'🟢':'🔴'} ${esc(label)}${(!ok&&tab)?' → 고치기':''}</button>`).join('');
   box.innerHTML=markup; $('setupReady').innerHTML=markup;
@@ -1678,6 +1682,7 @@ setTimeout(checkReady,800); setInterval(checkReady,15000);
 function fill(sel,items,val){sel.innerHTML=items.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');if(val&&items.includes(val))sel.value=val;}
 async function refresh(){
   STATE=await api('/api/state');
+  renderOverview(STATE.job);
   const g=STATE.guidelines;
   fill($('p_guide'),g.script,'사람의이유_대본지침.txt');
   fill($('m_guide'),g.mindam,'01_기획_지침.txt');
@@ -1778,6 +1783,7 @@ async function queueControl(action){
 async function removeQueueItem(id){try{renderQueue(await api('/api/queue/remove',{id}));}catch(e){toast(e.message,true);}}
 function renderQueue(q){
   if(!q)return;const items=q.items||[],done=items.filter(x=>x.status==='done').length,failed=items.filter(x=>x.status==='error').length;
+  $('queue_manage').classList.toggle('hidden',!items.length);
   $('queue_summary').textContent=`상태: ${q.status_text||'대기 없음'} · 전체 ${items.length}편 · 완료 ${done}편 · 실패 ${failed}편`;
   $('queue_list').innerHTML=items.length?items.map((x,i)=>`<div class="row" style="border-top:1px solid var(--line);padding:8px 0"><b style="min-width:42px">${i+1}편</b><span style="flex:1">${esc(x.title)}</span><span class="hint" style="min-width:120px">${esc(x.status_text||'대기 중')} · ${esc(x.stage||'')}</span>${x.status==='working'?`<progress max="1" value="${x.progress||0}" style="width:120px"></progress>`:''}${x.result&&x.result.assets?`<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>`:''}${x.status==='pending'?`<button class="mini" onclick="removeQueueItem('${x.id}')">목록에서 빼기</button>`:''}${x.error?`<small style="color:var(--warn)">${esc(x.error)}</small>`:''}</div>`).join(''):'<span class="hint">대기열이 없습니다. 주제 목록에서 여러 개를 체크하세요.</span>';
 }
@@ -1869,7 +1875,7 @@ function renderStyles(list,cur){
 function pickStyle(v,silent){$('a_style').value=v;$('i_style').value=v;document.querySelectorAll('.styles button').forEach(b=>b.classList.toggle('on',b.dataset.val===v));if(!silent){api('/api/config',{화풍:v}).catch(()=>{});toast('화풍: '+v);}}
 // ── 사람의 이유 길이 버튼 (분당 글자수 × 분)
 function renderLenButtons(cpm){
-  document.querySelectorAll('.lenbtns').forEach(sp=>{const id=sp.dataset.for;sp.innerHTML=[1,20,25,30].map(m=>`<button type="button" data-min="${m}" onclick="setLen('${id}',${m})">${m}분${m===1?' (테스트)':''}</button>`).join('');});
+  document.querySelectorAll('.lenbtns').forEach(sp=>{const id=sp.dataset.for;sp.innerHTML=[20,25,30].map(m=>`<button type="button" data-min="${m}" onclick="setLen('${id}',${m})">${m}분</button>`).join('');});
   window._cpm=cpm;
 }
 async function saveTelegramToken(){const token=$('tg_token').value.trim();if(!token)return toast('BotFather에서 받은 봇 토큰을 입력하세요.',true);await api('/api/config',{텔레그램_봇_토큰:token});$('tg_token').value='';toast('텔레그램 봇 토큰을 저장했습니다. 이제 봇에게 메시지를 보내고 채팅 자동 찾기를 누르세요.');refresh();}
@@ -1925,6 +1931,16 @@ function startPolling(){clearInterval(pollTimer);$('progressCard').classList.rem
 const PIPE_STEPS=['① 대본','② 이미지 프롬프트','③ 나레이션','④ 이미지 자동 생성','⑤ 후킹 영상',"⑤' 썸네일",'⑥ 최종 렌더','완료'];
 // 단계 → (결과 키, 여는 방법). 클릭하면 그 단계가 만든 파일/폴더를 연다
 const STEP_OUT=[['script','file'],['prompts','file'],['narration','folder'],['images','folder'],['hook','folder'],['thumbnails','folder'],['video','folder'],['assets','folder']];
+function renderOverview(job){
+  const steps=[...document.querySelectorAll('#pipeline_overview .pipeline-step')];if(!steps.length)return;
+  steps.forEach(x=>{x.classList.remove('now','done');x.querySelector('small').textContent='대기';});
+  if(!job||job.status==='none')return;
+  const r=job.result||{},done={script:!!(r.script||r.file),prompt:!!r.prompts,image:!!r.images,motion:!!r.hook,audio:!!(r.narration||r.mp3),render:!!r.video};
+  for(const x of steps)if(done[x.dataset.stage]){x.classList.add('done');x.querySelector('small').textContent='완료';}
+  const s=String(job.stage||'');let current=s.includes('최종')?'render':s.includes('후킹')?'motion':s.includes('이미지 자동')?'image':s.includes('나레이션')?'audio':s.includes('프롬프트')?'prompt':s.includes('대본')?'script':'';
+  if(job.status==='done')steps.forEach(x=>{x.classList.add('done');x.classList.remove('now');x.querySelector('small').textContent='완료';});
+  else if(current){const x=steps.find(v=>v.dataset.stage===current);if(x){x.classList.add('now');x.querySelector('small').textContent='진행 중';}}
+}
 function stageIndex(st){
   st=st||''; const m=st.match(/^([①②③④⑤⑥]'?)/); if(m) return PIPE_STEPS.findIndex(s=>s.startsWith(m[1]));
   if(/최종 렌더|렌더링/.test(st)) return 6; if(/썸네일/.test(st)) return 5; if(/후킹/.test(st)) return 4; if(/이미지 생성/.test(st)) return 3;
@@ -1982,8 +1998,7 @@ async function updateGallery(j){
 async function genBodyFromUI(){
   const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json()); const ui=(info.config||{}).gen_ui||{}; const XY=ui.XY||{};
   if(!galDir)throw new Error('대본을 먼저 고르세요'); if(!galPromptsPath)throw new Error('이미지 프롬프트 파일이 없습니다. 먼저 이미지 프롬프트를 만드세요.');
-  if(!XY.prompt||!XY.download)throw new Error('좌표(프롬프트 입력창·다운로드)가 없습니다 → [🖼 이미지 생성·좌표]에서 잡으세요');
-  return {prompts_file:galPromptsPath,output_dir:galDir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt,generate_xy:XY.generate||XY.prompt,download_xy:XY.download,
+  return {prompts_file:galPromptsPath,output_dir:galDir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt||[0,0],generate_xy:XY.generate||[0,0],download_xy:XY.download||[0,0],
     wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:0.5,start_no:1,end_no:0,skip_existing:true,
     style_prefix:(STATE.style_prefixes||{})[$('a_style').value]||ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷',auto_generate:ui.auto_generate!==false};
 }
@@ -2117,7 +2132,7 @@ async function regenScene(no){
     const info=await fetch('http://127.0.0.1:8765/api/info').then(r=>r.json()); const ui=(info.config||{}).gen_ui||{}; const XY=ui.XY||{}; const j=STATE.job||(await api('/api/job'));
     const dir=galDir, prompts=galPromptsPath;
     if(!prompts)throw new Error('이미지 프롬프트 파일이 없습니다. 먼저 이미지 프롬프트를 만드세요.');
-    const body={scene:no,prompts_file:prompts,output_dir:dir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt,generate_xy:XY.generate,download_xy:XY.download,
+    const body={scene:no,prompts_file:prompts,output_dir:dir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt||[0,0],generate_xy:XY.generate||[0,0],download_xy:XY.download||[0,0],
       wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:0.5,start_no:no,end_no:no,skip_existing:false,style_prefix:(STATE.style_prefixes||{})[$('a_style').value]||ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷'};
     const r=await fetch('http://127.0.0.1:8765/api/gen/regen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const jj=await r.json(); if(!r.ok)throw new Error(jj.detail||r.statusText);
     toast(String(no).padStart(3,'0')+'번 다시 생성 시작'); galKey='';
@@ -2126,6 +2141,8 @@ async function regenScene(no){
 function openStep(path,how){ if(how==='file') showFile(path); else openPath(path); }
 async function poll(){
   const j=await api('/api/job');if(!j||j.status==='none')return; STATE.job=j;
+  renderOverview(j);
+  $('a_cancel').classList.toggle('hidden',j.status!=='running');
   $('pg_kind').textContent=({script:'사람의 이유 대본',mindam:'민담 대본',images:'이미지 프롬프트',variations:'주제 변형',optimize:'알고리즘 최적화',tts:'나레이션',pipeline:'🚀 한 편 자동 제작',queue_pipeline:'📚 연속 제작 중',thumbnail:'썸네일'}[j.kind]||'작업 중')+' · '+j.started+' 시작'+(j.stage?' · '+j.stage:'');
   const log=$('pg_log');const txt=j.log.join('\n')+(j.partial?'\n'+j.partial:'');if(log.textContent!==txt){log.textContent=txt;if($('pg_follow').checked)log.scrollTop=log.scrollHeight;}
   $('pg_lines').textContent=j.log.length+'줄';$('pg_stage').textContent=j.stage?('지금: '+j.stage):'';

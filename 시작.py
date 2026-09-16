@@ -15,7 +15,7 @@ PACKAGES = {
     "yt_dlp": "yt-dlp", "openai": "openai", "ddgs": "ddgs",
     "anthropic": "anthropic", "requests": "requests", "fastapi": "fastapi",
     "uvicorn": "uvicorn", "PIL": "pillow", "pyautogui": "pyautogui",
-    "pyperclip": "pyperclip",
+    "pyperclip": "pyperclip", "pywinauto": "pywinauto",
 }
 
 
@@ -92,6 +92,8 @@ def main():
             apply_editor_render_guard(editor)
             from 편집프로그램_AI표시_연결 import apply as apply_editor_ai_notice
             apply_editor_ai_notice(editor)
+            from 편집프로그램_드롭샷자동좌표_연결 import apply as apply_dropshot_autoxy
+            apply_dropshot_autoxy(editor)
         except (OSError, ValueError) as exc:
             print("편집프로그램 연결 설정을 확인하세요:", exc)
     if editor and not ready(8765):
