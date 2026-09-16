@@ -18,3 +18,8 @@ __pycache__/
 *.pyc
 .claude/
 지침/민담/최근_사용_이름.txt
+
+# Preview server output and sample videos.
+server.out.log
+server.err.log
+*.mp4
