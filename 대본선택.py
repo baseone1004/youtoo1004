@@ -1457,7 +1457,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <button data-nav="person" onclick="goTab('person')"><span class="nav-icon">💡</span><span class="nav-label">주제 고르기</span></button>
   <button data-nav="work" onclick="goTab('work')"><span class="nav-icon">📝</span><span class="nav-label">완성 자료</span></button>
   <button data-nav="gallery" onclick="goTab('gallery')"><span class="nav-icon">🖼</span><span class="nav-label">이미지</span></button>
-  <button data-nav="video" onclick="goTab('video')"><span class="nav-icon">🎬</span><span class="nav-label">영상 편집</span></button>
+  <button data-nav="video" onclick="goTab('video')"><span class="nav-icon">🎬</span><span class="nav-label">영상·자막 설정</span></button>
   <div class="studio-divider"></div>
   <button data-nav="reset" onclick="goTab('reset')"><span class="nav-icon">🗑</span><span class="nav-label">삭제·초기화</span></button>
   <button data-nav="settings" onclick="goTab('settings')"><span class="nav-icon">⚙</span><span class="nav-label">설정</span></button>
@@ -1488,9 +1488,9 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   </div></div></div>
   <div class="stepline"><span class="no">2</span><div><b>주제</b> <span class="hint">직접 적거나, 위 [2 주제 고르기]에서 클릭하면 여기로 들어옵니다</span>
   <div class="row" style="margin-top:6px"><textarea id="a_title" rows="2" placeholder="예) 나이 들수록 친구가 줄어드는 진짜 이유"></textarea><button class="primary" onclick="pickAnotherTopic()">🎲 다른 주제</button><button class="mini" onclick="goTab(pipelineTopic()==='mindam'?'mindam':'person')">목록 열기</button></div></div></div>
-  <details class="advanced-options"><summary>선택 설정 · 그림체와 민담 영상 길이 바꾸기</summary><div class="advanced-options-body"><div class="stepline"><span class="no">3</span><div><b>그림체</b> <span class="hint">클릭하면 저장됩니다</span>
+  <div class="stepline"><span class="no">3</span><div><b>그림체 선택</b> <span class="hint">애니·파스텔·실사 중 원하는 그림체를 누르면 바로 저장됩니다</span>
   <div class="row" style="margin-top:6px"><input type="hidden" id="a_style"><div class="styles" id="a_styles"></div></div>
-  <div class="row"><label>민담 길이 <select id="a_length"></select></label></div></div></div></div></details>
+  <div class="row"><label>민담 영상 길이 <select id="a_length"></select></label></div></div></div>
   <div class="stepline"><span class="no">4</span><div>
   <div class="row"><button class="primary" id="a_go" onclick="startPipeline()" style="font-size:17px;padding:14px 26px">🚀 대본부터 영상까지 자동 실행</button><button class="mini hidden" id="a_cancel" onclick="api('/api/cancel',{})">현재 작업 취소</button>
   <span class="hint">끝나면 아래 진행 칸에 결과 폴더가 나옵니다 (사람의 이유 30~60분 · 민담 1~2시간)</span></div></div></div>
@@ -1623,8 +1623,8 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
 
 <!-- 영상 만들기 (편집프로그램 8765 를 안에 띄움) -->
 <div class="card main-section advanced-section" id="tab-video" style="padding:0;overflow:hidden">
-  <div id="video_source_status" class="gonext" style="margin:12px">편집할 대본을 확인하는 중…</div>
-  <div class="row" style="margin:0 12px 12px"><button class="primary" onclick="prepareVideoEditor()">🎬 선택한 대본 편집기 불러오기</button><button class="danger" onclick="deleteCurrentCompletedWork()">🗑 현재 완료 작업 전체 삭제</button><span class="hint">대본·이미지·KIE 영상·음성·자막·최종 영상을 한 번에 _휴지통으로 옮깁니다.</span></div>
+  <div id="video_source_status" class="gonext" style="margin:12px">아래에서 자막 글꼴·크기·굵기·색상과 영상 설정을 바로 바꿀 수 있습니다.</div>
+  <div class="row" style="margin:0 12px 12px"><button class="primary" onclick="prepareVideoEditor()">🎬 선택한 대본 연결·새로고침</button><button class="danger" onclick="deleteCurrentCompletedWork()">🗑 현재 완료 작업 전체 삭제</button><span class="hint">자막 설정은 대본이 없어도 저장할 수 있습니다.</span></div>
   <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:950px;border:0;background:#fff"></iframe>
 </div>
 <div class="card main-section" id="tab-reset">
@@ -1737,8 +1737,8 @@ function goTab(name){
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
 async function prepareVideoEditor(){
   const fr=$('fr_video'),status=$('video_source_status'),script=$('g_file').value||$('c_file').value;
-  fr.src='about:blank';
-  if(!script){status.textContent='편집할 대본이 없습니다. [이미지 확인·재생성]에서 대본을 먼저 선택하세요.';return;}
+  fr.src=fr.dataset.src+'?settings='+Date.now();
+  if(!script){status.textContent='자막 글꼴·크기·굵기·색상을 설정할 수 있습니다. 완성 대본을 선택하면 이미지·음성·자막 경로도 자동 연결됩니다.';return;}
   status.textContent='선택한 대본의 나레이션·자막·이미지를 연결하는 중…';
   try{
     const a=await api('/api/assets?script='+encodeURIComponent(script));
