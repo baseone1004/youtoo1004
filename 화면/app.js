@@ -19,8 +19,22 @@ let guideEditing = '';
 async function api(p, body, method) {
   const r = await fetch(p, {method: method || (body ? 'POST' : 'GET'), headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   const j = await r.json().catch(() => ({}));
+  if (r.status === 404 && p.startsWith('/api/')) { $('restartBtn').classList.remove('hidden'); throw new Error('프로그램이 예전 코드로 실행 중입니다. 위의 [🔁 다시 시작]을 눌러 주세요.'); }
   if (!r.ok) throw new Error(j.detail || r.statusText);
   return j;
+}
+// 코드가 바뀌었는지 확인해 [다시 시작] 버튼을 보여 준다
+async function checkVersion() {
+  try { const v = await api('/api/version'); $('restartBtn').classList.toggle('hidden', v.version === v.current); } catch (e) {}
+}
+async function restartProgram() {
+  if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업이 끝난 뒤 다시 시작하세요.', true);
+  if (!confirm('프로그램을 다시 시작할까요? (5초 정도 걸립니다)')) return;
+  try { await api('/api/restart', {}); } catch (e) { return toast(e.message, true); }
+  toast('다시 시작하는 중…');
+  await new Promise(r => setTimeout(r, 2500));
+  for (let i = 0; i < 30; i++) { try { const r = await fetch('/api/version', {cache: 'no-store'}); if (r.ok) { location.reload(); return; } } catch (e) {} await new Promise(r => setTimeout(r, 1000)); }
+  toast('다시 시작이 확인되지 않습니다. 유튜브_자동화_시작 파일로 실행해 주세요.', true);
 }
 async function post8765(path, body) {
   const r = await fetch(EDITOR + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
@@ -736,7 +750,12 @@ async function loadAnalysis(ch) {
 }
 async function saveYtKey() {
   const v = $('ytKey').value.trim(); if (!v) return toast('API 키를 입력하세요.', true);
-  try { await api('/api/config', {유튜브_API_키: v}); $('ytKey').value = ''; toast('유튜브 API 키 저장. 채널을 다시 읽어 옵니다…'); await refresh(); pollChannel('person'); pollChannel('mindam'); } catch (e) { toast(e.message, true); }
+  try { await api('/api/config', {유튜브_API_키: v}); $('ytKey').value = ''; toast('유튜브 API 키 저장. 연결을 확인합니다…'); await refresh(); await testYtKey(); pollChannel('person'); pollChannel('mindam'); } catch (e) { toast(e.message, true); }
+}
+async function testYtKey() {
+  const st = $('ytKeyStat'), info = $('ytKeyInfo'); info.textContent = '연결 확인 중…';
+  try { const r = await api('/api/youtube/test', {}); st.textContent = '연결됨'; st.className = 'stat ok'; info.textContent = `✓ 구글 API 정상 · ${r.name} · 구독자 ${fmtN(r.subs)}`; toast('유튜브 API 연결 확인 완료'); }
+  catch (e) { st.textContent = '연결 실패'; st.className = 'stat bad'; info.textContent = e.message; toast('유튜브 API 연결 실패: ' + e.message, true); }
 }
 
 // ── 내 유튜브 채널 연동 ───────────────────────────────────
@@ -833,6 +852,6 @@ async function detectGenerateButton() {
   $('customTitle').addEventListener('input', renderSelection);
   for (const ch of ['person', 'mindam']) { const info = (STATE && STATE.channels || {})[ch] || {}; if (info.url && (info.busy || (!info.fetched && !info.error))) pollChannel(ch); }
   if (busy) startPolling(false);
-  setInterval(refreshQueue, 3000); setInterval(checkReady, 20000); setInterval(() => refreshGallery(false), 4000);
+  setInterval(refreshQueue, 3000); setInterval(checkReady, 20000); checkVersion(); setInterval(checkVersion, 30000); setInterval(() => refreshGallery(false), 4000);
   refreshGallery(true);
 })();

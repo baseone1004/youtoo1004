@@ -22,11 +22,13 @@ import 나레이션
 import 웹큐
 import 채널_연동
 import 주제_추천
+import 유튜브_API
 import 썸네일_합성
 import requests as _rq
 from 제작대기열 import QueueStore, recent_chats, send_telegram
 
-PORT = 8766
+PORT = int(os.environ.get("SCRIPT_UI_PORT") or 8766)      # 확인용으로 다른 포트에서 띄울 때만 바꾼다
+VERSION = str(int(os.path.getmtime(os.path.abspath(__file__))))      # 파일이 바뀌면 값이 달라진다 → 화면이 "다시 시작 필요"를 안다
 지침_폴더 = "지침"
 대본_폴더 = "대본"
 ADDR = f"http://127.0.0.1:{PORT}"
@@ -59,6 +61,20 @@ STATE = {"job": None}
 LOCK = threading.Lock()
 QUEUE = QueueStore(os.path.join(대본_폴더, "_상태", "제작대기열.json"))
 QUEUE_THREAD = None
+
+
+def restart_program(server):
+    """같은 명령으로 새 프로세스를 띄우고 이 서버는 내린다 (코드를 고친 뒤 화면의 [다시 시작] 버튼)."""
+    time.sleep(0.5)
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
+    log = open(os.path.join(BASE, "로그_대본선택.txt"), "a", encoding="utf-8")
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--no-browser", "--wait-port"], cwd=BASE, env=env,
+                     stdout=log, stderr=subprocess.STDOUT, creationflags=flags, close_fds=True)
+    try:
+        server.shutdown()
+    finally:
+        os._exit(0)
 
 
 def shutdown_program(server):
@@ -1456,6 +1472,8 @@ class H(BaseHTTPRequestHandler):
                                 channels=채널_연동.status(cfg)))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
+            elif u.path == "/api/version":
+                self._json(dict(version=VERSION, current=str(int(os.path.getmtime(os.path.abspath(__file__))))))
             elif u.path == "/api/images":
                 self._json(dict(images=list_images(q.get("dir", [""])[0])))
             elif u.path == "/api/image":
@@ -1571,6 +1589,19 @@ class H(BaseHTTPRequestHandler):
                 if j and j.status == "running":
                     j.cancel_requested = True
                 self._json({"ok": True})
+            elif u.path == "/api/restart":
+                if STATE["job"] and STATE["job"].status == "running":
+                    raise ValueError("진행 중인 작업이 끝난 뒤 다시 시작하세요.")
+                self._json({"ok": True})
+                threading.Thread(target=restart_program, args=(self.server,), daemon=True).start()
+            elif u.path == "/api/youtube/test":
+                cfg = load_json("설정.json", {})
+                key = str(cfg.get("유튜브_API_키", "") or "").strip()
+                if not key:
+                    raise ValueError("유튜브 API 키가 저장돼 있지 않습니다.")
+                url = 채널_연동.channel_url(cfg, "person") or 채널_연동.channel_url(cfg, "mindam") or "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+                info = 유튜브_API.fetch_channel(key, url, 5)
+                self._json(dict(ok=True, name=info["name"], subs=info["subs"], sample=len(info["videos"])))
             elif u.path == "/api/shutdown":
                 self._json({"ok": True})
                 threading.Thread(target=shutdown_program, args=(self.server,), daemon=True).start()
@@ -1690,6 +1721,12 @@ def static_file(name):
 
 
 def main():
+    if "--wait-port" in sys.argv:                    # 이전 프로세스가 포트를 놓을 때까지 최대 10초
+        for _ in range(40):
+            try:
+                ThreadingHTTPServer(("127.0.0.1", PORT), H).server_close(); break
+            except OSError:
+                time.sleep(0.25)
     cfg = load_json("설정.json", {})
     for ch in 채널_연동.CONFIG_KEY:
         채널_연동.fetch_in_background(cfg, ch)      # 내 채널 제목을 미리 받아 둔다 (없거나 오래됐을 때만)

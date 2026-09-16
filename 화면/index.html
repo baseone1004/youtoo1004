@@ -11,6 +11,7 @@
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
     <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
+    <button class="hidden" id="restartBtn" onclick="restartProgram()" style="color:var(--amber)">🔁 다시 시작</button>
     <button class="quit" onclick="exitProgram()">종료</button>
   </nav>
 </div></header>
@@ -237,9 +238,9 @@
     <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px"></p>
     <div class="keyrow"><b>민담·야담</b><span class="stat" id="chStatM"></span><input type="text" id="chUrlM" placeholder="민담 채널 주소 (없으면 비워 두세요)"><button class="mini primary" onclick="saveChannel('mindam')">저장</button><button class="mini" onclick="refreshChannel('mindam')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoM" style="margin:-2px 0 0 120px"></p>
-    <h3>유튜브 API 키 <span class="stat" id="ytKeyStat"></span></h3>
+    <h3>유튜브 API 키 <span class="stat" id="ytKeyStat"></span><span class="hint" id="ytKeyInfo"></span></h3>
     <p class="hint">넣으면 조회수·좋아요·게시일까지 정확히 읽어 채널 분석에 씁니다 (없으면 제목만 읽음). 발급: console.cloud.google.com → 프로젝트 만들기 → <b>YouTube Data API v3</b> 사용 설정 → 사용자 인증 정보 → API 키 만들기. 무료입니다.</p>
-    <div class="keyrow"><b>API 키</b><input type="password" id="ytKey" placeholder="AIza…"><button class="mini primary" onclick="saveYtKey()">저장</button><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener" class="mini" style="font-size:13px">↗ 발급 페이지</a></div>
+    <div class="keyrow"><b>API 키</b><input type="password" id="ytKey" placeholder="AIza…"><button class="mini primary" onclick="saveYtKey()">저장</button><button class="mini" onclick="testYtKey()">연결 확인</button><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener" class="mini" style="font-size:13px">↗ 발급 페이지</a></div>
     <h3>내 채널 분석 <span class="hint">채널을 읽을 때마다 자동 갱신</span></h3>
     <div class="row"><div class="seg"><button data-ach="person" class="on" onclick="loadAnalysis('person')">사람의 이유</button><button data-ach="mindam" onclick="loadAnalysis('mindam')">민담·야담</button></div><button class="mini" onclick="loadAnalysis()">다시 계산</button></div>
     <div id="chAnalysis" class="hint">채널을 연동하면 여기에 분석이 나옵니다.</div>
