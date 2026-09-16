@@ -846,7 +846,7 @@ def parse_thumb_copies(opt_text):
     """유튜브_최적화.txt 의 [썸네일 문구] → [(상단, 하단, 이미지지시)]"""
     out = []
     for line in 민담_대본.block_of(opt_text, "썸네일 문구").splitlines():
-        m = re.match(r"\s*\d+\s*[.)]\s*상단\s*[:：]\s*(.+?)\s*/\s*하단\s*[:：]\s*(.+?)(?:\s*/\s*이미지\s*[:：]\s*(.+))?\s*$", line)
+        m = re.match(r"\s*(?:\d+\s*[.)]\s*)?상단\s*[:：]\s*(.+?)\s*/\s*하단\s*[:：]\s*(.+?)(?:\s*/\s*이미지\s*[:：]\s*(.+))?\s*$", line)
         if m:
             out.append((m.group(1).strip(), m.group(2).strip(), (m.group(3) or "").strip()))
     return out
@@ -937,10 +937,10 @@ def make_thumbnails(job, req):
         top, bottom, _ = copies[(i - 1) % len(copies)]
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
         aip("/api/thumbnail/compose", dict(image=os.path.join(raw_dir, cands[0]), out=out, top=top, bottom=bottom,
-                                            font="Malgun Gothic Bold",
+                                            font="Black Han Sans",
                                             top_color="#FF3B30" if is_mindam else "#FFE45C",
                                             bottom_color="#63FF66" if is_mindam else "#FF3B30",
-                                            position=position, size=106, box=True))
+                                            position=position, size=106, box=False))
         outs.append(out)
         job.add(f"   ✓ {out}  ({top} / {bottom})")
     job.add("비용: " + ai.cost_text())

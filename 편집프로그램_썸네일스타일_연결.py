@@ -4,7 +4,15 @@ from pathlib import Path
 
 
 def apply(editor_dir):
-    target = Path(editor_dir) / "core" / "thumbnail.py"
+    editor = Path(editor_dir)
+    bundled_font = Path(__file__).with_name("assets") / "fonts" / "BlackHanSans-Regular.ttf"
+    font_target = editor / "user_fonts" / "BlackHanSans-Regular.ttf"
+    font_target.parent.mkdir(parents=True, exist_ok=True)
+    font_changed = False
+    if bundled_font.is_file() and (not font_target.is_file() or font_target.read_bytes() != bundled_font.read_bytes()):
+        font_target.write_bytes(bundled_font.read_bytes())
+        font_changed = True
+    target = editor / "core" / "thumbnail.py"
     source = target.read_text(encoding="utf-8")
     original = source
     anchor = "def font_file(name: str) -> str:\n"
@@ -21,6 +29,10 @@ def apply(editor_dir):
         if anchor not in source:
             raise ValueError("썸네일 글꼴 연결 위치를 찾지 못했습니다.")
         source = source.replace(anchor, custom, 1)
+    if 'if (name or "").lower() == "black han sans":' not in source:
+        source = source.replace(anchor, anchor + '    if (name or "").lower() == "black han sans":\n'
+                                '        custom = Path(__file__).resolve().parents[1] / "user_fonts" / "BlackHanSans-Regular.ttf"\n'
+                                '        if custom.is_file():\n            return str(custom)\n', 1)
     if 'if (name or "").lower() == "malgun gothic bold":' not in source:
         source = source.replace(anchor, anchor + '    if (name or "").lower() == "malgun gothic bold":\n        return r"C:\\Windows\\Fonts\\malgunbd.ttf"\n', 1)
     source = source.replace("    gap = 12\n", "    gap = 30\n", 1)
@@ -91,4 +103,4 @@ def _thumbnail_lines(top: str, bottom: str) -> list[str]:
     if source != original:
         target.write_text(source, encoding="utf-8")
         return True
-    return False
+    return font_changed
