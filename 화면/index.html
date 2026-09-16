@@ -41,6 +41,7 @@
   <div class="row" style="margin-top:10px"><span class="tag-lbl">그림체</span><div class="quick-styles" id="quickStyles"></div><button class="mini ghost" onclick="$('styleBox').classList.toggle('hidden')">그림체 더 보기</button></div>
   <div id="styleBox" class="hidden"></div>
   <div class="qlist" id="queueList"></div>
+  <div class="row hidden" id="topThumbsRow" style="align-items:flex-start"><span class="tag-lbl">썸네일</span><div class="gal thumbs" id="topThumbs" style="flex:1;margin-top:0"></div></div>
   <div id="pgResult" class="result hidden"></div>
   <div id="pgErr" class="banner err hidden"></div>
   <div id="pgPreview" class="preview hidden"></div>
@@ -139,9 +140,9 @@
   <div class="panel-head"><span class="num n6">6</span><b>최종 편집</b><span class="stat" data-stage-stat="render">대기</span><span class="spacer"></span><button class="mini" onclick="openWork('video')">🎬 최종 영상 열기</button><button class="mini" onclick="openWork('assets')">📁 결과 폴더</button></div>
   <div class="mini-bar"><i data-stage-bar="render"></i></div>
   <div class="inner">
-    <div class="hint" style="margin-bottom:6px">썸네일</div>
+    <div class="row" style="margin:0 0 6px"><b>썸네일</b><span class="hint" id="thumbNote"></span></div>
     <div id="workThumbs" class="gal thumbs"></div>
-    <div class="row"><button onclick="makeWorkspaceThumbnails()">🖼 썸네일 3장 다시 만들기</button><button class="mini" onclick="openWork('thumbs')">썸네일 폴더 열기</button></div>
+    <div class="row"><button class="primary" id="composeBtn" onclick="composeThumbnails()">✍ 원본에 문구 넣어 완성하기</button><button onclick="makeWorkspaceThumbnails()">🖼 새 이미지로 3장 다시 만들기</button><button class="mini" onclick="openWork('thumbs')">썸네일 폴더 열기</button></div>
     <details class="box soft" id="adv-video" style="margin-top:12px"><summary>영상·자막 설정 (글꼴·크기·색상) — 편집프로그램 화면</summary><div>
       <div id="videoStatus" class="banner info">대본을 고르지 않아도 자막 설정은 저장할 수 있습니다.</div>
       <div class="row"><button class="primary" onclick="prepareVideoEditor()">🎬 보고 있는 작업 연결·새로고침</button></div>

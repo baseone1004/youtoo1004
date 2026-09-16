@@ -684,13 +684,14 @@ def workspace_data(script_file):
     saved = load_json(os.path.join(assets, "업로드_정보.json"), {})
     thumb_dir = os.path.join(assets, "썸네일")
     thumbnails = [os.path.abspath(p) for p in sorted(glob.glob(os.path.join(thumb_dir, "썸네일_*.jpg")))]
+    thumbnail_raw = [v for _, v in sorted(raw_thumbnails(thumb_dir).items())]
     title = saved.get("title") or _block(script_text, "제목")
     return dict(script_file=os.path.abspath(script_file), assets=os.path.abspath(assets), script=script_text,
                 prompts=Path(prompts).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(prompts) else "",
                 prompts_file=os.path.abspath(prompts),
                 srt=Path(srt).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(srt) else "",
                 srt_file=os.path.abspath(srt), narration=os.path.abspath(os.path.join(assets, "나레이션.mp3")),
-                images=os.path.abspath(os.path.join(assets, "images")), thumbnails=thumbnails,
+                images=os.path.abspath(os.path.join(assets, "images")), thumbnails=thumbnails, thumbnail_raw=thumbnail_raw,
                 thumbnail_dir=os.path.abspath(thumb_dir), title=title,
                 description=saved.get("description") or _block(script_text, "설명글") or _block(opt_text, "설명글"),
                 sources=saved.get("sources") or _block(script_text, "출처"),
@@ -905,6 +906,57 @@ def thumbnail_seo_context(opt_text, script_text, is_mindam):
             f"[대상 시청자] {'한국 야담·민담을 즐기는 50~70대' if is_mindam else '관계·심리·인생 이야기에 관심 있는 40~60대'}")
 
 
+def thumb_copies_for(script, assets, is_mindam, log=None):
+    """유튜브_최적화.txt 의 썸네일 문구 3세트, 없으면 제목으로 만든다."""
+    opt_path = os.path.join(assets, "유튜브_최적화.txt") if is_mindam else re.sub(r"\.txt$", "", script) + "_유튜브최적화.txt"
+    opt_text = open(opt_path, encoding="utf-8").read() if os.path.exists(opt_path) else ""
+    script_text = open(script, encoding="utf-8-sig").read()
+    copies = parse_thumb_copies(opt_text)
+    if not copies:
+        title = ""
+        m = re.search(r"\[제목\]\s*\n(.+)", script_text)
+        if m:
+            title = re.sub(r"\s*\|.*$", "", m.group(1)).strip()
+        elif is_mindam:
+            title = re.sub(r"^\d{4}-\d\d-\d\d_", "", os.path.basename(assets))
+        copies = fallback_thumb_copies(title)
+        if log:
+            log("   최적화 파일이 없어 제목으로 문구를 만듦")
+    return copies, opt_text, script_text
+
+
+def raw_thumbnails(tdir):
+    """썸네일/raw 의 001~003 원본(글자 없는) 파일."""
+    raw_dir = os.path.join(tdir, "raw")
+    out = {}
+    if os.path.isdir(raw_dir):
+        for name in sorted(os.listdir(raw_dir)):
+            m = re.match(r"^(\d{3})\.(png|jpe?g|webp|avif)$", name, re.I)
+            if m and int(m.group(1)) not in out:
+                out[int(m.group(1))] = os.path.abspath(os.path.join(raw_dir, name))
+    return out
+
+
+def compose_thumbnails(script, log=None):
+    """이미 받아 둔 raw 원본에 문구만 얹어 썸네일_1~3.jpg 를 만든다 (AI·드롭샷 호출 없음)."""
+    assets = assets_dir(script)
+    is_mindam = channel_of(script) == "mindam"
+    tdir = os.path.abspath(os.path.join(assets, "썸네일"))
+    raws = raw_thumbnails(tdir)
+    if not raws:
+        raise ValueError("썸네일 원본(raw)이 없습니다. 먼저 썸네일 만들기를 실행하세요.")
+    copies, _, _ = thumb_copies_for(script, assets, is_mindam, log)
+    outs = []
+    for i in sorted(raws):
+        top, bottom, _ = copies[(i - 1) % len(copies)]
+        out = os.path.join(tdir, f"썸네일_{i}.jpg")
+        layout = 썸네일_합성.compose(raws[i], out, top, bottom, "mindam" if is_mindam else "person")
+        outs.append(out)
+        if log:
+            log(f"   ✓ {out}  ({top} / {bottom}) · {dict(keyword='키워드 강조형', badge='숫자 배지형', band='하단 띠형')[layout]}")
+    return dict(thumbnails=outs, dir=tdir)
+
+
 def make_thumbnails(job, req):
     """대본 폴더 → 썸네일 프롬프트 3개(딥시크) → 이미지 생성(편집프로그램 좌표 클릭) → 문구 합성 → 썸네일_1~3.jpg"""
     cfg = 대본생성.load_cfg()
@@ -914,19 +966,13 @@ def make_thumbnails(job, req):
         raise SystemExit("대본 파일을 고르세요.")
     assets = assets_dir(script)
     is_mindam = os.path.basename(script) == "final.txt"
-    opt_path = os.path.join(assets, "유튜브_최적화.txt") if is_mindam else re.sub(r"\.txt$", "", script) + "_유튜브최적화.txt"
-    opt_text = open(opt_path, encoding="utf-8").read() if os.path.exists(opt_path) else ""
-    script_text = open(script, encoding="utf-8-sig").read()
-    copies = parse_thumb_copies(opt_text)
-    if not copies:                                    # 최적화 파일이 없으면 제목에서 대충 두 줄
-        title = ""
-        m = re.search(r"\[제목\]\s*\n(.+)", script_text)
-        if m:
-            title = re.sub(r"\s*\|.*$", "", m.group(1)).strip()
-        elif is_mindam:
-            title = re.sub(r"^\d{4}-\d\d-\d\d_", "", os.path.basename(assets))
-        copies = fallback_thumb_copies(title)
-        job.add("   최적화 파일이 없어 제목으로 문구를 만듦")
+    copies, opt_text, script_text = thumb_copies_for(script, assets, is_mindam, job.add)
+    tdir_early = os.path.abspath(os.path.join(assets, "썸네일"))
+    if not req.get("regenerate") and len(raw_thumbnails(tdir_early)) >= 3:
+        job.add("   썸네일 원본 3장이 이미 있어 문구만 다시 얹음")
+        job.stage = "썸네일 문구 합성"
+        r = compose_thumbnails(script, job.add)
+        return dict(thumbnails=r["thumbnails"], dir=r["dir"], cost="0원 (원본 재사용)")
     brief = ""
     bp = os.path.join(assets, "thumbnail_brief.md")
     if os.path.exists(bp):
@@ -968,16 +1014,9 @@ def make_thumbnails(job, req):
     run_image_generation(job, pf, raw_dir, "")
     # 합성 (썸네일_합성.py: 사람의 이유 = 키워드 강조형/숫자 배지형, 민담 = 하단 띠형)
     job.stage = "썸네일 문구 합성"
-    outs = []
-    for i, p in enumerate(prompts, 1):
-        cands = [f for f in os.listdir(raw_dir) if f.startswith(f"{i:03d}.")] if os.path.isdir(raw_dir) else []
-        if not cands:
-            job.add(f"   ! 썸네일 {i} 이미지 없음"); continue
-        top, bottom, _ = copies[(i - 1) % len(copies)]
-        out = os.path.join(tdir, f"썸네일_{i}.jpg")
-        layout = 썸네일_합성.compose(os.path.join(raw_dir, cands[0]), out, top, bottom, "mindam" if is_mindam else "person")
-        outs.append(out)
-        job.add(f"   ✓ {out}  ({top} / {bottom}) · {dict(keyword='키워드 강조형', badge='숫자 배지형', band='하단 띠형')[layout]}")
+    if not raw_thumbnails(tdir):
+        raise RuntimeError("썸네일 이미지가 한 장도 내려받히지 않았습니다.")
+    outs = compose_thumbnails(script, job.add)["thumbnails"]
     job.add("비용: " + ai.cost_text())
     return dict(thumbnails=outs, dir=tdir, cost=ai.cost_text())
 
@@ -1433,6 +1472,10 @@ class H(BaseHTTPRequestHandler):
                 self._json(delete_script(body.get("script_file", "")))
             elif u.path == "/api/thumbnail":
                 run_job("thumbnail", lambda job: make_thumbnails(job, body)); self._json({"ok": True})
+            elif u.path == "/api/thumbnail/compose":            # raw 원본에 문구만 다시 얹기 (빠름, 비용 없음)
+                if STATE["job"] and STATE["job"].status == "running":
+                    raise ValueError("진행 중인 작업을 마친 뒤 실행하세요.")
+                self._json(compose_thumbnails(body.get("script_file", "")))
             elif u.path == "/api/optimize":
                 run_job("optimize", lambda job: make_optimize_only(job, body)); self._json({"ok": True})
             elif u.path == "/api/timestamps":

@@ -435,8 +435,7 @@ async function loadWorkspace(showToast) {
     WORK = await api('/api/workspace?script=' + encodeURIComponent(file)); localStorage.setItem('workScript', file);
     $('workScript').value = WORK.script || ''; $('workPrompts').value = WORK.prompts || ''; $('workSrt').value = WORK.srt || '';
     $('workTitle').value = WORK.title || ''; $('workDesc').value = WORK.description || ''; $('workSources').value = WORK.sources || ''; $('workTags').value = WORK.tags || '';
-    const items = WORK.thumbnails || [];
-    $('workThumbs').innerHTML = items.map((p, i) => { const src = `/api/image?path=${encodeURIComponent(p)}&t=${Date.now()}`; return `<div class="g done"><div class="no">썸네일 ${i + 1}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; }).join('') || '<div class="hint">아직 썸네일이 없습니다. 아래 버튼으로 만들 수 있습니다.</div>';
+    renderThumbs();
     $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('작업을 불러왔습니다.');
     try { WORK.files = await api('/api/assets?script=' + encodeURIComponent(file)); } catch (e) { WORK.files = {}; }
     renderStageCards(); renderFiles();
@@ -459,6 +458,7 @@ function renderStageCards() {
 }
 let galFilled = 0;
 function renderFiles() {
+  if (!WORK) renderThumbs();
   const box = $('fileList'); if (!WORK) { box.innerHTML = '<div class="hint">작업을 고르면 만들어진 파일이 여기에 나옵니다.</div>'; return; }
   const f = WORK.files || {};
   const items = [['대본', WORK.script_file, true], ['이미지 프롬프트', WORK.prompts_file, !!(WORK.prompts || '').trim()], ['나레이션 (mp3)', f.narration, !!f.narration], ['자막 (srt)', WORK.srt_file, !!(WORK.srt || '').trim()],
@@ -469,6 +469,22 @@ function openWork(what) {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
   const p = {assets: WORK.assets, video: WORK.assets + '\\최종.mp4', thumbs: WORK.thumbnail_dir, narration: WORK.narration, script: WORK.script_file}[what];
   openPath(p);
+}
+// 썸네일: 완성본(문구 있음)이 있으면 그것, 없으면 raw 원본을 "문구 넣기 전"으로 보여 준다. 위 제작 현황에도 같이 표시.
+function renderThumbs() {
+  const done = (WORK && WORK.thumbnails) || [], raw = (WORK && WORK.thumbnail_raw) || [];
+  const card = (p, label, cls) => { const src = `/api/image?path=${encodeURIComponent(p)}&t=${Date.now()}`; return `<div class="g ${cls}"><div class="no">${esc(label)}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; };
+  let html = '', note = '';
+  if (done.length) { html = done.map((p, i) => card(p, `썸네일 ${i + 1}`, 'done')).join(''); note = `완성 ${done.length}장 · 유튜브에 올릴 때 이 파일을 쓰세요`; }
+  else if (raw.length) { html = raw.map((p, i) => card(p, `원본 ${i + 1} (문구 전)`, 'now')).join(''); note = '이미지는 받았는데 문구가 아직 안 얹혔습니다 → 아래 [원본에 문구 넣어 완성하기]'; }
+  else { html = '<div class="hint">아직 썸네일이 없습니다. 제작이 끝나면 자동으로 생기고, 아래 버튼으로 따로 만들 수도 있습니다.</div>'; note = ''; }
+  $('workThumbs').innerHTML = html; $('thumbNote').textContent = note;
+  $('composeBtn').classList.toggle('hidden', !raw.length);
+  $('topThumbs').innerHTML = (done.length || raw.length) ? html : ''; $('topThumbsRow').classList.toggle('hidden', !(done.length || raw.length));
+}
+async function composeThumbnails() {
+  if (!WORK) return toast('작업을 먼저 고르세요.', true);
+  try { const r = await api('/api/thumbnail/compose', {script_file: WORK.script_file}); toast(`썸네일 ${r.thumbnails.length}장 완성`); await loadWorkspace(false); } catch (e) { toast(e.message, true); }
 }
 async function makeWorkspaceThumbnails() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
