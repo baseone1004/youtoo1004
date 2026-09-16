@@ -69,19 +69,20 @@ function goStep(n, instant) {
   if (n === 2) renderSelection();
   if (n === 4 && $('workFile').value && !WORK) loadWorkspace(false);
   showView('wizard');
-  if (instant && n === 1) return;
-  setTimeout(() => $('step-' + n).scrollIntoView({behavior: instant ? 'auto' : 'smooth', block: 'start'}), 30);
+  if (instant) return;
+  const el = $('step-' + n); if (el) setTimeout(() => el.scrollIntoView({behavior: 'smooth', block: 'start'}), 30);
 }
 // 화면에 보이는 단계에 맞춰 표시줄을 자동으로 갱신한다.
 const stepWatcher = new IntersectionObserver(entries => {
   const visible = entries.filter(e => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
   if (visible) { currentStep = +visible.target.id.split('-')[1]; renderStepBar(); }
 }, {rootMargin: '-35% 0px -55% 0px', threshold: [0, 0.2, 0.5, 1]});
-for (let i = 1; i <= 4; i++) stepWatcher.observe($('step-' + i));
+for (let i = 1; i <= 4; i++) if ($('step-' + i)) stepWatcher.observe($('step-' + i));
 let galleryVisible = false, videoLoaded = false;
 new IntersectionObserver(entries => { galleryVisible = entries[0].isIntersecting; if (galleryVisible) refreshGallery(true); }, {threshold: 0.02}).observe($('galleryBlock'));
-document.querySelectorAll('#adv-video').forEach(el => new IntersectionObserver(entries => { if (entries[0].isIntersecting && !videoLoaded) { videoLoaded = true; prepareVideoEditor(); } }, {threshold: 0.05}).observe(el));
+$('adv-video').addEventListener('toggle', () => { if ($('adv-video').open && !videoLoaded) { videoLoaded = true; prepareVideoEditor(); } });
 function renderStepBar() {
+  if (!$('stepBar')) return;
   const busy = STATE && ((STATE.job && STATE.job.status === 'running') || (STATE.queue && STATE.queue.status === 'running'));
   document.querySelectorAll('#stepBar li').forEach(li => {
     const n = +li.dataset.step;
@@ -138,7 +139,7 @@ async function refresh() {
   const prevWork = $('workFile').value || localStorage.getItem('workScript') || '';
   $('workFile').innerHTML = scriptOpts || '<option value="">완성된 대본 없음</option>';
   if (STATE.scripts.some(s => s.path === prevWork)) $('workFile').value = prevWork;
-  if ($('workFile').value && (!WORK || WORK.script_file !== $('workFile').value)) loadWorkspace(false);
+  if ($('workFile').value && (!WORK || WORK.script_file !== $('workFile').value)) { $('galFile').value = $('workFile').value; loadWorkspace(false); }
   // 고급
   const prevGal = $('galFile').value || localStorage.getItem('selectedScript') || $('workFile').value || '';
   $('galFile').innerHTML = scriptOpts || '<option value="">대본 없음</option>';
@@ -215,18 +216,21 @@ function selectAllVisible(on) {
   for (const t of topicSource(channel)) { const key = channel + '|' + t.제목; if (on) selection.set(key, {channel, title: t.제목, topic: t._custom ? null : t}); else selection.delete(key); }
   renderTopics();
 }
-async function addCustomTopic() {
-  const title = $('customTitle').value.trim(); if (!title) return toast('주제를 먼저 적어 주세요.', true);
-  try {
-    const r = await api('/api/channel/check', {channel, title});
-    if (r.status === 'dup' && !confirm(`내 채널에 이미 비슷한 영상이 있습니다:
-「${r.near}」
-그래도 추가할까요?`)) return;
-    if (r.status === 'similar') toast(`참고: 내 채널의 「${r.near}」과 조금 비슷합니다.`);
-  } catch (e) {}
-  if (!custom[channel].includes(title)) custom[channel].unshift(title);
-  selection.set(channel + '|' + title, {channel, title, topic: null});
-  $('customTitle').value = ''; renderTopics(); toast('목록에 추가하고 선택했습니다.');
+async function addCustomTopic(silent) {
+  const lines = $('customTitle').value.split(/\n/).map(x => x.trim()).filter(Boolean);
+  if (!lines.length) { if (!silent) toast('주제를 먼저 적어 주세요.', true); return 0; }
+  let added = 0;
+  for (const title of lines) {
+    try {
+      const r = await api('/api/channel/check', {channel, title});
+      if (r.status === 'dup' && !confirm(`내 채널에 이미 비슷한 영상이 있습니다:\n「${r.near}」\n그래도 추가할까요?`)) continue;
+      if (r.status === 'similar') toast(`참고: 내 채널의 「${r.near}」과 조금 비슷합니다.`);
+    } catch (e) {}
+    if (!custom[channel].includes(title)) custom[channel].unshift(title);
+    selection.set(channel + '|' + title, {channel, title, topic: null}); added++;
+  }
+  $('customTitle').value = ''; renderTopics(); if (!silent) toast(`${added}개를 목록에 추가하고 선택했습니다.`);
+  return added;
 }
 function removeCustom(ch, i, ev) {
   ev.stopPropagation(); const t = topicSource(ch)[i]; if (!t || !t._custom) return;
@@ -236,8 +240,8 @@ function removeSel(key) { selection.delete(key); renderTopics(); if (!selection.
 function renderSelection() {
   const n = selection.size, items = [...selection.entries()];
   $('selCount').textContent = n;
-  $('selText').textContent = n ? `개 선택됨 — 다음을 눌러 그림체를 고르세요` : '개 선택 — 위에서 주제를 체크하세요';
-  $('toStep2').disabled = !n;
+  $('selText').textContent = n ? `편 제작 예정 — 그림체를 확인하고 시작하세요` : '개 선택 — 위에서 주제를 체크하거나 적으세요';
+  $('toStep2').disabled = !n && !$('customTitle').value.trim();
   $('orderCount').textContent = n ? `${n}편 · 위에서부터 순서대로` : '';
   $('orderList').innerHTML = items.map(([key, x], i) => `<li><span class="n">${i + 1}</span><span class="t">${esc(x.title)}</span><span class="ch">${x.channel === 'mindam' ? '민담·야담' : '사람의 이유'}</span><button class="mini ghost" onclick="removeSel('${js(key)}')">빼기</button></li>`).join('') || '<li class="hint">선택한 주제가 없습니다. 1단계에서 체크하세요.</li>';
   const hasP = items.some(([, x]) => x.channel === 'person'), hasM = items.some(([, x]) => x.channel === 'mindam');
@@ -245,8 +249,8 @@ function renderSelection() {
   const est = [];
   if (hasP) est.push(`사람의 이유 ${items.filter(([, x]) => x.channel === 'person').length}편 (편당 30~60분)`);
   if (hasM) est.push(`민담 ${items.filter(([, x]) => x.channel === 'mindam').length}편 (편당 1~2시간)`);
-  $('startHint').textContent = (est.length ? est.join(' + ') + ' 정도 걸립니다. ' : '') + '이미지 생성 중에는 마우스·키보드를 쓰지 마세요. 끝나면 텔레그램으로 알려 드립니다(설정 시).';
-  $('startBtn').disabled = !n;
+  $('startHint').textContent = est.length ? est.join(' + ') + ' 정도 걸립니다. 이미지 생성 중에는 마우스·키보드를 쓰지 마세요.' : '';
+  $('startBtn').disabled = !n && !$('customTitle').value.trim();
 }
 // 민담 장르 칩
 (function () {
@@ -263,8 +267,12 @@ function renderStyles(list, cur) {
   $('styleBox').innerHTML = Object.entries(groups).map(([g, names]) => `<div class="stylegrp"><div class="stylegrp-t">${esc(g)}</div><div class="styles">${names.map(s => `<button type="button" data-val="${esc(s)}" onclick="pickStyle('${js(s)}')">${esc(s)}<small>${esc(desc[s] || '')}</small></button>`).join('')}</div></div>`).join('');
   pickStyle(cur, true);
 }
+function renderQuickStyles() {
+  const names = ['애니', '파스텔', '실사']; if (!names.includes(styleValue)) names.push(styleValue);
+  $('quickStyles').innerHTML = names.map(n => `<button type="button" data-val="${esc(n)}" class="${n === styleValue ? 'on' : ''}" onclick="pickStyle('${js(n)}')">${esc(n)}</button>`).join('');
+}
 function pickStyle(v, silent) {
-  styleValue = v; document.querySelectorAll('.styles button').forEach(b => b.classList.toggle('on', b.dataset.val === v));
+  styleValue = v; document.querySelectorAll('.styles button').forEach(b => b.classList.toggle('on', b.dataset.val === v)); renderQuickStyles();
   if (!silent) { api('/api/config', {화풍: v}).catch(() => {}); toast('그림체: ' + v); }
 }
 let cpm = 270, targetChars = 6750;
@@ -280,13 +288,14 @@ function productionOptions() {
     steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: +$('optHook').value, render: true, thumbnail: $('optThumb').checked}};
 }
 async function startProduction() {
-  if (!selection.size) return toast('1단계에서 주제를 먼저 체크하세요.', true);
+  await addCustomTopic(true);                       // 입력칸에 적어 둔 주제도 함께
+  if (!selection.size) { $('customTitle').focus(); return toast('주제를 체크하거나 적어 주세요.', true); }
   const options = productionOptions();
   if (options.steps.hook > 0 && !await ensureKieReady()) return;
   if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n끝날 때까지 이 창을 닫지 마세요.`)) return;
   try {
     const q = await api('/api/queue/start', {items: [...selection.values()], options});
-    selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); goStep(3); startPolling(true); toast('제작을 시작했습니다.');
+    selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); startPolling(true); window.scrollTo({top: 0, behavior: 'smooth'}); toast('제작을 시작했습니다.');
   } catch (e) { toast(e.message, true); }
 }
 async function continuePipeline() {
@@ -342,12 +351,13 @@ function humanStage(j) {
 }
 async function poll() {
   let j; try { j = await api('/api/job'); } catch (e) { return; }
-  if (!j || j.status === 'none') { $('pgStage').textContent = '지금은 진행 중인 작업이 없습니다.'; $('cancelJob').classList.add('hidden'); return; }
+  if (!j || j.status === 'none') { $('pgStage').textContent = '지금은 진행 중인 작업이 없습니다.'; $('cancelJob').classList.add('hidden'); $('liveDot').classList.remove('on'); return; }
   if (STATE) STATE.job = j;
   renderOverview(j); renderStepBar();
   $('cancelJob').classList.toggle('hidden', j.status !== 'running');
   $('pgKind').textContent = (KIND_LABEL[j.kind] || '작업 중') + ' · ' + j.started + ' 시작';
-  $('pgKind').className = 'stat ' + (j.status === 'running' ? '' : j.status === 'done' ? 'ok' : 'bad');
+  $('pgKind').className = 'stat ' + (j.status === 'running' ? 'now' : j.status === 'done' ? 'ok' : 'bad');
+  $('liveDot').classList.toggle('on', j.status === 'running');
   const log = $('pgLog'); const txt = j.log.join('\n') + (j.partial ? '\n' + j.partial : '');
   if (log.textContent !== txt) { log.textContent = txt; if ($('pgFollow').checked) log.scrollTop = log.scrollHeight; }
   $('pgLines').textContent = `(${j.log.length}줄)`;
@@ -355,6 +365,12 @@ async function poll() {
   const cur = ((STATE && STATE.queue && STATE.queue.items) || []).find(x => x.status === 'working');
   $('pgSub').textContent = cur ? `지금 만드는 편: ${cur.title}` : (j.result && j.result.title ? `작업: ${j.result.title}` : '');
   renderSteps(j); refreshGallery(false);
+  if (j.status === 'running' && (j.result || {}).script) {
+    const sc = j.result.script; const opt = [...$('workFile').options].find(o => o.value === sc || sc.endsWith(o.value));
+    if (opt && $('workFile').value !== opt.value) { $('workFile').value = opt.value; onWorkChange(); }
+    else if (Date.now() - lastWorkLoad > 15000) loadWorkspace(false);
+  }
+  renderStageCards();
   if (j.status === 'running' && STATE && STATE.config.AI === 'deepseek-web') {
     try { const w = await api('/api/web/status'); const t = (w.taken || [])[0]; $('pgWeb').classList.remove('hidden');
       $('pgWeb').textContent = !w.alive ? '🔴 딥시크 확장이 끊겼습니다 — chat.deepseek.com 창을 열어 두세요' : (t ? `🌐 딥시크 웹 응답 중 · ${t.progress || '전송 중'} · ${t.since}초` : '🌐 딥시크 웹 연결됨'); } catch (e) {}
@@ -366,7 +382,7 @@ async function poll() {
   $('pgBar').style.width = (p * 100) + '%';
   if (j.status === 'done' && j.kind === 'variations') { if ($('varBox')._shown !== j.started) { $('varBox')._shown = j.started; renderVariations(j.result); } return; }
   if (j.status === 'done') {
-    const r = j.result, box = $('pgResult'); box.classList.remove('hidden');
+    const r = j.result, box = $('pgResult'); box.classList.remove('hidden'); loadWorkspace(false);
     if (j.kind === 'thumbnail' && $('workFile').value) loadWorkspace(false);
     if (r.script || r.file) { localStorage.setItem('workScript', r.script || r.file); WORK = null; }
     const line = (label, v, btn) => v ? `<div>${label}: <code>${esc(v)}</code> ${btn || ''}</div>` : '';
@@ -409,21 +425,49 @@ function renderQueue(q) {
 async function refreshQueue() { try { const q = await api('/api/queue'); if (STATE) STATE.queue = q; renderQueue(q); renderStepBar(); } catch (e) {} }
 
 // ── 4단계: 완성 확인 ────────────────────────────────────
+function onWorkChange() { const f = $('workFile').value; if (f) { $('galFile').value = f; localStorage.setItem('selectedScript', f); refreshGallery(true); } loadWorkspace(true); }
+let lastWorkLoad = 0;
 async function loadWorkspace(showToast) {
   const file = $('workFile').value;
-  if (!file) { WORK = null; $('workBody').classList.add('hidden'); $('workEmpty').classList.remove('hidden'); return; }
+  if (!file) { WORK = null; $('workBody').classList.add('hidden'); $('workEmpty').classList.remove('hidden'); renderStageCards(); renderFiles(); return; }
+  lastWorkLoad = Date.now();
   try {
     WORK = await api('/api/workspace?script=' + encodeURIComponent(file)); localStorage.setItem('workScript', file);
     $('workScript').value = WORK.script || ''; $('workPrompts').value = WORK.prompts || ''; $('workSrt').value = WORK.srt || '';
     $('workTitle').value = WORK.title || ''; $('workDesc').value = WORK.description || ''; $('workSources').value = WORK.sources || ''; $('workTags').value = WORK.tags || '';
     const items = WORK.thumbnails || [];
     $('workThumbs').innerHTML = items.map((p, i) => { const src = `/api/image?path=${encodeURIComponent(p)}&t=${Date.now()}`; return `<div class="g done"><div class="no">썸네일 ${i + 1}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; }).join('') || '<div class="hint">아직 썸네일이 없습니다. 아래 버튼으로 만들 수 있습니다.</div>';
-    $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('완성 자료를 불러왔습니다.');
+    $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('작업을 불러왔습니다.');
+    try { WORK.files = await api('/api/assets?script=' + encodeURIComponent(file)); } catch (e) { WORK.files = {}; }
+    renderStageCards(); renderFiles();
   } catch (e) { toast(e.message, true); }
+}
+// 단계 카드(1~6)의 상태 배지·진행 막대: 지금 작업의 결과물 + 실행 중인 단계
+function renderStageCards() {
+  const j = STATE && STATE.job, active = j && j.status === 'running' && ['pipeline', 'queue_pipeline'].includes(j.kind);
+  const s = String((j && j.stage) || '');
+  const now = active ? (s.includes('최종') ? 'render' : s.includes('후킹') ? 'motion' : s.includes('이미지 자동') || s.includes('이미지 생성') ? 'image' : s.includes('나레이션') ? 'audio' : s.includes('프롬프트') ? 'prompt' : s.includes('대본') ? 'script' : '') : '';
+  const w = WORK || {}, f = w.files || {};
+  const done = {script: !!(w.script || '').trim(), prompt: !!(w.prompts || '').trim(), audio: !!(w.srt || '').trim() || !!f.narration, motion: false, render: !!f.video, image: false};
+  for (const el of document.querySelectorAll('[data-stage-stat]')) {
+    const k = el.dataset.stageStat; const isNow = now === k;
+    el.textContent = isNow ? '진행 중' : done[k] ? '완료' : '대기';
+    el.className = 'stat ' + (isNow ? 'now' : done[k] ? 'ok' : '');
+    const bar = document.querySelector(`[data-stage-bar="${k}"]`); if (bar) bar.style.width = isNow ? (Math.max(8, (j.progress || 0.1) * 100)) + '%' : done[k] ? '100%' : '0%';
+  }
+  const ib = document.querySelector('[data-stage-bar="image"]'); if (ib && !now.includes('image')) ib.style.width = galFilled ? galFilled + '%' : '0%';
+}
+let galFilled = 0;
+function renderFiles() {
+  const box = $('fileList'); if (!WORK) { box.innerHTML = '<div class="hint">작업을 고르면 만들어진 파일이 여기에 나옵니다.</div>'; return; }
+  const f = WORK.files || {};
+  const items = [['대본', WORK.script_file, true], ['이미지 프롬프트', WORK.prompts_file, !!(WORK.prompts || '').trim()], ['나레이션 (mp3)', f.narration, !!f.narration], ['자막 (srt)', WORK.srt_file, !!(WORK.srt || '').trim()],
+    ...(WORK.thumbnails || []).map((p, i) => [`썸네일 ${i + 1}`, p, true]), ['최종 영상 (mp4)', f.video, !!f.video], ['결과 폴더', WORK.assets, true]];
+  box.innerHTML = items.map(([label, path, ok]) => `<div class="file ${ok ? '' : 'off'}"><span class="fl">${esc(label)}</span><span class="fp">${esc((path || '').split(/[\\/]/).pop())}</span><span class="spacer"></span>${ok ? `<button class="mini" onclick="openPath('${js(path)}')">열기</button>` : '<span class="hint">아직 없음</span>'}</div>`).join('');
 }
 function openWork(what) {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
-  const p = {assets: WORK.assets, video: WORK.assets + '\\최종.mp4', thumbs: WORK.thumbnail_dir, narration: WORK.narration}[what];
+  const p = {assets: WORK.assets, video: WORK.assets + '\\최종.mp4', thumbs: WORK.thumbnail_dir, narration: WORK.narration, script: WORK.script_file}[what];
   openPath(p);
 }
 async function makeWorkspaceThumbnails() {
@@ -473,6 +517,7 @@ async function refreshGallery(force) {
     if (['running', 'paused'].includes(st.status) && st.output_dir) {
       const match = [...$('galFile').options].find(o => o.value && norm(st.output_dir).endsWith('\\' + norm(imagesDirOf(o.value))));
       if (match && $('galFile').value !== match.value) { $('galFile').value = match.value; localStorage.setItem('selectedScript', match.value); }
+      if (match && $('workFile').value !== match.value) { $('workFile').value = match.value; loadWorkspace(false); }
       if (!match) { dir = st.output_dir; pr = st.prompts_file; }
     }
   }
@@ -490,6 +535,7 @@ async function updateGallery(dir, pr) {
     if (pr && galPrompts.path !== pr) { try { const pj = await post8765('/api/gen/prompts', {path: pr}); galPrompts = {path: pr, count: pj.count || 0}; } catch (e) { galPrompts = {path: pr, count: 0}; } }
     const total = Math.max(st.total || 0, galPrompts.count || 0, ...Object.keys(imgs).map(Number), 0);
     const key = JSON.stringify([st.status, st.current, Object.values(imgs).map(i => i.mtime)]);
+    galFilled = total ? Math.round(Object.keys(imgs).length / total * 100) : 0; renderStageCards();
     $('galStat').textContent = `${Object.keys(imgs).length}/${total} · ${({running: '생성 중', paused: '잠시 멈춤', done: '완료', stopped: '중단', error: '오류', idle: '대기'})[st.status] || st.status}${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}${st.failed && st.failed.length ? ' · 실패 ' + st.failed.join(',') : ''}`;
     if (key === galKey) return; galKey = key;
     const busy = st.status === 'running' || st.status === 'paused', failed = new Set(st.failed || []); const out = [];
@@ -728,7 +774,8 @@ async function detectGenerateButton() {
   setChannel('person');
   try { await refresh(); } catch (e) { toast('서버 상태를 불러오지 못했습니다: ' + e.message, true); }
   const busy = STATE && ((STATE.job && STATE.job.status === 'running') || (STATE.queue && STATE.queue.status === 'running'));
-  goStep(busy ? 3 : 1, true);
+  renderQuickStyles(); renderStageCards(); renderFiles();
+  $('customTitle').addEventListener('input', renderSelection);
   for (const ch of ['person', 'mindam']) { const info = (STATE && STATE.channels || {})[ch] || {}; if (info.url && (info.busy || (!info.fetched && !info.error))) pollChannel(ch); }
   if (busy) startPolling(false);
   setInterval(refreshQueue, 3000); setInterval(checkReady, 20000); setInterval(() => refreshGallery(false), 4000);

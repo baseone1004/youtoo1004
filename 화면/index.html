@@ -7,7 +7,7 @@
 </head><body>
 
 <header class="top"><div class="top-inner">
-  <div class="brand">🎬 유튜브 영상 자동 제작 <small>사람의 이유 · 민담·야담</small></div>
+  <div class="brand">🎬 유튜브 영상 자동 제작 <small>사람의 이유 · 민담·야담</small><span class="pill-live" id="liveDot"></span></div>
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
     <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
@@ -20,179 +20,169 @@
 <main class="wrap">
 <div id="envwarn" class="banner warn hidden"></div>
 
-<!-- ═══════════ 만들기 (단계별) ═══════════ -->
 <section id="view-wizard">
-  <ol class="steps" id="stepBar">
-    <li data-step="1" onclick="goStep(1)"><span class="n">1</span><span>주제 고르기<small>추천 목록에서 체크</small></span></li>
-    <li data-step="2" onclick="goStep(2)"><span class="n">2</span><span>제작 시작<small>그림체 고르고 시작</small></span></li>
-    <li data-step="3" onclick="goStep(3)"><span class="n">3</span><span>진행 상황<small>기다리기만 하면 됩니다</small></span></li>
-    <li data-step="4" onclick="goStep(4)"><span class="n">4</span><span>완성 확인<small>제목·설명 복사, 업로드</small></span></li>
-  </ol>
 
-  <!-- 1단계 -->
-  <div class="step-panel" id="step-1">
-    <div class="card">
-      <h2>① 어떤 이야기를 만들까요?</h2>
-      <p class="lead">채널을 고르고, 만들고 싶은 주제를 체크하세요. 여러 개를 체크하면 순서대로 자동으로 만들어집니다.</p>
-      <div class="row">
-        <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">사람의 이유</button><button data-ch="mindam" onclick="setChannel('mindam')">민담·야담·옛이야기</button></div>
-        <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span>
-        <span class="spacer"></span>
-        <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
-      </div>
-      <div class="row" id="chLinkRow" style="margin-top:4px"><span class="hint" id="chLinkStat">내 유튜브 채널 연동 안 됨</span><button class="mini" onclick="showView('settings');setTimeout(()=>$('chanCard').scrollIntoView({behavior:'smooth'}),300)">채널 연동 설정</button></div>
-      <ul class="topics" id="topicList"></ul>
-      <h3>직접 주제 적기</h3>
-      <div class="row">
-        <input type="text" id="customTitle" placeholder="예) 나이 들수록 친구가 줄어드는 진짜 이유" onkeydown="if(event.key==='Enter')addCustomTopic()">
-        <button class="primary" onclick="addCustomTopic()">+ 목록에 추가</button>
-      </div>
-      <div class="chips hidden" id="genreChips"><span class="hint" style="align-self:center">장르만 고를 수도 있어요:</span></div>
-      <div class="sel-summary"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="goStep(2)" disabled>다음 →</button></div>
-    </div>
+<!-- ═══ 상단: 제작 현황 + 시작 ═══ -->
+<div class="panel" id="step-3">
+  <div class="panel-head"><span class="tag-lbl">제작 현황</span><span class="stat" id="pgKind">대기 중</span><span class="spacer"></span><span id="queueSummary" class="hint">대기열 없음</span></div>
+  <div class="pipe" id="pipe">
+    <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
   </div>
-
-  <!-- 2단계 -->
-  <div class="step-panel" id="step-2">
-    <div class="card">
-      <h2>② 제작 설정</h2>
-      <p class="lead">아래 순서대로 만들어집니다. 그림체만 고르고 <b>제작 시작</b>을 누르면 됩니다.</p>
-      <h3>만들 주제 <span class="stat" id="orderCount"></span></h3>
-      <ol class="order" id="orderList"></ol>
-      <h3>그림체</h3>
-      <div id="styleBox"></div>
-      <div id="personLenRow" class="row" style="margin-top:12px"><label><b>사람의 이유</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
-      <div id="mindamLenRow" class="row hidden"><label><b>민담·야담</b> 영상 길이</label><select id="mindamLen"></select></div>
-      <div class="row"><label class="chk"><input type="checkbox" id="optThumb" checked> 영상마다 유튜브 썸네일 3장 자동 제작</label></div>
-      <details class="box soft" open><summary>세부 옵션 (보통은 안 건드려도 됩니다)</summary><div>
-        <div class="row"><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성(알고리즘 최적화)</label></div>
-        <div class="row"><label>앞부분 움직이는 영상(KIE) <input type="number" id="optHook" value="7" min="0" max="30" style="width:80px"> 장면</label><span class="hint">0이면 만들지 않음 · KIE 크레딧 사용</span></div>
-        <div class="row"><label>대본 지침 <select id="optGuide"></select></label><label>이미지 지침 <select id="optImgGuide"></select></label></div>
-        <div class="row"><label>프롬프트 한 번에 <input type="number" id="optChunk" value="30" min="5" max="60" style="width:70px"> 문장</label></div>
-      </div></details>
-      <div id="startHint" class="banner info">사람의 이유 한 편 약 30~60분, 민담 한 편 약 1~2시간 걸립니다. 이미지 생성 중에는 마우스·키보드를 쓰지 마세요.</div>
-      <button class="primary big" id="startBtn" onclick="startProduction()">🚀 제작 시작</button>
-      <details class="box" style="margin-top:16px" open><summary>이미 만든 대본으로 이어서 만들기</summary><div>
-        <p class="hint">대본은 있는데 나레이션·이미지·영상이 없을 때 씁니다. 이미 있는 것은 건너뛰고 없는 것만 만듭니다.</p>
-        <div class="row"><select id="contFile" style="min-width:min(100%,420px)"></select><button class="primary" onclick="continuePipeline()">이어서 만들기</button></div>
-      </div></details>
-    </div>
+  <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div>
+  <div class="hint" id="pgSub"></div>
+  <div class="bar"><i id="pgBar"></i></div>
+  <div class="stepbar" id="pgSteps"></div>
+  <div id="pgWeb" class="hint hidden"></div>
+  <div class="startrow">
+    <button class="primary big" id="startBtn" onclick="startProduction()">🚀 입력한 주제로 제작 시작</button>
+    <span id="queueManage" class="row hidden" style="margin:0"><button onclick="queueControl('pause')">❚❚ 잠시 멈춤</button><button onclick="queueControl('resume')">▶ 계속</button><button class="danger" onclick="queueControl('cancel')">■ 전체 중단</button></span>
+    <button class="danger hidden" id="cancelJob" onclick="cancelJob()">■ 지금 작업 중단</button>
   </div>
+  <div class="row" style="margin-top:10px"><span class="tag-lbl">그림체</span><div class="quick-styles" id="quickStyles"></div><button class="mini ghost" onclick="$('styleBox').classList.toggle('hidden')">그림체 더 보기</button></div>
+  <div id="styleBox" class="hidden"></div>
+  <div class="qlist" id="queueList"></div>
+  <div id="pgResult" class="result hidden"></div>
+  <div id="pgErr" class="banner err hidden"></div>
+  <div id="pgPreview" class="preview hidden"></div>
+</div>
 
-  <!-- 3단계 -->
-  <div class="step-panel" id="step-3">
-    <div class="card">
-      <h2>③ 진행 상황 <span class="stat" id="pgKind">대기 중</span></h2>
-      <div class="pipe" id="pipe">
-        <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 이미지 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 움직이는 영상</b><small>대기</small></div><div data-stage="audio"><b>⑤ 나레이션·자막</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종 영상</b><small>대기</small></div>
-      </div>
-      <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div><div class="hint" id="pgSub"></div>
-      <div class="bar"><i id="pgBar"></i></div>
-      <div class="stepbar" id="pgSteps"></div>
-      <div id="pgWeb" class="hint hidden"></div>
-      <div class="row" id="jobCtl">
-        <span id="queueSummary" class="hint">대기열 없음</span><span class="spacer"></span>
-        <span id="queueManage" class="row hidden" style="margin:0"><button class="mini" onclick="queueControl('pause')">❚❚ 이 편 끝나면 잠시 멈춤</button><button class="mini" onclick="queueControl('resume')">▶ 계속</button><button class="mini danger" onclick="queueControl('cancel')">■ 전체 중단</button></span>
-        <button class="mini danger hidden" id="cancelJob" onclick="cancelJob()">■ 지금 작업 중단</button>
-      </div>
-      <div class="qlist" id="queueList"></div>
-      <div id="pgResult" class="result hidden"></div>
-      <div id="pgErr" class="banner err hidden"></div>
-      <div id="pgPreview" class="preview hidden"></div>
-      <div id="galleryBlock">
-      <h3>이미지 <span class="stat" id="galStat"></span></h3>
-      <p class="hint">제작 중이면 지금 만드는 작업의 이미지가 자동으로 보입니다. 마음에 안 드는 장면은 <b>다시 만들기</b>로 그 장면만 새로 만듭니다.</p>
-    <div class="row"><label>어느 작업</label><select id="galFile" style="min-width:min(100%,420px)" onchange="onGalFileChange()"></select><button class="mini" onclick="refreshGallery(true)">새로고침</button><button class="mini" onclick="openPath(galDir)">이미지 폴더 열기</button></div>
+<!-- ═══ 주제 입력 ═══ -->
+<div class="panel" id="step-1">
+  <div class="panel-head"><span class="tag-lbl">주제 · 제작</span><span class="hint" id="chLinkStat">내 유튜브 채널 연동 안 됨</span><span class="spacer"></span><button class="mini ghost" onclick="showView('settings');setTimeout(()=>$('chanCard').scrollIntoView({behavior:'smooth'}),300)">채널 연동 설정</button></div>
+  <div class="inner">
+    <h2>어떤 영상을 만들까요?</h2>
+    <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
+    <div class="row">
+      <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">사람의 이유</button><button data-ch="mindam" onclick="setChannel('mindam')">민담·야담·옛이야기</button></div>
+      <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
+      <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
+    </div>
+    <div class="hint" style="margin:6px 0 2px">추천 주제 — 체크하면 제작 목록에 들어갑니다</div>
+    <ul class="topics" id="topicList"></ul>
+    <div class="hint" style="margin:14px 0 4px">주제 또는 키워드 — 여러 편은 한 줄에 하나씩</div>
+    <textarea id="customTitle" class="topic-input" rows="3" placeholder="예: 병원에 사주를 많이 보는 이유&#10;예: 비가 그친 골목에 남은 기억"></textarea>
+    <div class="chips hidden" id="genreChips"><span class="hint" style="align-self:center">장르만 고를 수도 있어요:</span></div>
+    <div class="row" style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
+    <div class="row" id="personLenRow" style="margin-top:10px"><label><b>사람의 이유</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
+    <div id="mindamLenRow" class="row hidden"><label><b>민담·야담</b> 영상 길이</label><select id="mindamLen"></select></div>
+    <div class="row"><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상(KIE) <input type="number" id="optHook" value="7" min="0" max="30" style="width:70px"> 장면</label></div>
+    <div class="row"><label>대본 지침 <select id="optGuide"></select></label><label>이미지 지침 <select id="optImgGuide"></select></label><label>프롬프트 한 번에 <input type="number" id="optChunk" value="30" min="5" max="60" style="width:70px"> 문장</label></div>
+    <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
+    <div id="startHint" class="hint" style="margin-top:8px"></div>
+    <ol class="order" id="orderList" style="margin-top:8px"></ol><span class="hidden" id="orderCount"></span>
+    <div class="row" style="margin-top:12px"><span class="tag-lbl">이미 만든 대본으로 이어서</span><select id="contFile" style="min-width:min(100%,380px)"></select><button onclick="continuePipeline()">이어서 만들기</button></div>
+  </div>
+</div>
+
+<!-- ═══ 작업 선택 ═══ -->
+<div class="panel" id="step-4">
+  <div class="panel-head"><span class="tag-lbl">보고 있는 작업</span><select id="workFile" style="min-width:min(100%,420px)" onchange="onWorkChange()"></select><button class="mini" onclick="refresh()">새로고침</button><span class="spacer"></span><span class="hint">제작 중이면 지금 만드는 작업이 자동으로 보입니다</span></div>
+  <div id="workEmpty" class="hint" style="padding:0 18px 14px">아직 만든 작업이 없습니다. 위에서 주제를 넣고 제작을 시작하세요.</div>
+</div>
+
+<!-- ═══ 단계 카드 ═══ -->
+<div id="workBody">
+<div class="panel stage" id="stage-script">
+  <div class="panel-head"><span class="num n1">1</span><b>대본</b><span class="stat" data-stage-stat="script">대기</span><span class="spacer"></span><button class="mini" onclick="openWork('script')">파일 열기</button></div>
+  <div class="mini-bar"><i data-stage-bar="script"></i></div>
+  <div class="inner">
+    <div class="copyrow"><label>제목</label><input type="text" id="workTitle"><button onclick="copyField('workTitle')">복사</button></div>
+    <textarea id="workScript" class="work-text" placeholder="대본이 만들어지면 여기에 보입니다."></textarea>
+    <div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('workScript')">복사</button><button onclick="rerunTTS()">🎙 고친 대본으로 나레이션 다시</button></div>
+    <div class="copyrow"><label>설명</label><textarea id="workDesc"></textarea><button onclick="copyField('workDesc')">복사</button></div>
+    <div class="copyrow"><label>출처</label><textarea id="workSources" class="short"></textarea><button onclick="copyField('workSources')">복사</button></div>
+    <div class="copyrow"><label>태그</label><textarea id="workTags" class="short"></textarea><button onclick="copyField('workTags')">복사</button></div>
+    <div class="row"><button class="primary" onclick="saveWorkspaceMeta()">제목·설명·태그 저장</button><span class="hint">유튜브에 붙여 넣을 내용. 고친 뒤 저장을 누르세요.</span></div>
+  </div>
+</div>
+
+<div class="panel stage" id="stage-prompt">
+  <div class="panel-head"><span class="num n2">2</span><b>프롬프트</b><span class="stat" data-stage-stat="prompt">대기</span><span class="spacer"></span><span class="hint">대본 한 문장 = 이미지 한 장</span></div>
+  <div class="mini-bar"><i data-stage-bar="prompt"></i></div>
+  <div class="inner">
+    <textarea id="workPrompts" class="work-text" placeholder="이미지 프롬프트가 만들어지면 여기에 보입니다."></textarea>
+    <div class="row"><button class="primary" onclick="saveWorkspaceText('prompts')">프롬프트 저장</button><button onclick="copyField('workPrompts')">복사</button></div>
+  </div>
+</div>
+
+<div class="panel stage" id="stage-image">
+  <div class="panel-head"><span class="num n3">3</span><b>이미지</b><span class="stat" id="galStat">대기</span><span class="spacer"></span><button class="mini" onclick="refreshGallery(true)">새로고침</button><button class="mini" onclick="openPath(galDir)">이미지 폴더 열기</button></div>
+  <div class="mini-bar"><i data-stage-bar="image"></i></div>
+  <div class="inner" id="galleryBlock">
+    <select id="galFile" class="hidden" onchange="onGalFileChange()"></select>
     <div class="row"><button class="primary" onclick="galStart(false)">▶ 빠진 장면 이어서 만들기</button><button onclick="galCtl('pause')">❚❚ 잠시 멈춤</button><button onclick="galCtl('resume')">▶ 계속</button><button onclick="galCtl('stop')">■ 중단</button><button class="danger" onclick="galStart(true)">🔄 처음부터 다시</button></div>
-    <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 (이전 그림은 이전/ 폴더로) · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
-    <details class="box soft" open><summary>앞 7장 움직이는 영상(KIE) 한 번에 만들기</summary><div>
-      <div class="row"><span id="kieStatus" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="showView('settings')">키 설정 →</button></div>
-      <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 중단</button></div>
-      <div id="kieProgress" style="font-weight:700;margin:8px 0"></div><div class="hint" id="kieScenes"></div>
-    </div></details>
+    <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
     <div class="gal" id="advGal"></div>
-      </div>
-      <details class="box" style="margin-top:14px" open><summary>자세한 로그 <span class="hint" id="pgLines"></span></summary><div>
-        <div class="row"><label class="chk"><input type="checkbox" id="pgFollow" checked> 새 로그 따라가기</label></div>
-        <div class="log" id="pgLog"></div>
-      </div></details>
-    </div>
   </div>
+</div>
 
-  <!-- 4단계 -->
-  <div class="step-panel" id="step-4">
-    <div class="card">
-      <h2>④ 완성 확인</h2>
-      <p class="lead">완성된 작업을 고르면 썸네일과 유튜브에 붙여 넣을 제목·설명·태그가 나옵니다.</p>
-      <div class="row"><label>작업 선택</label><select id="workFile" style="min-width:min(100%,460px)" onchange="loadWorkspace(true)"></select><button class="mini" onclick="refresh()">새로고침</button></div>
-      <div id="workEmpty" class="hint">아직 완성된 대본이 없습니다. 제작이 끝나면 여기에 나타납니다.</div>
-      <div id="workBody" class="hidden">
-        <div class="row"><button class="primary" onclick="openWork('assets')">📁 결과 폴더 열기</button><button onclick="openWork('video')">🎬 최종 영상 열기</button><button onclick="goStep(3)">🖼 이미지 보기·수정</button></div>
-        <h3>썸네일</h3>
-        <div id="workThumbs" class="gal thumbs"></div>
-        <div class="row"><button onclick="makeWorkspaceThumbnails()">🖼 썸네일 3장 다시 만들기</button><button class="mini" onclick="openWork('thumbs')">썸네일 폴더 열기</button></div>
-        <h3>유튜브에 붙여 넣기</h3>
-        <div class="copyrow"><label>제목</label><input type="text" id="workTitle"><button onclick="copyField('workTitle')">복사</button></div>
-        <div class="copyrow"><label>설명</label><textarea id="workDesc"></textarea><button onclick="copyField('workDesc')">복사</button></div>
-        <div class="copyrow"><label>출처</label><textarea id="workSources" class="short"></textarea><button onclick="copyField('workSources')">복사</button></div>
-        <div class="copyrow"><label>태그</label><textarea id="workTags" class="short"></textarea><button onclick="copyField('workTags')">복사</button></div>
-        <div class="row"><button class="primary" onclick="saveWorkspaceMeta()">제목·설명·태그 저장</button><span class="hint">고쳐 쓴 내용은 저장을 눌러야 유지됩니다.</span></div>
-        <details class="box" open><summary>대본 보기·고치기</summary><div><textarea id="workScript" class="work-text"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('workScript')">복사</button><button onclick="rerunTTS()">🎙 고친 대본으로 나레이션 다시 만들기</button></div></div></details>
-        <details class="box" open><summary>이미지 프롬프트 보기·고치기</summary><div><textarea id="workPrompts" class="work-text"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('prompts')">프롬프트 저장</button><button onclick="copyField('workPrompts')">복사</button></div></div></details>
-        <details class="box" open><summary>자막 보기·고치기</summary><div><textarea id="workSrt" class="work-text" placeholder="나레이션이 만들어지면 자막이 표시됩니다."></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('workSrt')">복사</button><button onclick="openWork('narration')">나레이션 파일 열기</button></div></div></details>
-        <div class="row" style="margin-top:18px"><button class="danger" onclick="deleteCurrentWork()">🗑 이 작업 휴지통으로 보내기</button><span class="hint">바로 지우지 않고 대본/_휴지통 폴더로 옮깁니다.</span></div>
-      </div>
-    </div>
+<div class="panel stage" id="stage-motion">
+  <div class="panel-head"><span class="num n4">4</span><b>영상변환</b><span class="stat" data-stage-stat="motion">대기</span><span class="spacer"></span><span id="kieStatus" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="showView('settings')">키 설정</button></div>
+  <div class="mini-bar"><i data-stage-bar="motion"></i></div>
+  <div class="inner">
+    <p class="hint">앞 7장 이미지를 KIE AI로 움직이는 영상으로 바꿉니다. 제작 시작에서 자동으로 하지만, 여기서 따로 할 수도 있습니다.</p>
+    <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><button onclick="cancelKieVideos()">■ 중단</button></div>
+    <div id="kieProgress" style="font-weight:700;margin:8px 0"></div><div class="hint" id="kieScenes"></div>
   </div>
+</div>
 
-  <!-- ═══════════ 아래는 필요할 때만 쓰는 기능 ═══════════ -->
-  <div class="divider" id="advStart"><span>아래는 필요할 때만 쓰는 기능입니다</span>
-    <div class="chips"><button onclick="goAdvanced('video')">영상·자막 설정</button><button onclick="goAdvanced('tools')">단계별 따로 실행</button><button onclick="goAdvanced('guide')">지침 수정</button><button onclick="goAdvanced('reset')">작업 초기화</button></div>
+<div class="panel stage" id="stage-audio">
+  <div class="panel-head"><span class="num n5">5</span><b>음성/SRT 확인</b><span class="stat" data-stage-stat="audio">대기</span><span class="spacer"></span><button class="mini" onclick="openWork('narration')">나레이션 파일 열기</button></div>
+  <div class="mini-bar"><i data-stage-bar="audio"></i></div>
+  <div class="inner">
+    <textarea id="workSrt" class="work-text" placeholder="나레이션이 만들어지면 자막(SRT)이 여기에 보입니다."></textarea>
+    <div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('workSrt')">복사</button></div>
   </div>
+</div>
 
-  <div class="card adv-panel" id="adv-video">
-    <h2>영상·자막 설정</h2>
-    <p class="lead">자막 글꼴·크기·색상과 최종 영상 설정을 바꿉니다. (편집프로그램 화면)</p>
-    <div id="videoStatus" class="banner info">대본을 고르지 않아도 자막 설정은 저장할 수 있습니다.</div>
-    <div class="row"><button class="primary" onclick="prepareVideoEditor()">🎬 선택한 대본 연결·새로고침</button><span class="hint">이미지 수정 탭에서 고른 대본이 연결됩니다.</span></div>
-    <iframe id="frVideo" class="editor" src="about:blank" data-src="http://127.0.0.1:8765/"></iframe>
+<div class="panel stage" id="stage-render">
+  <div class="panel-head"><span class="num n6">6</span><b>최종 편집</b><span class="stat" data-stage-stat="render">대기</span><span class="spacer"></span><button class="mini" onclick="openWork('video')">🎬 최종 영상 열기</button><button class="mini" onclick="openWork('assets')">📁 결과 폴더</button></div>
+  <div class="mini-bar"><i data-stage-bar="render"></i></div>
+  <div class="inner">
+    <div class="hint" style="margin-bottom:6px">썸네일</div>
+    <div id="workThumbs" class="gal thumbs"></div>
+    <div class="row"><button onclick="makeWorkspaceThumbnails()">🖼 썸네일 3장 다시 만들기</button><button class="mini" onclick="openWork('thumbs')">썸네일 폴더 열기</button></div>
+    <details class="box soft" id="adv-video" style="margin-top:12px"><summary>영상·자막 설정 (글꼴·크기·색상) — 편집프로그램 화면</summary><div>
+      <div id="videoStatus" class="banner info">대본을 고르지 않아도 자막 설정은 저장할 수 있습니다.</div>
+      <div class="row"><button class="primary" onclick="prepareVideoEditor()">🎬 보고 있는 작업 연결·새로고침</button></div>
+      <iframe id="frVideo" class="editor" src="about:blank" data-src="http://127.0.0.1:8765/"></iframe>
+    </div></details>
   </div>
+</div>
+</div>
 
-  <div class="card adv-panel" id="adv-tools">
-    <h2>단계별 따로 실행</h2>
-    <p class="lead">보통은 ② 제작 시작 한 번이면 됩니다. 특정 단계만 다시 하고 싶을 때 씁니다.</p>
-    <h3>대본만 만들기</h3>
-    <div class="row"><div class="seg"><button data-ch="person" class="on" onclick="setToolChannel('person')">사람의 이유</button><button data-ch="mindam" onclick="setToolChannel('mindam')">민담·야담</button></div></div>
-    <div class="row"><input type="text" id="toolTitle" placeholder="주제 또는 제목"><button class="primary" onclick="startScriptOnly()">대본만 만들기</button></div>
+<!-- ═══ 파일 메뉴 ═══ -->
+<div class="panel" id="filePanel">
+  <div class="panel-head"><span class="num nf">📁</span><b>파일 메뉴</b><span class="spacer"></span><button class="mini" onclick="loadWorkspace(false)">새로고침</button><button class="mini danger" onclick="deleteCurrentWork()">이 작업 휴지통으로</button></div>
+  <div class="inner"><div class="files" id="fileList"><div class="hint">작업을 고르면 만들어진 파일이 여기에 나옵니다.</div></div></div>
+</div>
+
+<!-- ═══ 로그 ═══ -->
+<div class="panel" id="logPanel">
+  <div class="panel-head"><span class="tag-lbl">로그</span><span class="hint" id="pgLines"></span><span class="spacer"></span><label class="chk"><input type="checkbox" id="pgFollow" checked> 새 로그 따라가기</label></div>
+  <div class="inner"><div class="log" id="pgLog"></div></div>
+</div>
+
+<!-- ═══ 도구 ═══ -->
+<div class="panel" id="adv-tools">
+  <div class="panel-head"><span class="tag-lbl">단계별 따로 실행</span><span class="hint">보통은 제작 시작 한 번이면 됩니다</span></div>
+  <div class="inner">
+    <div class="row"><div class="seg"><button data-ch="person" class="on" onclick="setToolChannel('person')">사람의 이유</button><button data-ch="mindam" onclick="setToolChannel('mindam')">민담·야담</button></div><input type="text" id="toolTitle" placeholder="주제 또는 제목"><button class="primary" onclick="startScriptOnly()">대본만 만들기</button></div>
     <div id="toolMindam" class="hidden">
       <div class="row"><label>길이 <select id="toolLen"></select></label><label>지침 <select id="toolMGuide"></select></label><label>이어쓰기 폴더 <input type="text" id="toolResume" placeholder="비우면 새로 시작" style="min-width:240px"></label></div>
-      <div class="row"><button onclick="startVariations()">제목 변형 A~D 만들기 (30초~1분)</button><span class="hint">골격은 살리고 주인공·반전을 바꾼 안 4개 중 고릅니다</span></div>
+      <div class="row"><button onclick="startVariations()">제목 변형 A~D 만들기</button><span class="hint">골격은 살리고 주인공·반전을 바꾼 안 4개 중 고릅니다</span></div>
       <div id="varBox" class="hidden"></div>
     </div>
-    <h3>이미 만든 대본으로</h3>
-    <div class="row"><label>대본 파일</label><select id="toolFile" style="min-width:min(100%,420px)"></select></div>
-    <div class="row">
-      <button onclick="startImages()">이미지 프롬프트만</button><button onclick="startTTS()">나레이션만</button><button onclick="startOptimize()">제목·설명·태그만</button><button onclick="startThumb()">썸네일 3장만</button><button onclick="restyleTo2D()">프롬프트를 2D로 바꾸기</button>
-    </div>
-    <h3>민담 챕터 타임스탬프</h3>
-    <div class="row"><input type="text" id="tsDir" placeholder="대본\민담\2026-09-12_제목" style="min-width:260px"><input type="text" id="tsSrt" placeholder="자막(.srt) 경로" style="min-width:260px"><button onclick="makeTimestamps()">만들기</button></div>
+    <div class="row"><label>대본 파일</label><select id="toolFile" style="min-width:min(100%,360px)"></select><button onclick="startImages()">이미지 프롬프트만</button><button onclick="startTTS()">나레이션만</button><button onclick="startOptimize()">제목·설명·태그만</button><button onclick="startThumb()">썸네일 3장만</button><button onclick="restyleTo2D()">프롬프트를 2D로</button></div>
+    <div class="row"><label>민담 챕터 타임스탬프</label><input type="text" id="tsDir" placeholder="대본\민담\2026-09-12_제목" style="min-width:220px"><input type="text" id="tsSrt" placeholder="자막(.srt) 경로" style="min-width:220px"><button onclick="makeTimestamps()">만들기</button></div>
     <pre id="tsOut" class="hint" style="white-space:pre-wrap"></pre>
+    <div class="row" style="margin-top:10px"><label>지침 수정</label><select id="guideSel" style="min-width:min(100%,320px)"></select><button onclick="openGuide()">열기</button></div>
+    <div id="guideEditor" class="hidden"><p class="hint" id="guideName"></p><textarea id="guideText" style="min-height:360px"></textarea><div class="row"><button class="primary" onclick="saveGuide()">저장</button></div></div>
+    <div class="row" style="margin-top:10px"><label>작업 초기화</label><select id="resetFile" style="min-width:min(100%,360px)"></select><button class="danger" onclick="resetSelected()">🗑 선택한 작업 휴지통으로</button><span class="hint">대본·이미지·영상 전부 대본/_휴지통으로 옮깁니다</span></div>
   </div>
-
-  <div class="card adv-panel" id="adv-guide">
-    <h2>지침 수정</h2>
-    <p class="lead">AI에게 주는 대본·이미지 지침 파일을 바로 고칠 수 있습니다.</p>
-    <div class="row"><label>지침 파일</label><select id="guideSel" style="min-width:min(100%,380px)"></select><button class="primary" onclick="openGuide()">열기</button></div>
-    <div id="guideEditor" class="hidden"><p class="hint" id="guideName"></p><textarea id="guideText" style="min-height:420px"></textarea><div class="row"><button class="primary" onclick="saveGuide()">저장</button></div></div>
-  </div>
-
-  <div class="card adv-panel" id="adv-reset">
-    <h2>작업 초기화</h2>
-    <p class="lead">고른 작업의 대본·이미지·영상·음성·자막·썸네일을 모두 <code>대본/_휴지통</code>으로 옮깁니다. 설정은 그대로 남습니다.</p>
-    <div class="row"><select id="resetFile" style="min-width:min(100%,460px)"></select><button class="mini" onclick="refresh()">새로고침</button></div>
-    <div class="row"><button class="danger" onclick="resetSelected()">🗑 선택한 작업 초기화</button></div>
-  </div>
+</div>
 </section>
+
 
 <!-- ═══════════ 설정 ═══════════ -->
 <section id="view-settings" class="hidden">
