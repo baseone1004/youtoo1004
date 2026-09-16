@@ -314,11 +314,16 @@ def generate(ai, topic, length_key="2", log=print, workdir=None, variation=""):
                 + "\n본문만 출력한다.")
         log(f"   {label} · {beats_text(beats)} · 목표 {goal:,}자 ")
         body = clean_body(ai.ask(system_ch, user))
-        if len(body) < target * 0.65:
-            log(f"   ! {len(body):,}자로 짧아 장면을 보충")
+        attempts = 0
+        while len(body) < target * 0.90 and attempts < 3:
+            attempts += 1
+            log(f"   ! {len(body):,}자로 짧아 목표의 90%까지 장면을 보충 ({attempts}/3)")
             more = ai.ask(system_ch, user + f"\n\n[지금까지 쓴 이번 챕터]\n{body}\n\n위 본문의 뒤에 이어질 장면을 약 {target - len(body):,}자 더 쓴다. "
-                          "앞 내용을 반복하지 않는다. 이어지는 본문만 출력한다.")
-            body = body + "\n\n" + clean_body(more)
+                          "앞 내용을 반복하거나 요약하지 않는다. 이어지는 본문만 출력한다.")
+            addition = clean_body(more)
+            if not addition:
+                break
+            body = body + "\n\n" + addition
         bodies[(ci, pi)] = body
         with open(fname, "w", encoding="utf-8") as f:
             f.write(body)

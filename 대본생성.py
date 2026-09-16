@@ -20,7 +20,7 @@ def load_cfg():
     with open("설정.json", encoding="utf-8") as f:
         cfg = json.load(f)
     cfg.setdefault("AI", "deepseek"); cfg.setdefault("API_키", ""); cfg.setdefault("모델", "")
-    cfg.setdefault("대본_글자수", 7000); cfg.setdefault("하루_대본_편수", 2)     # 7,000자 ≈ 25분 (분당 270자 기준)
+    cfg.setdefault("대본_글자수", 6750); cfg.setdefault("하루_대본_편수", 2)     # 6,750자 = 25분 (분당 270자 기준)
     return cfg
 
 def safe_name(s):
@@ -86,6 +86,21 @@ def generate(ai, system, t, target, n_parts):
     else:
         body, thumb = script, ""
     body = strip_next_teaser(fix_script_sentences(body)).strip()
+    # AI가 목표보다 짧게 끝내더라도 짧은 영상으로 넘어가지 않도록 자동 보충한다.
+    minimum = round(target * 0.90)
+    attempts = 0
+    while len(body) < minimum and attempts < 4:
+        attempts += 1
+        remaining = target - len(body)
+        tail = body[-1000:]
+        request = (f"{card}\n\n[지금까지 쓴 대본의 마지막 부분]\n…{tail}\n\n"
+                   f"현재 대본은 {len(body):,}자로 목표 {target:,}자보다 짧다. 앞 내용을 반복하거나 요약하지 말고, "
+                   f"논거·구체적 사례·실천 장면을 이어서 약 {remaining:,}자 보충한다. "
+                   "블록 제목과 구간 번호 없이 바로 낭독할 본문만 출력한다.")
+        addition = clean_part(ai.ask(system, request))
+        if not addition:
+            break
+        body = strip_next_teaser(fix_script_sentences(body + "\n\n" + addition)).strip()
     head = compose_description(head)
     full = head.strip() + "\n[대본]\n" + body + "\n\n===sum===\n" + thumb.strip() + "\n"
     return full, body

@@ -264,10 +264,12 @@ def make_person_script(job, req):
     if not t["제목"]:
         raise SystemExit("주제(제목)를 입력하거나 목록에서 고르세요.")
     system = read_guideline(req.get("guideline") or "사람의이유_대본지침.txt")
-    target = int(req.get("target") or cfg["대본_글자수"])
-    n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
     cpm = int(cfg.get("분당_글자수", 270) or 270)
-    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 (약 {target / cpm:.0f}분) · 지침 {req.get('guideline')}")
+    requested = int(req.get("target") or cfg["대본_글자수"])
+    minutes = min((20, 25, 30), key=lambda m: abs(requested - m * cpm))
+    target = minutes * cpm
+    n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
+    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {req.get('guideline')}")
     job.add(f"▶ {t['제목']}")
     full, body = 대본생성.generate(ai, system, t, target, n_parts)
     os.makedirs(대본_폴더, exist_ok=True)
@@ -1634,7 +1636,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <p class="hint" style="margin-top:8px">완료 = 그림 클릭하면 크게 보기 · <b>재생성</b> = 그 장면만 다시 (기존 그림은 이전/ 폴더로) · <b>영상화</b> = KIE로 그 장면을 영상으로 · <b>생성/재시도</b> = 없는 장면 하나만</p>
   <details style="margin-top:8px"><summary class="hint">세부 옵션 (보통은 안 건드려도 됩니다)</summary>
   <div class="row" style="margin-top:8px">
-    <label>사람의 이유 길이 <span class="lenbtns" data-for="a_target"></span> <input type="number" id="a_target" value="7000" step="500" style="width:90px"> 자</label>
+    <label>사람의 이유 길이 <span class="lenbtns" data-for="a_target"></span> <input type="number" id="a_target" value="6750" readonly style="width:90px"> 자</label>
     <label><input type="checkbox" id="a_optimize" checked>알고리즘 최적화</label>
     <label><input type="checkbox" id="a_prompts" checked>이미지 프롬프트</label>
     <label><input type="checkbox" id="a_tts" checked>나레이션(인월드)</label>
@@ -1657,7 +1659,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <h2 style="margin-top:18px">② 지침·분량</h2>
   <div class="row">
     <label>대본 지침 <select id="p_guide"></select></label>
-    <label>영상 길이 <span class="lenbtns" data-for="p_target"></span> <input type="number" id="p_target" value="7000" min="200" max="40000" step="10" style="width:90px"> 자</label>
+    <label>영상 길이 <span class="lenbtns" data-for="p_target"></span> <input type="number" id="p_target" value="6750" readonly style="width:90px"> 자</label>
     <label><input type="checkbox" id="p_used" checked> 사용한_주제.txt 에 기록</label>
     <label><input type="checkbox" id="p_opt" checked> 알고리즘 최적화(제목 5개·썸네일·설명·태그·첫30초 점검)</label>
     <button class="mini" onclick="editGuide('p_guide')">지침 열어 수정</button>
