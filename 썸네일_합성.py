@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """썸네일 문구 합성 — 글자 없는 원본(raw) 위에 채널별 레이아웃으로 문구를 얹는다.
 
-  A 키워드 강조형 (사람의 이유 기본): 작은 앞말(흰) → 거대한 핵심어(노랑) → 마무리(빨강), 왼쪽 문구·오른쪽 인물
+  A 키워드 강조형 (사람의 이유 기본): 흰 글씨 두 줄 → 마지막 핵심어만 크고 노랗게, 검정 테두리, 그림은 밝게 유지 (채널 기존 썸네일 스타일)
   C 숫자 배지형   (문구에 "3가지" 같은 숫자가 있으면): 빨간 원 배지 + 문구
   B 하단 띠형     (민담·야담): 아래쪽 어두운 띠 위에 큰 자막, 왼쪽 위 채널 태그
 글꼴: 사람의 이유는 Black Han Sans(굵은 고딕), 민담은 Nanum Brush Script(붓글씨) — 둘 다 assets/fonts/ 에 있다."""
@@ -15,6 +15,7 @@ FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "f
 FONT = os.path.join(FONT_DIR, "BlackHanSans-Regular.ttf")
 BRUSH = os.path.join(FONT_DIR, "NanumBrushScript-Regular.ttf")
 YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#000000"
+ATTACH = {"진짜", "가장", "그", "이", "숨은", "놀라운", "무서운", "결정적", "진정한", "최고의", "마지막", "단", "첫"}
 NUMBER = re.compile(r"(\d+)\s*(가지|개|번|년|살|초|분|일|명|배|단계|시간)")
 
 
@@ -83,10 +84,10 @@ def _tiers(top, bottom):
         top, bottom = "", top
     words = bottom.split()
     tail = ""
-    if len(words) >= 3:
-        tail = words[-1]
-        if len(tail) <= 2 and len(words) >= 4:
-            tail = " ".join(words[-2:])
+    if len(words) >= 2:
+        tail = words[-1]                      # 마지막 낱말(습관·이유·비밀…)이 강조어
+        if len(words) >= 3 and (len(tail) <= 1 or words[-2] in ATTACH):
+            tail = " ".join(words[-2:])       # '진짜 이유', '그 정체' 처럼 꾸밈말은 붙여서 강조
         bottom = bottom[: -len(tail)].strip()
     tiers = []
     if top:
@@ -101,10 +102,10 @@ def layout_keyword(im, top, bottom, badge=""):
     """A (badge 가 있으면 C)"""
     if _subject_on_left(im):
         im = ImageOps.mirror(im)
-    im = _shade_left(im)
+    im = _shade_left(im, 0.58, 0.45)          # 그림은 밝게 두고 글자 뒤만 살짝 어둡게
     draw = ImageDraw.Draw(im)
-    x, max_w = 56, int(W * 0.56)
-    y = 96
+    x, max_w = 48, int(W * 0.58)
+    y = 64
     if badge:
         cx, cy, r = 168, 176, 112
         draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=RED, outline=WHITE, width=9)
@@ -113,25 +114,27 @@ def layout_keyword(im, top, bottom, badge=""):
         draw.text((cx - bw / 2, cy - bh * 0.62), badge, font=bf, fill=WHITE)
         y = 318
     # 모든 줄의 글꼴을 먼저 정하고, 세로가 넘치면 전체를 같은 비율로 줄인다.
+    tiers = _tiers(top, bottom)
+    has_tail = any(role == "tail" for _, role in tiers)
     rows = []
-    for text, role in _tiers(top, bottom):
-        lines = _wrap(text, 7) if role == "key" else [text]
-        base = {"lead": 78, "key": 150 if len(lines) == 1 else 132, "tail": 104}[role]
+    for text, role in tiers:
+        # 마지막 핵심어(tail)만 크고 노랗게, 나머지는 흰색. tail 이 없으면 key 를 강조한다.
+        strong = role == "tail" or (role == "key" and not has_tail)
+        lines = _wrap(text, 8) if strong else [text]
+        base = (150 if len(lines) == 1 else 128) if strong else 92
         if badge:
             base = int(base * 0.85)
         for ln in lines:
-            rows.append([ln, role, _fit(draw, ln, base, max_w)])
-    avail = H - y - 56
-    block = sum(f.size * 1.08 for _, _, f in rows) + 16 * (len(rows) - 1)
+            rows.append([ln, strong, _fit(draw, ln, base, max_w)])
+    avail = H - y - 48
+    block = sum(f.size * 1.1 for _, _, f in rows) + 10 * (len(rows) - 1)
     if block > avail:
         scale = max(0.5, avail / block)
         for row in rows:
             row[2] = _font(row[2].size * scale)
-    for ln, role, f in rows:
-        _outlined(draw, (x - 4 if role == "key" else x, y), ln, f, {"lead": WHITE, "key": YELLOW, "tail": RED}[role])
-        y += int(f.size * 1.08) + 12
-    y = min(y + 6, H - 30)
-    draw.rounded_rectangle((x, y, x + 220, y + 14), radius=7, fill=RED)
+    for ln, strong, f in rows:
+        _outlined(draw, (x - 4 if strong else x, y), ln, f, YELLOW if strong else WHITE, max(7, f.size // 10))
+        y += int(f.size * 1.1) + 10
     return im
 
 

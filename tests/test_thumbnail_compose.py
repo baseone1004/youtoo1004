@@ -36,7 +36,9 @@ class ThumbnailComposeTest(unittest.TestCase):
     def test_tiers_split_trailing_words_into_tail(self):
         self.assertEqual(T._tiers("나이 들수록", "시간이 빨리 가는 진짜 이유"),
                          [("나이 들수록", "lead"), ("시간이 빨리 가는", "key"), ("진짜 이유", "tail")])
-        self.assertEqual(T._tiers("", "기억이 압축됐다"), [("기억이 압축됐다", "key")])
+        self.assertEqual(T._tiers("돈 많은 사람들", "절대 말하지 않는 습관"),
+                         [("돈 많은 사람들", "lead"), ("절대 말하지 않는", "key"), ("습관", "tail")])
+        self.assertEqual(T._tiers("", "습관"), [("습관", "key")])
 
 
 if __name__ == "__main__":
