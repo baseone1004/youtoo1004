@@ -21,6 +21,8 @@ def apply(editor_dir):
         if anchor not in source:
             raise ValueError("썸네일 글꼴 연결 위치를 찾지 못했습니다.")
         source = source.replace(anchor, custom, 1)
+    if 'if (name or "").lower() == "malgun gothic bold":' not in source:
+        source = source.replace(anchor, anchor + '    if (name or "").lower() == "malgun gothic bold":\n        return r"C:\\Windows\\Fonts\\malgunbd.ttf"\n', 1)
     source = source.replace("    gap = 12\n", "    gap = 30\n", 1)
     bold_marker = "    # Regular 글꼴도 썸네일에서 힘 있게 보이도록 안쪽 획을 겹쳐 그린다.\n"
     if bold_marker not in source:
@@ -37,6 +39,36 @@ def apply(editor_dir):
         if old_draw not in source:
             raise ValueError("썸네일 굵기 연결 위치를 찾지 못했습니다.")
         source = source.replace(old_draw, bold_draw, 1)
+    if "def _thumbnail_lines(top: str, bottom: str)" not in source:
+        compose_anchor = "\ndef compose(image: str, out: str = \"\""
+        if compose_anchor not in source:
+            compose_anchor = "\ndef compose(image: str, out: str"
+        helper = '''
+def _thumbnail_lines(top: str, bottom: str) -> list[str]:
+    """긴 문구를 모바일에서 읽기 쉬운 2~3줄로 단어 단위 분배한다."""
+    words = (f"{top} {bottom}").split()
+    if not words:
+        return []
+    count = 3 if len("".join(words)) >= 12 and len(words) >= 3 else min(2, len(words))
+    target = max(1, sum(len(w) for w in words) // count)
+    lines = []
+    current = []
+    for word in words:
+        current_len = sum(len(w) for w in current)
+        if current and len(lines) < count - 1 and current_len + len(word) > target:
+            lines.append(" ".join(current)); current = []
+        current.append(word)
+    if current:
+        lines.append(" ".join(current))
+    return lines
+
+'''
+        at = source.find(compose_anchor)
+        if at < 0:
+            raise ValueError("썸네일 문구 배치 위치를 찾지 못했습니다.")
+        source = source[:at + 1] + helper + source[at + 1:]
+    source = source.replace('    lines = [t for t in (top, bottom) if t and t.strip()]\n',
+                            '    lines = _thumbnail_lines(top, bottom)\n', 1)
     marker = "    # 참고 썸네일처럼 강한 빨간 포인트 바를 넣어 작은 화면에서도 시선을 끈다.\n"
     if marker not in source:
         before = '''    colors = [top_color, bottom_color] if len(lines) == 2 else [bottom_color]
@@ -49,6 +81,13 @@ def apply(editor_dir):
         if before not in source:
             raise ValueError("썸네일 색상 연결 위치를 찾지 못했습니다.")
         source = source.replace(before, accent, 1)
+    source = source.replace('    colors = [top_color, bottom_color] if len(lines) == 2 else [bottom_color]\n',
+                            '    colors = ([top_color, "#FFFFFF", bottom_color] if len(lines) == 3\n'
+                            '              else [top_color, bottom_color] if len(lines) == 2 else [bottom_color])\n', 1)
+    source = source.replace('    colors = (["#FFE45C", "#FFFFFF", "#FF3B30"] if len(lines) == 3\n'
+                            '              else ["#FFFFFF", "#FF3B30"] if len(lines) == 2 else ["#FFE45C"])\n',
+                            '    colors = ([top_color, "#FFFFFF", bottom_color] if len(lines) == 3\n'
+                            '              else [top_color, bottom_color] if len(lines) == 2 else [bottom_color])\n', 1)
     if source != original:
         target.write_text(source, encoding="utf-8")
         return True

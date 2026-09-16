@@ -894,9 +894,12 @@ def make_thumbnails(job, req):
     if os.path.exists(bp):
         brief = open(bp, encoding="utf-8").read()[:1500]
     style = 화풍.get(req.get("style", "실사"), 화풍["실사"])
-    position = req.get("position", "bottom")
+    position = "bottom" if is_mindam else "left"
+    layout = ("조선 시대 인물 2~3명과 사건 장소가 함께 보이는 넓은 이야기 장면, 문구가 들어갈 화면 아래쪽은 어둡고 단순하게"
+              if is_mindam else
+              "감정이 선명한 현대 한국인 한 명을 화면 오른쪽에 크게, 문구가 들어갈 왼쪽 55%는 어둡고 단순하게")
     user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n"
-            "[구도] 유튜브 썸네일용 강한 명암, 핵심 인물 또는 사물 하나를 크게, 복잡한 배경과 작은 소품 금지, 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
+            f"[채널] {'민담·야담' if is_mindam else '사람의 이유'}\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
             + "\n".join(f"{i}. 상단: {t} / 하단: {b}" + (f" / 이미지: {d}" if d else "") for i, (t, b, d) in enumerate(copies, 1))
             + (f"\n\n[브리프]\n{brief}" if brief else ""))
     job.stage = "썸네일 프롬프트"
@@ -934,8 +937,10 @@ def make_thumbnails(job, req):
         top, bottom, _ = copies[(i - 1) % len(copies)]
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
         aip("/api/thumbnail/compose", dict(image=os.path.join(raw_dir, cands[0]), out=out, top=top, bottom=bottom,
-                                            font="Hakgyoansim Nalgae R", top_color="#FF3B30", bottom_color="#FFE45C",
-                                            position=position, size=112, box=True))
+                                            font="Malgun Gothic Bold",
+                                            top_color="#FF3B30" if is_mindam else "#FFE45C",
+                                            bottom_color="#63FF66" if is_mindam else "#FF3B30",
+                                            position=position, size=106, box=True))
         outs.append(out)
         job.add(f"   ✓ {out}  ({top} / {bottom})")
     job.add("비용: " + ai.cost_text())
@@ -1518,7 +1523,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <div class="stepline"><span class="no">3</span><div><b>그림체 선택</b> <span class="hint">애니·파스텔·실사 중 원하는 그림체를 누르면 바로 저장됩니다</span>
   <div class="row" style="margin-top:6px"><input type="hidden" id="a_style"><div class="styles" id="a_styles"></div></div>
   <div class="row"><label>민담 영상 길이 <select id="a_length"></select></label></div>
-  <div class="row" style="margin-top:8px"><b>썸네일</b><label><input type="checkbox" id="a_thumb" checked> 영상마다 썸네일 3장 자동 제작</label><label>문구 위치 <select id="a_thumb_pos"><option value="bottom">아래</option><option value="left">왼쪽</option><option value="top">위</option></select></label><span class="hint">완성된 썸네일은 해당 영상의 자료 폴더 안 <code>썸네일</code> 폴더에 저장됩니다.</span></div>
+  <div class="row" style="margin-top:8px"><b>썸네일</b><label><input type="checkbox" id="a_thumb" checked> 영상마다 썸네일 3장 자동 제작</label><input type="hidden" id="a_thumb_pos" value="auto"><span class="hint">사람의 이유는 오른쪽 인물+왼쪽 문구, 민담은 이야기 장면+아래쪽 문구로 자동 구분합니다.</span></div>
   </div></div>
   <div class="stepline"><span class="no">4</span><div>
   <div class="row"><button class="primary" id="a_go" onclick="startPipeline()" style="font-size:17px;padding:14px 26px">🚀 대본부터 영상까지 자동 실행</button><button class="mini hidden" id="a_cancel" onclick="api('/api/cancel',{})">현재 작업 취소</button>
