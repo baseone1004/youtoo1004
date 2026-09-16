@@ -149,7 +149,7 @@ def split_subtitle_text(text, max_chars=자막_최대_글자):
 
 
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,
-               temperature=None, name="나레이션"):
+               temperature=None, name="나레이션", subtitle_lines=1):
     """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 문장 파일은 재사용."""
     ffmpeg, ffprobe = find_ffmpeg("ffmpeg"), find_ffmpeg("ffprobe")
     out_dir = os.path.abspath(out_dir)          # concat 목록은 절대 경로여야 함 (목록 파일 기준 상대경로로 해석되므로)
@@ -204,6 +204,9 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
         d = probe_duration(ffprobe, p)
         cue_start = len(srt) + 1
         chunks = split_subtitle_text(s)
+        if int(subtitle_lines or 1) > 1:
+            line_count = int(subtitle_lines)
+            chunks = ["\n".join(chunks[j:j + line_count]) for j in range(0, len(chunks), line_count)]
         weights = [max(1, len(re.sub(r"\s+", "", chunk))) for chunk in chunks]
         total_weight = sum(weights)
         elapsed = 0.0

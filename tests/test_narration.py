@@ -52,6 +52,20 @@ class SubtitleSplitTest(unittest.TestCase):
             self.assertIn("00:00:00,000 -->", srt)
             self.assertIn("--> 00:00:05,000", srt)
 
+    def test_mindam_groups_short_captions_into_two_lines(self) -> None:
+        sentence = "가" * 50
+        with tempfile.TemporaryDirectory() as td:
+            parts = Path(td) / "tts_parts"; parts.mkdir()
+            (parts / "0001.mp3").write_bytes(b"audio" * 200)
+            (parts / "_silence.mp3").write_bytes(b"silence")
+            with patch("나레이션.find_ffmpeg", side_effect=lambda name: name), \
+                 patch("나레이션.probe_duration", return_value=5.0), \
+                 patch("나레이션.subprocess.run"):
+                result = synthesize([sentence], td, "key", "voice", log=lambda _line: None, subtitle_lines=2)
+            self.assertEqual(result["sentences"], 2)
+            blocks = Path(result["srt"]).read_text(encoding="utf-8").strip().split("\n\n")
+            self.assertEqual(len(blocks[0].splitlines()[2:]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

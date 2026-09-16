@@ -20,6 +20,7 @@ import 최적화
 import 나레이션
 import 웹큐
 import requests as _rq
+from 제작대기열 import QueueStore, recent_chats, send_telegram
 
 PORT = 8766
 지침_폴더 = "지침"
@@ -52,6 +53,8 @@ class Job:
 REAL = sys.stdout
 STATE = {"job": None}
 LOCK = threading.Lock()
+QUEUE = QueueStore(os.path.join(대본_폴더, "_상태", "제작대기열.json"))
+QUEUE_THREAD = None
 
 
 def shutdown_program(server):
@@ -667,7 +670,8 @@ def make_tts(job, req):
     job.stage = "나레이션 합성"
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
                          req.get("model") or cfg.get("인월드_모델", "inworld-tts-1.5-max"), speed,
-                         log=job.add, cancel=lambda: job.cancel_requested)
+                         log=job.add, cancel=lambda: job.cancel_requested,
+                         subtitle_lines=2 if channel == "mindam" else 1)
     return r
 
 
@@ -850,6 +854,9 @@ def make_thumbnails(job, req):
 # ── 작업 5: 원클릭 파이프라인 ─────────────────────────────────
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
+    def check_cancelled():
+        if job.cancel_requested:
+            raise RuntimeError("사용자가 연속 제작을 중단했습니다.")
     steps = req.get("steps") or {}
     if int(steps.get("hook", 0) or 0) > 0 and not aip("/api/info").get("kie_key_saved"):
         raise ValueError("KIE API 키가 없습니다. [설정]에서 KIE 키를 저장하세요.")
@@ -868,6 +875,7 @@ def make_pipeline(job, req):
         r = make_person_script(job, dict(req, optimize=steps.get("optimize", True)))
         script = r["file"]
     result.update(script=script, title=r.get("title"), opt=r.get("opt"), meta=r.get("meta"))
+    check_cancelled()
     assets = assets_dir(script)
     # 2) 이미지 프롬프트
     existing_prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
@@ -882,11 +890,13 @@ def make_pipeline(job, req):
     else:
         cand = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
         result["prompts"] = cand if os.path.exists(cand) else ""
+    check_cancelled()
     # 3) 나레이션
     if steps.get("tts", True):
         job.stage = "③ 나레이션"
         t = make_tts(job, dict(script_file=script, out_dir=assets, channel=req.get("channel") or channel_of(script)))
         result.update(narration=t["mp3"], srt=t["srt"], flow=t["flow"], duration=t["duration"])
+    check_cancelled()
     # 4) 이미지 생성
     images_dir = os.path.join(assets, "images")
     if steps.get("images", True):
@@ -898,11 +908,13 @@ def make_pipeline(job, req):
         prefix = req.get("style_prefix") or image_style_lock(selected_style)
         run_image_generation(job, result["prompts"], images_dir, prefix)
         result["images"] = images_dir
+    check_cancelled()
     # 5) 후킹 영상
     n_hook = int(steps.get("hook", 0) or 0)
     if n_hook > 0 and result.get("prompts"):
         job.stage = "⑤ 후킹 영상"
         result["hook"] = run_hook_videos(job, images_dir, result["prompts"], list(range(1, n_hook + 1)))
+    check_cancelled()
     # 5.5) 썸네일
     if steps.get("thumbnail", True):
         try:
@@ -921,6 +933,151 @@ def make_pipeline(job, req):
     job.add("✅ 파이프라인 완료 · " + assets)
     result["assets"] = assets
     return result
+
+
+def verify_final_video(path):
+    """최종 파일에 재생 가능한 영상·음성과 유효한 길이가 있는지 확인한다."""
+    if not path or not os.path.isfile(path) or os.path.getsize(path) < 1024:
+        raise RuntimeError("최종 영상 파일이 만들어지지 않았습니다.")
+    ffprobe = 나레이션.find_ffmpeg("ffprobe")
+    proc = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type,duration",
+                           "-of", "json", path], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if proc.returncode:
+        raise RuntimeError("최종 영상을 검사하지 못했습니다: " + proc.stderr.strip()[-300:])
+    info = json.loads(proc.stdout or "{}")
+    streams = info.get("streams", [])
+    types = {s.get("codec_type") for s in streams}
+    duration = float((info.get("format") or {}).get("duration") or 0)
+    if "video" not in types or "audio" not in types or duration <= 0:
+        raise RuntimeError("최종 영상에 영상 또는 음성 트랙이 없습니다.")
+    stream_lengths = [float(s.get("duration") or duration) for s in streams if s.get("codec_type") in ("video", "audio")]
+    if stream_lengths and max(stream_lengths) - min(stream_lengths) > 1.0:
+        raise RuntimeError("최종 영상과 음성의 길이가 1초 이상 차이 납니다.")
+    return duration
+
+
+def telegram_notice(text):
+    cfg = load_json("설정.json", {})
+    if not cfg.get("텔레그램_알림", True):
+        return False
+    try:
+        return send_telegram(cfg.get("텔레그램_봇_토큰", ""), cfg.get("텔레그램_채팅_ID", ""), text)
+    except Exception as exc:  # 알림 실패가 영상 제작을 중단시키지는 않는다.
+        REAL.write(f"텔레그램 알림 실패: {exc}\n")
+        return False
+
+
+def is_shared_failure(message):
+    return bool(re.search(r"API.?키|401|403|인증|목소리|voice|8765|편집프로그램|연결.*거부|좌표|확장.*연결|KIE API", message or "", re.I))
+
+
+def queue_snapshot():
+    data = QUEUE.public()
+    job = STATE.get("job")
+    if job and data.get("current_id"):
+        for item in data.get("items", []):
+            if item.get("id") == data["current_id"] and item.get("status") == "working":
+                item["stage"] = job.stage or "준비 중"
+                item["progress"] = round(job.progress, 3)
+                break
+    return data
+
+
+def start_queue_worker():
+    global QUEUE_THREAD
+    if QUEUE_THREAD and QUEUE_THREAD.is_alive():
+        return
+
+    def worker():
+        while True:
+            with QUEUE.lock:
+                if QUEUE.data.get("status") != "running":
+                    QUEUE.save(); return
+                item = next((x for x in QUEUE.data.get("items", []) if x.get("status") == "pending"), None)
+                if not item:
+                    QUEUE.data.update(status="done", current_id="")
+                    QUEUE.save()
+                    done = sum(x.get("status") == "done" for x in QUEUE.data.get("items", []))
+                    failed = sum(x.get("status") == "error" for x in QUEUE.data.get("items", []))
+                    telegram_notice(f"✅ 연속 제작이 모두 끝났습니다.\n완료 {done}편 · 실패 {failed}편")
+                    return
+                item.update(status="working", status_text="제작 중", stage="준비 중", progress=0.0,
+                            attempts=int(item.get("attempts", 0)) + 1, error="")
+                QUEUE.data["current_id"] = item["id"]
+                QUEUE.save()
+
+            options = dict(QUEUE.data.get("options") or {})
+            request = dict(options, channel=item["channel"], title=item["title"], topic=item.get("topic") or {})
+            if item["channel"] == "mindam":
+                request["bench"] = item.get("topic") or {}
+            previous = item.get("result") or {}
+            if previous.get("script") and os.path.isfile(previous["script"]):
+                request.update(script_file=previous["script"], reuse_prompts=True)
+            try:
+                job = run_job("queue_pipeline", lambda active: make_pipeline(active, request))
+                while job.status == "running":
+                    time.sleep(2)
+                    with QUEUE.lock:
+                        item["stage"], item["progress"], item["result"] = job.stage or "준비 중", job.progress, dict(job.result)
+                        if QUEUE.data.get("status") == "cancelled":
+                            job.cancel_requested = True
+                        QUEUE.save()
+                if job.status != "done":
+                    raise RuntimeError(job.error or "제작 작업이 중단됐습니다.")
+                result = dict(job.result)
+                duration = verify_final_video(result.get("video")) if (request.get("steps") or {}).get("render") else float(result.get("duration") or 0)
+                with QUEUE.lock:
+                    item.update(status="done", stage="완료", progress=1.0, result=result, duration=duration, error="")
+                    QUEUE.data["current_id"] = ""
+                    QUEUE.save()
+                telegram_notice(f"✅ 영상 한 편이 완성됐습니다.\n주제: {item['title']}\n길이: {duration / 60:.1f}분\n저장: {result.get('video') or result.get('assets', '')}")
+            except Exception as exc:  # noqa: BLE001
+                message = str(exc)
+                shared = is_shared_failure(message)
+                with QUEUE.lock:
+                    cancelled = QUEUE.data.get("status") == "cancelled"
+                    item.update(status="cancelled" if cancelled else ("pending" if shared else "error"),
+                                stage="취소됨" if cancelled else ("설정 확인 후 다시 대기" if shared else "실패"),
+                                error=message, progress=1.0 if cancelled or not shared else 0.0)
+                    QUEUE.data["current_id"] = ""
+                    if shared:
+                        QUEUE.data["status"] = "paused"
+                    QUEUE.save()
+                if not cancelled:
+                    telegram_notice(f"❌ 영상 제작에 실패했습니다.\n주제: {item['title']}\n오류: {message}" +
+                                    ("\n공통 설정 문제로 대기열을 일시정지했습니다." if shared else "\n다음 주제를 계속 제작합니다."))
+                if shared:
+                    return
+
+    QUEUE_THREAD = threading.Thread(target=worker, daemon=True, name="continuous-production")
+    QUEUE_THREAD.start()
+
+
+def create_queue(body):
+    raw = body.get("items") or []
+    unique, seen = [], set()
+    for source in raw:
+        title = str(source.get("title") or source.get("제목") or "").strip()
+        channel = "mindam" if source.get("channel") == "mindam" else "person"
+        key = (channel, title)
+        if title and key not in seen:
+            seen.add(key)
+            unique.append({"id": uuid.uuid4().hex[:12], "channel": channel, "title": title,
+                           "topic": source.get("topic") or source, "status": "pending", "stage": "대기 중",
+                           "progress": 0.0, "attempts": 0, "result": {}, "error": ""})
+    if not unique:
+        raise ValueError("연속 제작할 주제를 하나 이상 선택하세요.")
+    with LOCK:
+        if STATE["job"] and STATE["job"].status == "running":
+            raise ValueError("현재 작업이 끝난 뒤 연속 제작을 시작하세요.")
+    with QUEUE.lock:
+        if QUEUE.data.get("status") == "running":
+            raise ValueError("이미 연속 제작이 진행 중입니다.")
+        QUEUE.data = {"status": "running", "items": unique, "options": body.get("options") or {},
+                      "current_id": "", "updated": ""}
+        QUEUE.save()
+    start_queue_worker()
+    return queue_snapshot()
 
 
 # ── HTTP ─────────────────────────────────────────────────────
@@ -967,13 +1124,18 @@ class H(BaseHTTPRequestHandler):
                                             인월드_속도_사람=cfg.get("인월드_속도_사람", cfg.get("인월드_속도", 1.0)),
                                             인월드_속도_민담=cfg.get("인월드_속도_민담", cfg.get("인월드_속도", 1.0)),
                                             분당_글자수=cfg.get("분당_글자수", 270), 화풍=cfg.get("화풍", "실사"),
-                                            후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30)),
+                                            후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
+                                            텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")),
+                                            텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
+                                            텔레그램_알림=cfg.get("텔레그램_알림", True)),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items()}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
-                                job=job.to_dict() if job else None, reset_items=reset_items()))
+                                job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items()))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
+            elif u.path == "/api/queue":
+                self._json(queue_snapshot())
             elif u.path == "/api/web/next":                       # 크롬 확장이 긴 폴링으로 작업을 가져감
                 웹큐.extension_ping("hidden" if q.get("hidden", ["0"])[0] == "1" else "visible")
                 j = 웹큐.next_job(float(q.get("wait", ["20"])[0]))
@@ -1028,6 +1190,37 @@ class H(BaseHTTPRequestHandler):
                 run_job("tts", lambda job: make_tts(job, body)); self._json({"ok": True})
             elif u.path == "/api/pipeline":
                 run_job("pipeline", lambda job: make_pipeline(job, body)); self._json({"ok": True})
+            elif u.path == "/api/queue/start":
+                self._json(create_queue(body))
+            elif u.path == "/api/queue/pause":
+                with QUEUE.lock:
+                    if QUEUE.data.get("status") == "running": QUEUE.data["status"] = "paused"
+                    QUEUE.save()
+                self._json(queue_snapshot())
+            elif u.path == "/api/queue/resume":
+                with QUEUE.lock:
+                    if not any(x.get("status") in ("pending", "error") for x in QUEUE.data.get("items", [])):
+                        raise ValueError("다시 제작할 대기 항목이 없습니다.")
+                    if not any(x.get("status") == "pending" for x in QUEUE.data.get("items", [])):
+                        for x in QUEUE.data.get("items", []):
+                            if x.get("status") == "error": x.update(status="pending", stage="다시 대기 중", error="", progress=0.0)
+                    QUEUE.data["status"] = "running"; QUEUE.save()
+                start_queue_worker(); self._json(queue_snapshot())
+            elif u.path == "/api/queue/cancel":
+                with QUEUE.lock:
+                    QUEUE.data["status"] = "cancelled"
+                    for x in QUEUE.data.get("items", []):
+                        if x.get("status") == "pending": x.update(status="cancelled", stage="취소됨")
+                    QUEUE.save()
+                if STATE.get("job") and STATE["job"].status == "running": STATE["job"].cancel_requested = True
+                self._json(queue_snapshot())
+            elif u.path == "/api/queue/remove":
+                with QUEUE.lock:
+                    target = body.get("id", "")
+                    if target == QUEUE.data.get("current_id"): raise ValueError("현재 제작 중인 항목은 삭제할 수 없습니다.")
+                    QUEUE.data["items"] = [x for x in QUEUE.data.get("items", []) if x.get("id") != target]
+                    QUEUE.save()
+                self._json(queue_snapshot())
             elif u.path == "/api/cancel":
                 j = STATE["job"]
                 if j and j.status == "running":
@@ -1058,7 +1251,8 @@ class H(BaseHTTPRequestHandler):
                 cfg = load_json("설정.json", {})
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "분당_글자수", "화풍", "후킹_장면수",
-                          "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음"):
+                          "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
+                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림"):
                     if k in body and body[k] != "":
                         cfg[k] = str(body[k]).strip() if isinstance(body[k], str) else body[k]
                 # 서비스별 키 ↔ 현재 AI 의 키 동기화 (AI 를 바꾸면 그 서비스에 저장된 키가 자동으로 쓰인다)
@@ -1071,6 +1265,15 @@ class H(BaseHTTPRequestHandler):
                     cfg["API_키"] = cfg["API_키_" + ai]
                 with open("설정.json", "w", encoding="utf-8") as f:
                     json.dump(cfg, f, ensure_ascii=False, indent=2)
+                self._json({"ok": True})
+            elif u.path == "/api/telegram/chats":
+                cfg = load_json("설정.json", {})
+                token = body.get("token") or cfg.get("텔레그램_봇_토큰", "")
+                self._json({"chats": recent_chats(token)})
+            elif u.path == "/api/telegram/test":
+                cfg = load_json("설정.json", {})
+                send_telegram(cfg.get("텔레그램_봇_토큰", ""), cfg.get("텔레그램_채팅_ID", ""),
+                              "✅ 유튜브 자동 제작 프로그램과 텔레그램이 연결되었습니다.")
                 self._json({"ok": True})
             elif u.path == "/api/open":
                 p = body.get("path", "")
@@ -1143,6 +1346,8 @@ button.primary:disabled{opacity:.5;cursor:not-allowed}button.mini{padding:2px 9p
 .preview{white-space:pre-wrap;font:14px/1.7 var(--serif);max-height:420px;overflow:auto;background:var(--box);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-top:10px}
 details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .hidden{display:none!important}
+.page-nav{position:sticky;top:0;z-index:20;display:flex;gap:7px;flex-wrap:wrap;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);padding:10px 0 12px;margin-bottom:10px}.page-nav button{background:var(--surface);font-weight:700}.page-nav button.settings{margin-left:auto;background:var(--accent);color:#fff}
+.settings-hidden{display:none!important}.main-section{scroll-margin-top:82px}
 .styles{display:flex;gap:8px;flex-wrap:wrap}.styles button{border:1px solid var(--line);background:var(--box);border-radius:9px;padding:8px 14px;font-weight:600;cursor:pointer}
 .styles button.on{background:var(--accent);color:#fff;border-color:transparent}.styles button small{display:block;font-weight:400;font-size:11px;color:var(--muted)}.styles button.on small{color:#fff;opacity:.85}
 .keyrow{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}.keyrow b{width:90px}.keyrow input{flex:1;min-width:240px;max-width:420px}
@@ -1178,17 +1383,11 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 <p class="sub">주제 선택부터 대본, 나레이션, 이미지와 영상까지. 필요한 단계를 차례로 진행하세요.</p></header>
 <div id="envwarn" class="warn hidden"></div>
 
-<div class="simple-guide"><span>① 주제를 적고 만들기</span><span>② 그림 확인·재생성</span><span>③ 영상 마무리</span></div>
-<div class="tabs steps">
-  <button class="on" data-tab="auto"><span class="no">1</span><span class="tab-title">영상 만들기<small>주제 입력 · 자동 실행</small></span></button>
-  <button data-tab="gallery"><span class="no">2</span><span class="tab-title">이미지 확인·재생성<small>장면별 그림 · 다시 만들기</small></span></button>
-  <button data-tab="video"><span class="no">3</span><span class="tab-title">영상 편집<small>자막 · 최종 영상</small></span></button>
-  <button data-tab="settings"><span class="no">⚙</span><span class="tab-title">설정<small>처음 설치할 때 확인</small></span></button>
-</div>
-<details class="toolbox"><summary>주제 추천·세부 도구 펼치기</summary><div class="tabs tools"><button data-tab="person">사람의 이유 주제 추천</button><button data-tab="mindam">민담 주제 추천</button><button data-tab="images">이미지 프롬프트만</button><button data-tab="reset">작업 정리</button></div></details>
+<div class="simple-guide"><span>① 여러 주제 선택</span><span>② 연속 제작</span><span>③ 이미지 확인</span><span>④ 영상 확인</span><span>⑤ 완료 작업 정리</span></div>
+<div class="page-nav"><button onclick="goTab('person')">주제 선택</button><button onclick="goTab('auto')">바로 만들기</button><button onclick="goTab('gallery')">이미지</button><button onclick="goTab('video')">영상</button><button onclick="goTab('reset')">삭제·초기화</button><button class="settings" onclick="goTab('settings')">⚙ 설정</button></div>
 
 <!-- 원클릭 -->
-<div class="card tab" id="tab-auto">
+<div class="card main-section" id="tab-auto">
   <h2>③ 만들기 <small>주제 하나 → 대본 → 나레이션 → 이미지 → 완성 영상까지 한 번에</small></h2>
   <div id="readyBox" class="ready"></div>
   <div class="stepline"><span class="no">1</span><div><b>어느 채널?</b>
@@ -1211,7 +1410,13 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
     <span class="hint">이미 있는 나레이션·이미지 프롬프트·그림은 건너뛰고 없는 것부터 만듭니다</span></div>
 </div>
 
-<div class="card tab" id="galleryCard" data-tabof="auto gallery">
+<div class="card main-section" id="queueCard">
+  <h2>📚 연속 제작 대기열 <small>선택한 주제를 한 편씩 끝까지 만든 뒤 다음 주제로 넘어갑니다</small></h2>
+  <div class="row"><button class="primary" onclick="startSelectedQueue()">▶ 선택한 주제 연속 제작</button><button onclick="queueControl('pause')">현재 편 완료 후 일시정지</button><button onclick="queueControl('resume')">계속 제작</button><button class="danger" onclick="queueControl('cancel')">전체 중단</button><span id="queue_summary" class="hint">대기열 없음</span></div>
+  <div id="queue_list" style="margin-top:10px"></div>
+</div>
+
+<div class="card main-section" id="galleryCard">
   <h2>🖼 이미지 <small id="pg_imgs_t">장면별 생성 현황 — 위에서 고른 대본 기준</small></h2>
   <div class="row"><label>확인할 대본 <select id="g_file" style="min-width:380px"></select></label><span class="hint">그림 아래의 재생성을 누르면 해당 장면만 다시 만듭니다.</span></div>
   <div class="gonext" style="margin:12px 0"><b>🎬 앞 7장 KIE 영상화</b>
@@ -1244,8 +1449,9 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 사람의 이유 -->
-<div class="card tab hidden" id="tab-person">
+<div class="card main-section" id="tab-person">
   <h2>① 주제 고르기 <small>계획.json(이번 주 14편) + 후보 · 또는 직접 입력</small></h2>
+  <div class="row"><button class="mini" onclick="selectAllQueue('person',true)">모두 선택</button><button class="mini" onclick="selectAllQueue('person',false)">선택 해제</button><span class="hint">체크한 주제는 아래 연속 제작 버튼으로 차례대로 만듭니다.</span></div>
   <ul class="list" id="topicList"></ul>
   <div class="row" style="margin-top:10px"><input type="text" id="p_title" placeholder="직접 입력: 예) 나이 들수록 친구가 줄어드는 진짜 이유"><button class="mini" onclick="selectTopic(null)">목록 선택 해제</button></div>
   <h2 style="margin-top:18px">② 지침·분량</h2>
@@ -1262,8 +1468,9 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 민담 -->
-<div class="card tab hidden" id="tab-mindam">
+<div class="card main-section" id="tab-mindam">
   <h2>① 주제 <small>민담_주제뽑기.bat 으로 모은 "터진 제목"을 고르거나 제목·장르를 직접 입력. 고른 제목은 슬롯 분해 → 알맹이 교체로 재창조</small></h2>
+  <div class="row"><button class="mini" onclick="selectAllQueue('mindam',true)">모두 선택</button><button class="mini" onclick="selectAllQueue('mindam',false)">선택 해제</button><span class="hint">사람의 이유와 민담을 함께 선택해도 선택 순서대로 제작됩니다.</span></div>
   <ul class="list" id="mindamList" style="margin-bottom:10px"></ul>
   <div class="row"><input type="text" id="m_title" placeholder="예) 장터에서 아기를 백 냥에 사온 과부, 그 아이의 정체는  /  또는  권선징악  /  귀신·도깨비"><button class="mini" onclick="selectBench(null)">목록 선택 해제</button></div>
   <p class="hint" id="m_benchInfo"></p>
@@ -1288,7 +1495,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 이미지 프롬프트 -->
-<div class="card tab hidden" id="tab-images">
+<div class="card main-section" id="tab-images">
   <h2>대본 → 문장별 이미지 프롬프트 <small>DINO 형식 ===001=== 블록</small></h2>
   <div class="row"><label>대본 파일 <select id="i_file" style="min-width:420px"></select></label><button class="mini" onclick="refresh()">새로고침</button><button class="danger" onclick="deleteSelectedScript('i_file')">선택한 대본 삭제</button></div>
   <div class="row"><label>변환 지침 <select id="i_guide"></select></label><label>화풍 (클릭)</label><input type="hidden" id="i_style"><div class="styles" id="i_styles"></div><label>한 번에 <input type="number" id="i_chunk" value="30" min="5" max="60" style="width:70px" onchange="api('/api/config',{프롬프트_묶음:+this.value});toast('한 번에 '+this.value+'문장씩 저장됨')"> 문장</label><button class="mini" onclick="editGuide('i_guide')">지침 열어 수정</button></div>
@@ -1306,24 +1513,29 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 영상 만들기 (편집프로그램 8765 를 안에 띄움) -->
-<div class="card tab hidden" id="tab-video" style="padding:0;overflow:hidden">
+<div class="card main-section" id="tab-video" style="padding:0;overflow:hidden">
   <div id="video_source_status" class="gonext" style="margin:12px">편집할 대본을 확인하는 중…</div>
-  <div class="row" style="margin:0 12px 12px"><button class="danger" onclick="deleteCurrentCompletedWork()">🗑 현재 완료 작업 전체 삭제</button><span class="hint">대본·이미지·KIE 영상·음성·자막·최종 영상을 한 번에 _휴지통으로 옮깁니다.</span></div>
-  <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:1500px;border:0;background:#fff"></iframe>
+  <div class="row" style="margin:0 12px 12px"><button class="primary" onclick="prepareVideoEditor()">🎬 선택한 대본 편집기 불러오기</button><button class="danger" onclick="deleteCurrentCompletedWork()">🗑 현재 완료 작업 전체 삭제</button><span class="hint">대본·이미지·KIE 영상·음성·자막·최종 영상을 한 번에 _휴지통으로 옮깁니다.</span></div>
+  <iframe id="fr_video" src="about:blank" data-src="http://127.0.0.1:8765/" style="width:100%;height:950px;border:0;background:#fff"></iframe>
 </div>
-<div class="card tab hidden" id="tab-reset">
-  <h2>작업 정리 <small>완성 대본과 작성 중인 민담을 선택해서 초기화</small></h2>
+<div class="card main-section" id="tab-reset">
+  <h2>🗑 대본·영상·이미지 삭제 및 초기화 <small>완료한 작업을 한 번에 정리</small></h2>
   <p class="hint">선택한 작업만 <code>대본/_휴지통</code>으로 옮깁니다. 다른 대본과 설정은 유지되며, 필요하면 휴지통 폴더에서 직접 복구할 수 있습니다.</p>
   <div class="row"><label>초기화할 작업 <select id="reset_file" style="min-width:min(100%,520px)"></select></label><button class="mini" onclick="refresh()">목록 새로고침</button></div>
-  <div class="row"><button onclick="resetSelected('assets')">자료만 초기화</button><button class="danger" onclick="resetSelected('all')">대본과 자료 모두 초기화</button></div>
+  <div class="row"><button onclick="resetSelected('assets')">이미지·영상·음성만 초기화</button><button class="danger" onclick="resetSelected('all')">🗑 대본·영상·이미지 전부 삭제</button></div>
   <p class="hint">자료만 초기화는 일반 대본에서 사용할 수 있습니다. 민담은 작성 중인 챕터와 완성본을 한 폴더에 보관하므로 함께 초기화합니다. 실행 중인 작업은 초기화할 수 없습니다.</p>
 </div>
 
 <!-- 설정 -->
 <div class="card tab hidden" id="tab-settings">
+  <div class="row" style="justify-content:space-between"><h2 style="flex:1">⚙ 설정</h2><button class="primary" onclick="showMainScreen()">← 제작 화면으로 돌아가기</button></div>
   <h2>처음 사용 순서</h2>
   <p class="hint">① API 키를 저장하세요. ② 드롭샷 입력·생성·다운로드 좌표를 확인하세요. ③ [영상 만들기]에서 주제를 입력하면 됩니다.</p>
   <div id="setupReady" class="ready"></div>
+  <h2 style="margin-top:14px">텔레그램 완성 알림</h2>
+  <p class="hint">① BotFather에서 받은 봇 토큰을 저장합니다. ② 텔레그램에서 그 봇에게 아무 메시지나 보냅니다. ③ 채팅 자동 찾기 → 선택 저장 → 테스트를 누릅니다.</p>
+  <div class="keyrow"><b>봇 토큰</b><span class="keystat" id="tg_token_status"></span><input type="password" id="tg_token" placeholder="123456:ABC…"><button class="mini" onclick="saveTelegramToken()">토큰 저장</button></div>
+  <div class="row"><button onclick="findTelegramChats()">🔎 채팅 자동 찾기</button><select id="tg_chats" style="min-width:260px"><option value="">먼저 채팅을 찾으세요</option></select><button onclick="saveTelegramChat()">선택한 채팅 저장</button><button class="primary" onclick="testTelegram()">테스트 메시지</button><label><input type="checkbox" id="tg_enabled" onchange="saveTelegramEnabled()"> 알림 사용</label><span id="tg_chat_status" class="hint"></span></div>
   <div class="row"><button class="primary" onclick="goTab('person')">사람의 이유 주제 고르기 →</button><button onclick="goTab('mindam')">민담·야담 주제 고르기 →</button></div>
   <h2>대본 AI 선택</h2>
   <div class="row"><label>대본 쓰는 AI <select id="s_ai" onchange="saveAI()"><option value="deepseek-web">deepseek-web (웹 채팅 · 무료 · 확장 필요)</option><option>deepseek</option><option>gemini</option><option>claude</option></select></label>
@@ -1373,7 +1585,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 
 <!-- 진행 -->
-<div class="card hidden" id="progressCard">
+<div class="card main-section hidden" id="progressCard">
   <h2>진행 <small id="pg_kind"></small></h2>
   <div class="stepbar" id="pg_steps"></div>
   <div class="bar"><i id="pg_bar"></i></div>
@@ -1387,7 +1599,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 </div>
 <script>
 const $=id=>document.getElementById(id);
-let STATE=null, selected=null, bench=null, editing=null, pollTimer=null, chosenVar=null, varRef='';
+let STATE=null, selected=null, bench=null, editing=null, pollTimer=null, chosenVar=null, varRef='', queueSelected=new Map();
 async function api(p,body,method){const r=await fetch(p,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j;}
 async function exitProgram(){
   if(!confirm('이미지 생성과 다운로드를 중단하고 프로그램을 종료할까요?'))return;
@@ -1395,13 +1607,15 @@ async function exitProgram(){
   catch(e){toast('종료 요청 실패: '+e.message,true);}
 }
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-function goTab(name){const b=document.querySelector(`.tabs button[data-tab=${name}]`);if(b){const details=b.closest('details');if(details)details.open=true;b.click();}window.scrollTo({top:0,behavior:'smooth'});}
+function showMainScreen(){ $('tab-settings').classList.add('hidden');document.querySelectorAll('.main-section').forEach(x=>x.classList.remove('settings-hidden'));window.scrollTo({top:0,behavior:'smooth'}); }
+function showSettings(){document.querySelectorAll('.main-section').forEach(x=>x.classList.add('settings-hidden'));$('tab-settings').classList.remove('hidden');loadEditorSettings();window.scrollTo({top:0,behavior:'smooth'});}
+function goTab(name){
+  if(name==='settings'){showSettings();return;}
+  showMainScreen();const ids={auto:'tab-auto',person:'tab-person',mindam:'tab-mindam',images:'tab-images',gallery:'galleryCard',video:'tab-video',reset:'tab-reset'};
+  const target=$(ids[name]||'tab-auto');if(target)setTimeout(()=>target.scrollIntoView({behavior:'smooth',block:'start'}),50);
+  if(name==='gallery')refreshGallery(true);if(name==='video')prepareVideoEditor();
+}
 function sendToAuto(ch){const t=(ch==='mindam'?$('m_title'):$('p_title')).value.trim();if(!t)return toast('먼저 주제를 고르거나 입력하세요',true);document.querySelector(`input[name=a_channel][value=${ch}]`).checked=true;$('a_title').value=t;goTab('auto');toast('③ 만들기에 주제를 넣었습니다. 그림체를 확인하고 실행하세요');}
-document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('hidden',t.id!=='tab-'+b.dataset.tab&&!(t.dataset.tabof||'').split(' ').includes(b.dataset.tab)));
-  if(b.dataset.tab==='gallery')refreshGallery(true);
-  if(b.dataset.tab==='settings')loadEditorSettings();
-  if(b.dataset.tab==='video'){prepareVideoEditor();return;}
-  const fr=document.querySelector('#tab-'+b.dataset.tab+' iframe'); if(fr&&fr.src==='about:blank')fr.src=fr.dataset.src;});
 async function prepareVideoEditor(){
   const fr=$('fr_video'),status=$('video_source_status'),script=$('g_file').value||$('c_file').value;
   fr.src='about:blank';
@@ -1450,6 +1664,9 @@ async function refresh(){
   $('a_length').innerHTML=Object.entries(STATE.lengths).map(([k,v])=>`<option value="${k}" ${k==='2'?'selected':''}>${v}</option>`).join('');
   $('s_inworld_voice').value=STATE.config.인월드_목소리_사람||''; $('s_inworld_model').value=STATE.config.인월드_모델||'inworld-tts-1.5-max'; $('s_inworld_speed').value=STATE.config.인월드_속도_사람||1.0;
   $('s_inworld_voice_m').value=STATE.config.인월드_목소리_민담||''; $('s_inworld_speed_m').value=STATE.config.인월드_속도_민담||1.0; $('s_cpm').value=STATE.config.분당_글자수||270;
+  $('tg_token_status').textContent=STATE.config.텔레그램_토큰?'✔ 저장됨 '+STATE.config.텔레그램_토큰:'없음';
+  $('tg_chat_status').textContent=STATE.config.텔레그램_채팅_ID?'연결된 채팅: '+STATE.config.텔레그램_채팅_ID:'연결된 채팅 없음';
+  $('tg_enabled').checked=STATE.config.텔레그램_알림!==false;
   $('a_hook').value=STATE.config.후킹_장면수??7; $('i_chunk').value=STATE.config.프롬프트_묶음||30;
   const c=STATE.config; $('v_person').textContent=c.인월드_목소리_사람?'✔ 저장됨 · 속도 '+(c.인월드_속도_사람||1):'없음'; $('v_person').classList.toggle('ok',!!c.인월드_목소리_사람);
   $('v_mindam').textContent=c.인월드_목소리_민담?'✔ 저장됨 · 속도 '+(c.인월드_속도_민담||1):'없음 → 공용'; $('v_mindam').classList.toggle('ok',!!c.인월드_목소리_민담);
@@ -1473,27 +1690,27 @@ async function refresh(){
   $('envwarn').textContent='설정.json 에 API 키가 없습니다. [설정] 탭에서 딥시크 키를 넣거나 AI 를 deepseek-web(무료) 로 바꾸세요.';
   if(isWeb&&!STATE.web_alive){$('envwarn').classList.remove('hidden');$('envwarn').textContent='deepseek-web 모드: 크롬 확장이 연결되지 않았습니다. [설정] 탭의 "deepseek-web 쓰는 법"을 보세요.';}
   refreshKieStatus();
-  renderAfter();
+  renderAfter(); renderQueue(STATE.queue);
 }
 function renderAfter(){
   renderTopics(); renderMindam();
   if(STATE.job&&STATE.job.status==='running')startPolling();
   const sp=new URLSearchParams(location.search);const q=sp.get('t');
   if(q){
-    if(sp.get('ch')==='mindam'){document.querySelector('[data-tab=mindam]').click();const b=(STATE.topics.mindam||[]).find(x=>x.제목===q);if(b)selectBench(b);else $('m_title').value=q;}
+    if(sp.get('ch')==='mindam'){goTab('mindam');const b=(STATE.topics.mindam||[]).find(x=>x.제목===q);if(b)selectBench(b);else $('m_title').value=q;}
     else{const all=[...STATE.topics.plan,...STATE.topics.candidates];const t=all.find(x=>x.제목===q);if(t)selectTopic(t);else $('p_title').value=q;}
     history.replaceState(null,'',location.pathname);
   }
 }
 function renderTopics(){
   const {plan,candidates}=STATE.topics;
-  const li=(t,d)=>`<li data-title="${esc(t.제목)}" onclick='selectTopic(${JSON.stringify(t).replace(/'/g,"&#39;")})'><span class="d">${esc(d)}</span><span class="c">${esc(t.카테고리||'')}</span><span class="t">${esc(t.제목)}</span>${t.done?'<span class="done">✓ 대본 있음</span>':''}</li>`;
-  $('topicList').innerHTML=plan.map(t=>li(t,`${t.날짜.slice(5)} ${t.순번}편`)).join('')+candidates.map(t=>li(t,'후보')).join('')||'<li><span class="hint">계획.json 이 없습니다. 실행.bat 으로 주제를 먼저 뽑거나 아래에 직접 입력하세요.</span></li>';
+  const li=(t,d,i)=>`<li data-title="${esc(t.제목)}" onclick='selectTopic(${JSON.stringify(t).replace(/'/g,"&#39;")})'><input type="checkbox" ${queueSelected.has('person|'+t.제목)?'checked':''} onclick="toggleQueueTopic(event,'person',${i})"><span class="d">${esc(d)}</span><span class="c">${esc(t.카테고리||'')}</span><span class="t">${esc(t.제목)}</span>${t.done?'<span class="done">✓ 대본 있음</span>':''}</li>`;
+  const all=[...plan,...candidates]; $('topicList').innerHTML=all.map((t,i)=>li(t,i<plan.length?`${t.날짜.slice(5)} ${t.순번}편`:'후보',i)).join('')||'<li><span class="hint">계획.json 이 없습니다. 실행.bat 으로 주제를 먼저 뽑거나 아래에 직접 입력하세요.</span></li>';
   highlight();
 }
 function renderMindam(){
   const list=STATE.topics.mindam||[];
-  $('mindamList').innerHTML=list.map((b,i)=>`<li data-title="${esc(b.제목)}" onclick="selectBench(STATE.topics.mindam[${i}])"><span class="d">${b.배수}배 · ${(b.조회수/10000).toFixed(1)}만</span><span class="c" style="width:auto">${esc(b.장르)}</span><span class="t">${esc(b.제목)}</span><span class="hint" style="white-space:nowrap">${esc(b.채널)}</span></li>`).join('')
+  $('mindamList').innerHTML=list.map((b,i)=>`<li data-title="${esc(b.제목)}" onclick="selectBench(STATE.topics.mindam[${i}])"><input type="checkbox" ${queueSelected.has('mindam|'+b.제목)?'checked':''} onclick="toggleQueueTopic(event,'mindam',${i})"><span class="d">${b.배수}배 · ${(b.조회수/10000).toFixed(1)}만</span><span class="c" style="width:auto">${esc(b.장르)}</span><span class="t">${esc(b.제목)}</span><span class="hint" style="white-space:nowrap">${esc(b.채널)}</span></li>`).join('')
     ||'<li><span class="hint">민담_후보.json 이 없습니다. 민담_주제뽑기.bat 으로 터진 제목을 먼저 모으거나 아래에 직접 입력하세요.</span></li>';
   highlightBench();
 }
@@ -1510,13 +1727,38 @@ function renderVariations(r){
     <label class="row" style="align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer" onclick="chooseVar('${o.key}')">
       <input type="radio" name="var" value="${o.key}" style="margin-top:6px"><div><b>[${o.key}] ${esc(o.title)}</b><pre style="margin:4px 0 0;white-space:pre-wrap;font:12.5px/1.5 var(--sans);color:var(--muted)">${esc(o.text.replace(/^-\s*제목.*\n?/m,''))}</pre></div></label>`).join('');
   box._options=r.options;
-  document.querySelector('[data-tab=mindam]').click(); box.scrollIntoView({behavior:'smooth'});
+  goTab('mindam'); setTimeout(()=>box.scrollIntoView({behavior:'smooth'}),180);
 }
 function chooseVar(k){const o=$('varBox')._options.find(x=>x.key===k);chosenVar=o;document.querySelector(`input[name=var][value=${k}]`).checked=true;$('m_hint').textContent=`선택: [${k}] ${o.title}`;}
 function highlight(){document.querySelectorAll('#topicList li').forEach(l=>l.classList.toggle('sel',selected&&l.dataset.title===selected.제목));}
 function selectTopic(t){selected=t;if(t){$('p_title').value=t.제목;}highlight();$('p_chosen').textContent=$('p_title').value||'(아직 없음)';}
 $('p_title').addEventListener('input',()=>{$('p_chosen').textContent=$('p_title').value||'(아직 없음)';});
 $('p_title').addEventListener('input',()=>{if(selected&&$('p_title').value!==selected.제목){selected=null;highlight();}});
+
+function queueSource(ch){return ch==='mindam'?(STATE.topics.mindam||[]):[...(STATE.topics.plan||[]),...(STATE.topics.candidates||[])];}
+function toggleQueueTopic(event,ch,index){event.stopPropagation();const topic=queueSource(ch)[index],key=ch+'|'+topic.제목;if(event.target.checked)queueSelected.set(key,{channel:ch,title:topic.제목,topic});else queueSelected.delete(key);renderQueueSelectionCount();}
+function selectAllQueue(ch,on){for(const topic of queueSource(ch)){const key=ch+'|'+topic.제목;if(on)queueSelected.set(key,{channel:ch,title:topic.제목,topic});else queueSelected.delete(key);}renderTopics();renderMindam();renderQueueSelectionCount();}
+function renderQueueSelectionCount(){const el=$('queue_summary');if(queueSelected.size)el.textContent=`선택 ${queueSelected.size}개 · 연속 제작 버튼을 누르세요`;}
+function queueOptions(){return {guideline:$('p_guide').value,target:+$('a_target').value,mark_used:true,length:$('m_length').value,img_guideline:$('i_guide').value,style:$('a_style').value,chunk:+$('i_chunk').value,thumb_position:$('a_thumb_pos').value,
+  steps:{optimize:$('a_optimize').checked,prompts:true,tts:true,images:true,hook:+$('a_hook').value,render:true,thumbnail:$('a_thumb').checked}};}
+async function startSelectedQueue(){
+  if(!queueSelected.size)return toast('주제 목록에서 연속 제작할 주제를 체크하세요.',true);
+  const options=queueOptions();if(options.steps.hook>0&&!await ensureKieReady())return;
+  if(!confirm(`선택한 ${queueSelected.size}개 주제를 한 편씩 연속 제작할까요?`))return;
+  try{const q=await api('/api/queue/start',{items:[...queueSelected.values()],options});queueSelected.clear();renderQueue(q);startPolling();toast('연속 제작을 시작했습니다.');}catch(e){toast(e.message,true);}
+}
+async function queueControl(action){
+  const labels={pause:'현재 편이 끝난 뒤 일시정지합니다.',resume:'연속 제작을 계속합니다.',cancel:'현재 작업과 남은 대기열을 모두 중단할까요?'};
+  if(action==='cancel'&&!confirm(labels.cancel))return;
+  try{const q=await api('/api/queue/'+action,{});renderQueue(q);toast(labels[action]);}catch(e){toast(e.message,true);}
+}
+async function removeQueueItem(id){try{renderQueue(await api('/api/queue/remove',{id}));}catch(e){toast(e.message,true);}}
+function renderQueue(q){
+  if(!q)return;const items=q.items||[],done=items.filter(x=>x.status==='done').length,failed=items.filter(x=>x.status==='error').length;
+  $('queue_summary').textContent=`상태: ${q.status_text||'대기 없음'} · 전체 ${items.length}편 · 완료 ${done}편 · 실패 ${failed}편`;
+  $('queue_list').innerHTML=items.length?items.map((x,i)=>`<div class="row" style="border-top:1px solid var(--line);padding:8px 0"><b style="min-width:42px">${i+1}편</b><span style="flex:1">${esc(x.title)}</span><span class="hint" style="min-width:120px">${esc(x.status_text||'대기 중')} · ${esc(x.stage||'')}</span>${x.status==='working'?`<progress max="1" value="${x.progress||0}" style="width:120px"></progress>`:''}${x.result&&x.result.assets?`<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>`:''}${x.status==='pending'?`<button class="mini" onclick="removeQueueItem('${x.id}')">목록에서 빼기</button>`:''}${x.error?`<small style="color:var(--warn)">${esc(x.error)}</small>`:''}</div>`).join(''):'<span class="hint">대기열이 없습니다. 주제 목록에서 여러 개를 체크하세요.</span>';
+}
+async function refreshQueue(){try{renderQueue(await api('/api/queue'));}catch(e){}}
 
 let topicDeck=[], topicDeckChannel='';
 function pickAnotherTopic(){
@@ -1607,6 +1849,11 @@ function renderLenButtons(cpm){
   document.querySelectorAll('.lenbtns').forEach(sp=>{const id=sp.dataset.for;sp.innerHTML=[1,20,25,30].map(m=>`<button type="button" data-min="${m}" onclick="setLen('${id}',${m})">${m}분${m===1?' (테스트)':''}</button>`).join('');});
   window._cpm=cpm;
 }
+async function saveTelegramToken(){const token=$('tg_token').value.trim();if(!token)return toast('BotFather에서 받은 봇 토큰을 입력하세요.',true);await api('/api/config',{텔레그램_봇_토큰:token});$('tg_token').value='';toast('텔레그램 봇 토큰을 저장했습니다. 이제 봇에게 메시지를 보내고 채팅 자동 찾기를 누르세요.');refresh();}
+async function findTelegramChats(){try{const r=await api('/api/telegram/chats',{});$('tg_chats').innerHTML=(r.chats||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.id)}</option>`).join('')||'<option value="">찾은 채팅이 없습니다</option>';if(!r.chats.length)toast('텔레그램에서 봇에게 메시지를 먼저 보낸 뒤 다시 눌러주세요.',true);}catch(e){toast(e.message,true);}}
+async function saveTelegramChat(){const id=$('tg_chats').value;if(!id)return toast('저장할 채팅을 선택하세요.',true);await api('/api/config',{텔레그램_채팅_ID:id});toast('텔레그램 채팅을 저장했습니다.');refresh();}
+async function saveTelegramEnabled(){await api('/api/config',{텔레그램_알림:$('tg_enabled').checked});toast($('tg_enabled').checked?'텔레그램 알림을 켰습니다.':'텔레그램 알림을 껐습니다.');}
+async function testTelegram(){try{await api('/api/telegram/test',{});toast('텔레그램으로 테스트 메시지를 보냈습니다.');}catch(e){toast(e.message,true);}}
 function setLen(id,min){const v=Math.round(min*(window._cpm||270));$(id).value=v;if(id==='p_target')$('a_target').value=v;else $('p_target').value=v;markLen('p_target');markLen('a_target');if(min!==1)api('/api/config',{대본_글자수:v}).catch(()=>{});}
 function markLen(id){const v=+$(id).value,cpm=window._cpm||270;document.querySelectorAll(`.lenbtns[data-for=${id}] button`).forEach(b=>b.classList.toggle('on',Math.abs(v-Math.round(+b.dataset.min*cpm))<50));}
 document.addEventListener('input',e=>{if(e.target.id==='p_target'||e.target.id==='a_target')markLen(e.target.id);});
@@ -1842,7 +2089,7 @@ async function regenScene(no){
 function openStep(path,how){ if(how==='file') showFile(path); else openPath(path); }
 async function poll(){
   const j=await api('/api/job');if(!j||j.status==='none')return; STATE.job=j;
-  $('pg_kind').textContent=({script:'사람의 이유 대본',mindam:'민담 대본',images:'이미지 프롬프트',variations:'베리에이션',optimize:'알고리즘 최적화',tts:'나레이션',pipeline:'🚀 원클릭 파이프라인',thumbnail:'썸네일'}[j.kind]||j.kind)+' · '+j.started+' 시작'+(j.stage?' · '+j.stage:'');
+  $('pg_kind').textContent=({script:'사람의 이유 대본',mindam:'민담 대본',images:'이미지 프롬프트',variations:'주제 변형',optimize:'알고리즘 최적화',tts:'나레이션',pipeline:'🚀 한 편 자동 제작',queue_pipeline:'📚 연속 제작 중',thumbnail:'썸네일'}[j.kind]||'작업 중')+' · '+j.started+' 시작'+(j.stage?' · '+j.stage:'');
   const log=$('pg_log');const txt=j.log.join('\n')+(j.partial?'\n'+j.partial:'');if(log.textContent!==txt){log.textContent=txt;if($('pg_follow').checked)log.scrollTop=log.scrollHeight;}
   $('pg_lines').textContent=j.log.length+'줄';$('pg_stage').textContent=j.stage?('지금: '+j.stage):'';
   renderSteps(j);
@@ -1888,7 +2135,7 @@ const js=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 async function openPath(p){await api('/api/open',{path:p});}
 async function showFile(p){const j=await api('/api/file?path='+encodeURIComponent(p));const v=$('pg_preview');v.textContent=j.text;v.classList.remove('hidden');}
 function toast(msg,err){const t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--surface);border:1px solid '+(err?'var(--warn)':'var(--accent)')+';padding:10px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9';document.body.appendChild(t);setTimeout(()=>t.remove(),4000);}
-refresh();
+refresh(); setInterval(refreshQueue,2000);
 </script></body></html>"""
 
 
@@ -1897,6 +2144,8 @@ def main():
     print(f"대본 만들기 화면: {ADDR}  (종료: 이 창을 닫거나 Ctrl+C)")
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(ADDR)).start()
+    if QUEUE.data.get("status") == "running" and any(x.get("status") == "pending" for x in QUEUE.data.get("items", [])):
+        threading.Timer(8.0, start_queue_worker).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
