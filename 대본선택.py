@@ -21,6 +21,7 @@ import 최적화
 import 나레이션
 import 웹큐
 import 채널_연동
+import 썸네일_합성
 import requests as _rq
 from 제작대기열 import QueueStore, recent_chats, send_telegram
 
@@ -957,9 +958,8 @@ def make_thumbnails(job, req):
     job.stage = "썸네일 이미지 생성"
     raw_dir = os.path.join(tdir, "raw")
     run_image_generation(job, pf, raw_dir, "")
-    # 합성
-    ui = ((aip("/api/info").get("config") or {}).get("ui") or {})
-    font = req.get("font") or ui.get("srt_font") or "Malgun Gothic"
+    # 합성 (썸네일_합성.py: 사람의 이유 = 키워드 강조형/숫자 배지형, 민담 = 하단 띠형)
+    job.stage = "썸네일 문구 합성"
     outs = []
     for i, p in enumerate(prompts, 1):
         cands = [f for f in os.listdir(raw_dir) if f.startswith(f"{i:03d}.")] if os.path.isdir(raw_dir) else []
@@ -967,13 +967,9 @@ def make_thumbnails(job, req):
             job.add(f"   ! 썸네일 {i} 이미지 없음"); continue
         top, bottom, _ = copies[(i - 1) % len(copies)]
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
-        aip("/api/thumbnail/compose", dict(image=os.path.join(raw_dir, cands[0]), out=out, top=top, bottom=bottom,
-                                            font="Hakgyoansim Nalgae R",
-                                            top_color="#FF3B30" if is_mindam else "#FFE45C",
-                                            bottom_color="#63FF66" if is_mindam else "#FF3B30",
-                                            position=position, size=118, shade=0, box=False))
+        layout = 썸네일_합성.compose(os.path.join(raw_dir, cands[0]), out, top, bottom, "mindam" if is_mindam else "person")
         outs.append(out)
-        job.add(f"   ✓ {out}  ({top} / {bottom})")
+        job.add(f"   ✓ {out}  ({top} / {bottom}) · {dict(keyword='키워드 강조형', badge='숫자 배지형', band='하단 띠형')[layout]}")
     job.add("비용: " + ai.cost_text())
     return dict(thumbnails=outs, dir=tdir, cost=ai.cost_text())
 
