@@ -291,8 +291,8 @@ async function startProduction() {
   await addCustomTopic(true);                       // 입력칸에 적어 둔 주제도 함께
   if (!selection.size) { $('customTitle').focus(); return toast('주제를 체크하거나 적어 주세요.', true); }
   const options = productionOptions();
-  if (options.steps.hook > 0 && !await ensureKieReady()) return;
-  if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n끝날 때까지 이 창을 닫지 마세요.`)) return;
+  if (options.steps.hook > 0 && !await refreshKieStatus()) toast('KIE 키가 없어 움직이는 영상은 건너뜁니다. 나머지는 모두 자동으로 만듭니다.');
+  if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 영상변환 → 썸네일 → 최종 영상 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
   try {
     const q = await api('/api/queue/start', {items: [...selection.values()], options});
     selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); startPolling(true); window.scrollTo({top: 0, behavior: 'smooth'}); toast('제작을 시작했습니다.');
@@ -301,7 +301,6 @@ async function startProduction() {
 async function continuePipeline() {
   const file = $('contFile').value; if (!file) return toast('이어서 만들 대본을 고르세요.', true);
   const o = productionOptions(); const steps = {...o.steps, optimize: false};
-  if (steps.hook > 0 && !await ensureKieReady()) return;
   try {
     await api('/api/pipeline', {reuse_prompts: true, script_file: file, channel: file.endsWith('final.txt') ? 'mindam' : 'person', style: o.style, img_guideline: o.img_guideline, chunk: o.chunk, steps, thumb_position: 'auto'});
     goStep(3); startPolling(true);

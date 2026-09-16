@@ -41,3 +41,20 @@ class ThumbnailComposeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FallbackThumbnailTest(unittest.TestCase):
+    def test_scene_images_become_thumbnails_when_dropshot_fails(self):
+        import 대본선택 as app
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script = root / "작업.txt"
+            script.write_text("[제목]\n60대가 되면 후회하는 5가지\n[대본]\n본문", encoding="utf-8")
+            images = root / "작업_자료" / "images"
+            images.mkdir(parents=True)
+            for i in range(1, 7):
+                Image.new("RGB", (640, 360), (40 + i * 20, 60, 90)).save(images / f"{i:03d}.jpg")
+            outs = app.fallback_thumbnails(str(script), str(images))
+            self.assertEqual(len(outs), 3)
+            self.assertTrue(all(Path(o).is_file() for o in outs))
+            self.assertEqual(len(app.raw_thumbnails(str(root / "작업_자료" / "썸네일"))), 3)

@@ -957,6 +957,26 @@ def compose_thumbnails(script, log=None):
     return dict(thumbnails=outs, dir=tdir)
 
 
+def fallback_thumbnails(script, images_dir, log=None):
+    """드롭샷 썸네일 생성이 안 됐을 때: 장면 이미지 3장(앞·중간·뒤)을 원본으로 삼아 문구를 얹는다."""
+    assets = assets_dir(script)
+    tdir = os.path.abspath(os.path.join(assets, "썸네일"))
+    scenes = []
+    for name in sorted(os.listdir(images_dir)) if os.path.isdir(images_dir) else []:
+        m = IMAGE_NAME.match(name)
+        if m and m.group(2).lower() in ("png", "jpg", "jpeg", "webp"):
+            scenes.append(os.path.join(images_dir, name))
+    if not scenes:
+        raise ValueError("대신 쓸 장면 이미지가 없습니다.")
+    picks = [scenes[0], scenes[len(scenes) // 3], scenes[(len(scenes) * 2) // 3]] if len(scenes) >= 3 else scenes
+    raw_dir = os.path.join(tdir, "raw"); os.makedirs(raw_dir, exist_ok=True)
+    for i, src in enumerate(picks, 1):
+        shutil.copy2(src, os.path.join(raw_dir, f"{i:03d}{os.path.splitext(src)[1].lower()}"))
+    if log:
+        log(f"   장면 이미지 {len(picks)}장으로 썸네일을 대신 만듭니다")
+    return compose_thumbnails(script, log)["thumbnails"]
+
+
 def make_thumbnails(job, req):
     """대본 폴더 → 썸네일 프롬프트 3개(딥시크) → 이미지 생성(편집프로그램 좌표 클릭) → 문구 합성 → 썸네일_1~3.jpg"""
     cfg = 대본생성.load_cfg()
@@ -1043,6 +1063,10 @@ def make_upload_package(script_file, result):
     (package / "태그.txt").write_text(tags.strip(), encoding="utf-8")
     (package / "업로드정보.txt").write_text(
         f"[제목]\n{title}\n\n[설명]\n{description.strip()}\n\n[태그]\n{tags.strip()}\n", encoding="utf-8")
+    if not saved:                                   # 화면의 제목·설명·태그 칸에도 그대로 보이도록 자료 폴더에 저장
+        info = Path(assets) / "업로드_정보.json"
+        info.write_text(json.dumps(dict(title=title, description=description.strip(), sources=_block(script_text, "출처"), tags=tags.strip()),
+                                   ensure_ascii=False, indent=2), encoding="utf-8")
     video = result.get("video") or os.path.join(assets, "최종.mp4")
     if os.path.isfile(video):
         shutil.copy2(video, package / "최종.mp4")
@@ -1059,9 +1083,15 @@ def make_pipeline(job, req):
     def check_cancelled():
         if job.cancel_requested:
             raise RuntimeError("사용자가 연속 제작을 중단했습니다.")
-    steps = req.get("steps") or {}
-    if int(steps.get("hook", 0) or 0) > 0 and not aip("/api/info").get("kie_key_saved"):
-        raise ValueError("KIE API 키가 없습니다. [설정]에서 KIE 키를 저장하세요.")
+    steps = dict(req.get("steps") or {})
+    if int(steps.get("hook", 0) or 0) > 0:
+        try:
+            has_kie = bool(aip("/api/info").get("kie_key_saved"))
+        except Exception:  # noqa: BLE001
+            has_kie = False
+        if not has_kie:
+            job.add("   ! KIE 키가 없어 움직이는 영상(영상변환)은 건너뜁니다. [설정]에서 KIE 키를 저장하면 다음 편부터 만듭니다.")
+            steps["hook"] = 0
     result = {}
     job.result = result          # 진행 중에도 단계별 결과(대본·프롬프트·나레이션…)를 화면에서 열 수 있게
     # 1) 대본 (이미 있는 대본 파일로 시작하면 건너뜀)
@@ -1124,25 +1154,47 @@ def make_pipeline(job, req):
     n_hook = int(steps.get("hook", 0) or 0)
     if n_hook > 0 and result.get("prompts"):
         job.stage = "⑤ 후킹 영상"
-        result["hook"] = run_hook_videos(job, images_dir, result["prompts"], list(range(1, n_hook + 1)))
+        have = {int(m.group(1)) for m in (re.match(r"^(\d{1,4})\.mp4$", f, re.I) for f in os.listdir(images_dir)) if m}
+        todo = [n for n in range(1, n_hook + 1) if n not in have]
+        if not todo:
+            job.add(f"   앞 {n_hook}장 움직이는 영상이 이미 있어 건너뜀")
+            result["hook"] = images_dir
+        else:
+            try:
+                run_hook_videos(job, images_dir, result["prompts"], todo)
+                result["hook"] = images_dir
+            except Exception as e:  # noqa: BLE001
+                job.add(f"   ! 움직이는 영상 실패(넘어감, 정지 이미지로 편집): {e}")
     check_cancelled()
     # 5.5) 썸네일
     if steps.get("thumbnail", True):
+        job.stage = "⑤' 썸네일"
         try:
-            job.stage = "⑤' 썸네일"
             t = make_thumbnails(job, dict(script_file=script, style=req.get("style", "실사"), position=req.get("thumb_position", "bottom")))
             result["thumbnails"] = t["thumbnails"]
         except Exception as e:  # noqa: BLE001
-            job.add(f"   ! 썸네일 실패(넘어감): {e}")
+            job.add(f"   ! 썸네일 이미지 생성 실패: {e}")
+            try:                                          # 그래도 썸네일은 반드시 남긴다: 장면 이미지로 대신 만든다
+                result["thumbnails"] = fallback_thumbnails(script, images_dir, job.add)
+            except Exception as e2:  # noqa: BLE001
+                job.add(f"   ! 썸네일 대체 생성도 실패(넘어감): {e2}")
+        check_cancelled()
     # 6) 최종 렌더
+    render_error = None
     if steps.get("render", False) and result.get("srt") and os.path.isdir(images_dir):
         job.stage = "⑥ 최종 렌더"
         out = os.path.join(assets, "최종.mp4")
-        run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out)
-        result["video"] = out
+        try:
+            run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out)
+            result["video"] = out
+        except Exception as e:  # noqa: BLE001
+            render_error = e
+            job.add(f"   ! 최종 영상 합치기 실패: {e}")
     job.stage = "⑦ 업로드 폴더 정리"
     result["upload_dir"] = make_upload_package(script, result)
     job.add("   ✓ 업로드 폴더: " + result["upload_dir"])
+    if render_error is not None:
+        raise RuntimeError(f"최종 영상 합치기 실패 (대본·썸네일·제목은 저장됨): {render_error}")
     job.stage = "완료"; job.progress = 1.0
     job.add("✅ 파이프라인 완료 · " + assets)
     result["assets"] = assets
