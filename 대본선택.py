@@ -670,13 +670,16 @@ def workspace_data(script_file):
     script_text = Path(script_file).read_text(encoding="utf-8-sig", errors="replace")
     opt_text = Path(opt).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(opt) else ""
     saved = load_json(os.path.join(assets, "업로드_정보.json"), {})
+    thumb_dir = os.path.join(assets, "썸네일")
+    thumbnails = [os.path.abspath(p) for p in sorted(glob.glob(os.path.join(thumb_dir, "썸네일_*.jpg")))]
     title = saved.get("title") or _block(script_text, "제목")
     return dict(script_file=os.path.abspath(script_file), assets=os.path.abspath(assets), script=script_text,
                 prompts=Path(prompts).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(prompts) else "",
                 prompts_file=os.path.abspath(prompts),
                 srt=Path(srt).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(srt) else "",
                 srt_file=os.path.abspath(srt), narration=os.path.abspath(os.path.join(assets, "나레이션.mp3")),
-                images=os.path.abspath(os.path.join(assets, "images")), title=title,
+                images=os.path.abspath(os.path.join(assets, "images")), thumbnails=thumbnails,
+                thumbnail_dir=os.path.abspath(thumb_dir), title=title,
                 description=saved.get("description") or _block(script_text, "설명글") or _block(opt_text, "설명글"),
                 sources=saved.get("sources") or _block(script_text, "출처"),
                 tags=saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그"))
@@ -1508,6 +1511,7 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <div class="row"><label>작업 선택 <select id="work_file" style="min-width:390px" onchange="loadWorkspace(true)"></select></label><button onclick="loadWorkspace(true)">새로고침</button><button onclick="goTab('gallery')">생성 이미지 보기</button></div>
   <div id="work_empty" class="hint">완성된 대본을 선택하면 편집 도구가 나타납니다.</div>
   <div id="work_body" class="hidden">
+    <details open><summary>유튜브 썸네일 보기</summary><div><div id="work_thumbnails" class="gal"></div><div class="row"><button class="primary" onclick="makeWorkspaceThumbnails()">🖼 썸네일 3장 만들기·다시 만들기</button><button onclick="openWorkspaceThumbnailFolder()">📁 썸네일 폴더 열기</button><span class="hint">그림을 클릭하면 크게 볼 수 있습니다.</span></div></div></details>
     <details open><summary>대본 보기·수정</summary><div><textarea id="work_script"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('work_script')">대본 복사</button><button onclick="rerunTTS()">🎙 수정한 대본으로 TTS 다시 만들기</button></div></div></details>
     <details><summary>이미지 프롬프트 보기·수정</summary><div><textarea id="work_prompts"></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('prompts')">프롬프트 저장</button><button onclick="copyField('work_prompts')">프롬프트 복사</button></div></div></details>
     <details><summary>TTS 자막 보기·수정</summary><div><textarea id="work_srt" placeholder="TTS가 완성되면 SRT 자막이 표시됩니다."></textarea><div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('work_srt')">자막 복사</button><button onclick="openPath(WORK.narration)">TTS 파일 열기</button></div></div></details>
@@ -1988,9 +1992,20 @@ async function loadWorkspace(showToast){
   try{WORK=await api('/api/workspace?script='+encodeURIComponent(file));localStorage.setItem('workScript',file);
     $('work_script').value=WORK.script||'';$('work_prompts').value=WORK.prompts||'';$('work_srt').value=WORK.srt||'';
     $('work_title').value=WORK.title||'';$('work_description').value=WORK.description||'';$('work_sources').value=WORK.sources||'';$('work_tags').value=WORK.tags||'';
+    renderWorkspaceThumbnails();
     $('work_empty').classList.add('hidden');$('work_body').classList.remove('hidden');if(showToast)toast('완성 자료를 불러왔습니다.');
   }catch(e){toast(e.message,true);}
 }
+function renderWorkspaceThumbnails(){
+  const box=$('work_thumbnails'),items=(WORK&&WORK.thumbnails)||[];
+  if(!items.length){box.innerHTML='<div class="hint">아직 생성된 썸네일이 없습니다. 아래의 썸네일 3장 만들기를 누르세요.</div>';return;}
+  box.innerHTML=items.map((p,i)=>{const src=`http://127.0.0.1:8765/api/gen/image?path=${encodeURIComponent(p)}&t=${Date.now()}`;return `<div class="g done"><div class="no">썸네일 ${i+1}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div><div class="st">완료 · 클릭해서 크게 보기</div></div>`}).join('');
+}
+async function makeWorkspaceThumbnails(){
+  if(!WORK)return toast('완성 자료에서 작업을 먼저 선택하세요.',true);
+  try{await api('/api/thumbnail',{script_file:WORK.script_file,style:$('a_style').value,position:$('a_thumb_pos').value});startPolling();toast('썸네일 3장 제작을 시작했습니다. 완료 후 새로고침하면 보입니다.');}catch(e){toast(e.message,true);}
+}
+function openWorkspaceThumbnailFolder(){if(!WORK)return toast('작업을 먼저 선택하세요.',true);openPath(WORK.thumbnail_dir);}
 async function saveWorkspaceText(kind){
   if(!WORK)return toast('작업을 먼저 선택하세요.',true);const ids={script:'work_script',prompts:'work_prompts',srt:'work_srt'};
   try{await api('/api/workspace/save',{script_file:WORK.script_file,kind,text:$(ids[kind]).value});toast(({script:'대본',prompts:'이미지 프롬프트',srt:'자막'})[kind]+' 저장 완료');}
