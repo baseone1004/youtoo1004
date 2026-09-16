@@ -708,16 +708,16 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix=""):
     info = aip("/api/info")
     ui = (info.get("config") or {}).get("gen_ui") or {}
     xy = ui.get("XY") or {}
-    if not (xy.get("prompt") and xy.get("generate") and xy.get("download")):
-        raise SystemExit("편집프로그램 > 이미지 자동 생성 화면에서 좌표 3개(프롬프트창·생성·다운로드)를 먼저 잡아 두세요.")
+    if not (xy.get("prompt") and xy.get("download")):
+        raise SystemExit("설정에서 드롭샷 프롬프트 입력창과 다운로드 버튼 좌표를 먼저 잡아 두세요. 생성하기 버튼은 자동으로 찾습니다.")
     dl = (ui.get("P") or {}).get("download") or info.get("downloads_dir")
     if not dl or not os.path.isdir(dl):          # 저장된 폴더가 없으면 실제 다운로드 폴더로
         dl = info.get("downloads_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
         job.add(f"   브라우저 다운로드 폴더 → {dl}")
     body = dict(prompts_file=os.path.abspath(prompts_file), output_dir=os.path.abspath(images_dir), download_dir=dl,
-                prompt_xy=xy["prompt"], generate_xy=xy["generate"], download_xy=xy["download"],
+                prompt_xy=xy["prompt"], generate_xy=xy.get("generate") or xy["prompt"], download_xy=xy["download"],
                 wait_generate=float(ui.get("wait_generate") or 60), wait_download=float(ui.get("wait_download") or 120), window_keyword=ui.get("window_keyword") or "드롭샷", auto_generate=ui.get("auto_generate", True) is not False,
-                wait_next=float(ui.get("wait_next") if ui.get("wait_next") not in (None, "") else 2), start_no=1, end_no=0, skip_existing=True,
+                wait_next=0.5, start_no=1, end_no=0, skip_existing=True,
                 style_prefix=style_prefix or ui.get("style_prefix") or "", retries=1)
     aip("/api/gen/start", body)
     job.add(f"   편집프로그램에 이미지 생성 요청 · 저장 {images_dir}")
@@ -1575,7 +1575,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
   <p class="hint">[6초 좌표]를 누르면 위 숫자가 6부터 1까지 줄어듭니다. 1이 끝날 때까지 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 잡힌 좌표는 자동 저장됩니다.</p>
   <div class="row"><label>드롭샷 창 제목 <input type="text" id="s_window_keyword" value="드롭샷" style="width:150px"></label><button class="mini" onclick="saveEditorXY()">제목·좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
   <div class="row"><b style="min-width:130px">프롬프트 입력창</b><label>X <input type="number" id="s_prompt_x" style="width:90px"></label><label>Y <input type="number" id="s_prompt_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('prompt')">6초 좌표</button><button class="mini" onclick="testEditorXY('prompt')">테스트</button></div>
-  <div class="row"><b style="min-width:130px">생성 버튼</b><label>X <input type="number" id="s_generate_x" style="width:90px"></label><label>Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('generate')">6초 좌표</button><button class="mini" onclick="testEditorXY('generate')">테스트</button></div>
+  <div class="row"><b style="min-width:130px">생성하기 버튼</b><span class="pill">자동으로 찾음</span><label>예비 X <input type="number" id="s_generate_x" style="width:90px"></label><label>예비 Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini primary" onclick="detectGenerateButton()">지금 자동 찾기</button><button class="mini" onclick="captureEditorXY('generate')">예비 좌표 잡기</button></div>
   <div class="row"><b style="min-width:130px">다운로드 버튼</b><label>X <input type="number" id="s_download_x" style="width:90px"></label><label>Y <input type="number" id="s_download_y" style="width:90px"></label><button class="mini" onclick="captureEditorXY('download')">6초 좌표</button><button class="mini" onclick="testEditorXY('download')">테스트</button></div>
   <p class="hint" id="s_xy_status">저장된 좌표를 읽는 중…</p>
   <h2 style="margin-top:14px">인월드(Inworld) 목소리 <small>채널마다 다른 목소리로 저장됩니다</small></h2>
@@ -1667,8 +1667,8 @@ async function checkReady(){
     if(info.config.AI==='deepseek-web') items.push([!!info.web_alive, info.web_alive?'딥시크 웹 연결 ✓':'딥시크 창 안 보임 (chat.deepseek.com 열기)', 'settings']);
     else items.push([!!info.config.키있음, info.config.키있음?(info.config.AI+' 키 ✓'):(info.config.AI+' 키 없음'), 'settings']);
   }catch(e){}
-  try{ const r=await fetch('http://127.0.0.1:8765/api/info'); const j=await r.json(); const xy=((j.config||{}).gen_ui||{}).XY||{}; const ok=!!(xy.prompt&&xy.generate&&xy.download);
-    items.push([ok, ok?'이미지 생성 좌표 ✓':'드롭샷 AI 좌표 3개 없음', 'settings']); }
+  try{ const r=await fetch('http://127.0.0.1:8765/api/info'); const j=await r.json(); const xy=((j.config||{}).gen_ui||{}).XY||{}; const ok=!!(xy.prompt&&xy.download);
+    items.push([ok, ok?'드롭샷 준비 ✓ · 생성 버튼 자동 탐색':'드롭샷 입력·다운로드 좌표 없음', 'settings']); }
   catch(e){ items.push([false,'편집프로그램(8765) 꺼짐 — 유튜브_자동화_시작.bat 다시 실행', null]); }
   const markup='<span class="hint" style="align-self:center">준비 상태:</span>'+items.map(([ok,label,tab])=>`<button type="button" class="${ok?'ok':'bad'}" ${tab&&!ok?`onclick="goTab('${tab}')"`:''}>${ok?'🟢':'🔴'} ${esc(label)}${(!ok&&tab)?' → 고치기':''}</button>`).join('');
   box.innerHTML=markup; $('setupReady').innerHTML=markup;
@@ -1984,7 +1984,7 @@ async function genBodyFromUI(){
   if(!galDir)throw new Error('대본을 먼저 고르세요'); if(!galPromptsPath)throw new Error('이미지 프롬프트 파일이 없습니다. 먼저 이미지 프롬프트를 만드세요.');
   if(!XY.prompt||!XY.download)throw new Error('좌표(프롬프트 입력창·다운로드)가 없습니다 → [🖼 이미지 생성·좌표]에서 잡으세요');
   return {prompts_file:galPromptsPath,output_dir:galDir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt,generate_xy:XY.generate||XY.prompt,download_xy:XY.download,
-    wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:+(ui.wait_next??2),start_no:1,end_no:0,skip_existing:true,
+    wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:0.5,start_no:1,end_no:0,skip_existing:true,
     style_prefix:(STATE.style_prefixes||{})[$('a_style').value]||ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷',auto_generate:ui.auto_generate!==false};
 }
 async function post8765(path,body){const r=await fetch('http://127.0.0.1:8765'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||r.statusText);return j;}
@@ -2040,6 +2040,14 @@ async function testEditorXY(name){
   if(x===''||y==='')return toast('좌표를 먼저 입력하거나 잡으세요',true);
   try{await post8765('/api/gen/test',{x:Number(x),y:Number(y)});toast('마우스를 해당 좌표로 옮겼습니다');}
   catch(e){toast('좌표 테스트 실패: '+e.message,true);}
+}
+async function detectGenerateButton(){
+  $('s_xy_status').textContent="드롭샷에서 파란 '이미지 생성하기' 버튼을 찾는 중…";
+  try{
+    const j=await post8765('/api/gen/detect',{window_keyword:$('s_window_keyword').value.trim()||'드롭샷'});
+    $('s_generate_x').value=j.x;$('s_generate_y').value=j.y;await saveEditorXY();
+    $('s_xy_status').textContent=`✓ 생성하기 버튼을 자동으로 찾았습니다: X=${j.x}, Y=${j.y}`;
+  }catch(e){$('s_xy_status').textContent='자동 탐색 실패: 드롭샷 창을 열고 프롬프트를 입력해 파란 생성 버튼이 보이게 한 뒤 다시 누르세요. ('+e.message+')';}
 }
 let kieJobId=sessionStorage.getItem('kieJobId')||'', kieTimer=null;
 async function refreshKieFiles(){
@@ -2110,7 +2118,7 @@ async function regenScene(no){
     const dir=galDir, prompts=galPromptsPath;
     if(!prompts)throw new Error('이미지 프롬프트 파일이 없습니다. 먼저 이미지 프롬프트를 만드세요.');
     const body={scene:no,prompts_file:prompts,output_dir:dir,download_dir:(ui.P||{}).download||info.downloads_dir,prompt_xy:XY.prompt,generate_xy:XY.generate,download_xy:XY.download,
-      wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:1,start_no:no,end_no:no,skip_existing:false,style_prefix:(STATE.style_prefixes||{})[$('a_style').value]||ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷'};
+      wait_generate:+(ui.wait_generate||60),wait_download:+(ui.wait_download||120),wait_next:0.5,start_no:no,end_no:no,skip_existing:false,style_prefix:(STATE.style_prefixes||{})[$('a_style').value]||ui.style_prefix||'',retries:1,window_keyword:ui.window_keyword||'드롭샷'};
     const r=await fetch('http://127.0.0.1:8765/api/gen/regen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); const jj=await r.json(); if(!r.ok)throw new Error(jj.detail||r.statusText);
     toast(String(no).padStart(3,'0')+'번 다시 생성 시작'); galKey='';
   }catch(e){toast(e.message,true);}
