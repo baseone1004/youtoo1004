@@ -1490,7 +1490,9 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
   <div class="row" style="margin-top:6px"><textarea id="a_title" rows="2" placeholder="예) 나이 들수록 친구가 줄어드는 진짜 이유"></textarea><button class="primary" onclick="pickAnotherTopic()">🎲 다른 주제</button><button class="mini" onclick="goTab(pipelineTopic()==='mindam'?'mindam':'person')">목록 열기</button></div></div></div>
   <div class="stepline"><span class="no">3</span><div><b>그림체 선택</b> <span class="hint">애니·파스텔·실사 중 원하는 그림체를 누르면 바로 저장됩니다</span>
   <div class="row" style="margin-top:6px"><input type="hidden" id="a_style"><div class="styles" id="a_styles"></div></div>
-  <div class="row"><label>민담 영상 길이 <select id="a_length"></select></label></div></div></div>
+  <div class="row"><label>민담 영상 길이 <select id="a_length"></select></label></div>
+  <div class="row" style="margin-top:8px"><b>썸네일</b><label><input type="checkbox" id="a_thumb" checked> 영상마다 썸네일 3장 자동 제작</label><label>문구 위치 <select id="a_thumb_pos"><option value="bottom">아래</option><option value="left">왼쪽</option><option value="top">위</option></select></label><span class="hint">완성된 썸네일은 해당 영상의 자료 폴더 안 <code>썸네일</code> 폴더에 저장됩니다.</span></div>
+  </div></div>
   <div class="stepline"><span class="no">4</span><div>
   <div class="row"><button class="primary" id="a_go" onclick="startPipeline()" style="font-size:17px;padding:14px 26px">🚀 대본부터 영상까지 자동 실행</button><button class="mini hidden" id="a_cancel" onclick="api('/api/cancel',{})">현재 작업 취소</button>
   <span class="hint">끝나면 아래 진행 칸에 결과 폴더가 나옵니다 (사람의 이유 30~60분 · 민담 1~2시간)</span></div></div></div>
@@ -1548,8 +1550,6 @@ body{background:linear-gradient(180deg,#090b20,#0c1027 55%,#090b20);font-size:14
     <label><input type="checkbox" id="a_images" checked>이미지 자동 생성(좌표 클릭)</label>
     <label>후킹 영상 앞 <input type="number" id="a_hook" value="7" min="0" max="30" style="width:70px" onchange="api('/api/config',{후킹_장면수:+this.value})"> 장면 (KIE, 0=안 함)</label>
     <label><input type="checkbox" id="a_render" checked>최종 MP4 편집·저장(자막·음성 합치기)</label>
-    <label><input type="checkbox" id="a_thumb" checked>썸네일 3장 자동</label>
-    <label>썸네일 문구 위치 <select id="a_thumb_pos"><option value="bottom">아래</option><option value="left">왼쪽</option><option value="top">위</option></select></label>
   </div>
   <p class="hint">자막 글꼴·색·화면 비율은 [🎬 영상 만들기] 탭에서 정한 것을 그대로 씁니다. 이미지 생성 중에는 마우스·키보드를 쓰지 마세요.</p>
   </details>
