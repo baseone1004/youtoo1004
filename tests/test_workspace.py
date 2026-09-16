@@ -9,6 +9,14 @@ import 대본선택 as app
 
 
 class WorkspaceEditorTest(unittest.TestCase):
+    def test_thumbnail_seo_context_uses_each_videos_metadata(self):
+        optimized = """[추천 제목]\n1번 — 검색 의도와 궁금증\n[설명글]\n나이 들수록 친구가 줄어드는 이유\n관계 심리를 이야기합니다\n[태그]\n인간관계, 친구관계, 중년심리\n"""
+        script = "[제목]\n친구가 줄어드는 진짜 이유\n[대본]\n본문"
+        context = app.thumbnail_seo_context(optimized, script, False)
+        self.assertIn("친구가 줄어드는 진짜 이유", context)
+        self.assertIn("인간관계, 친구관계, 중년심리", context)
+        self.assertIn("40~60대", context)
+
     def test_load_and_save_script_subtitle_and_metadata(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

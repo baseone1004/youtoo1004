@@ -867,6 +867,24 @@ def fallback_thumb_copies(title):
             ("대부분 놓치는", "그 진짜 이유", "")]
 
 
+def thumbnail_seo_context(opt_text, script_text, is_mindam):
+    """최적화 결과와 실제 대본에서 썸네일이 지켜야 할 검색 의도와 내용 약속을 모은다."""
+    recommended = 민담_대본.block_of(opt_text, "추천 제목").strip()
+    description = 민담_대본.block_of(opt_text, "설명글").strip()
+    tags = 민담_대본.block_of(opt_text, "태그").strip()
+    title_match = re.search(r"\[제목\]\s*\n([^\n]+)", script_text)
+    script_title = title_match.group(1).strip() if title_match else ""
+    if not script_title:
+        script_title = next((line.strip() for line in script_text.splitlines() if line.strip()), "")
+    description_first = " / ".join(line.strip() for line in description.splitlines()[:2] if line.strip())
+    search_terms = [x.strip().lstrip("#") for x in re.split(r"[,#]", tags) if x.strip()][:8]
+    return (f"[실제 영상 제목] {script_title[:180]}\n"
+            f"[SEO 추천 제목] {recommended[:240] or script_title[:180]}\n"
+            f"[설명 첫 두 줄] {description_first[:260]}\n"
+            f"[핵심 검색어] {', '.join(search_terms)}\n"
+            f"[대상 시청자] {'한국 야담·민담을 즐기는 50~70대' if is_mindam else '관계·심리·인생 이야기에 관심 있는 40~60대'}")
+
+
 def make_thumbnails(job, req):
     """대본 폴더 → 썸네일 프롬프트 3개(딥시크) → 이미지 생성(편집프로그램 좌표 클릭) → 문구 합성 → 썸네일_1~3.jpg"""
     cfg = 대본생성.load_cfg()
@@ -878,11 +896,11 @@ def make_thumbnails(job, req):
     is_mindam = os.path.basename(script) == "final.txt"
     opt_path = os.path.join(assets, "유튜브_최적화.txt") if is_mindam else re.sub(r"\.txt$", "", script) + "_유튜브최적화.txt"
     opt_text = open(opt_path, encoding="utf-8").read() if os.path.exists(opt_path) else ""
+    script_text = open(script, encoding="utf-8-sig").read()
     copies = parse_thumb_copies(opt_text)
     if not copies:                                    # 최적화 파일이 없으면 제목에서 대충 두 줄
         title = ""
-        raw = open(script, encoding="utf-8-sig").read()
-        m = re.search(r"\[제목\]\s*\n(.+)", raw)
+        m = re.search(r"\[제목\]\s*\n(.+)", script_text)
         if m:
             title = re.sub(r"\s*\|.*$", "", m.group(1)).strip()
         elif is_mindam:
@@ -898,9 +916,11 @@ def make_thumbnails(job, req):
     layout = ("조선 시대 인물 2~3명과 사건 장소가 함께 보이는 넓은 이야기 장면, 문구가 들어갈 화면 아래쪽은 어둡고 단순하게"
               if is_mindam else
               "감정이 선명한 현대 한국인 한 명을 화면 오른쪽에 크게, 문구가 들어갈 왼쪽 55%는 어둡고 단순하게")
+    seo_context = thumbnail_seo_context(opt_text, script_text, is_mindam)
     user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n"
             f"[채널] {'민담·야담' if is_mindam else '사람의 이유'}\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
             + "\n".join(f"{i}. 상단: {t} / 하단: {b}" + (f" / 이미지: {d}" if d else "") for i, (t, b, d) in enumerate(copies, 1))
+            + f"\n\n[영상별 SEO 정보]\n{seo_context}"
             + (f"\n\n[브리프]\n{brief}" if brief else ""))
     job.stage = "썸네일 프롬프트"
     job.add("   썸네일 프롬프트 3개 ")
