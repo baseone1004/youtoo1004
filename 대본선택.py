@@ -940,7 +940,7 @@ def make_thumbnails(job, req):
                                             font="Hakgyoansim Nalgae R",
                                             top_color="#FF3B30" if is_mindam else "#FFE45C",
                                             bottom_color="#63FF66" if is_mindam else "#FF3B30",
-                                            position=position, size=118, box=True))
+                                            position=position, size=118, shade=0, box=False))
         outs.append(out)
         job.add(f"   ✓ {out}  ({top} / {bottom})")
     job.add("비용: " + ai.cost_text())
