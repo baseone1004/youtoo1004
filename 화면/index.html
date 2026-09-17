@@ -7,7 +7,7 @@
 </head><body>
 
 <header class="top"><div class="top-inner">
-  <div class="brand">🎬 유튜브 영상 자동 제작 <small>심리해독소 · 민담·야담</small><span class="pill-live" id="liveDot"></span></div>
+  <div class="brand">🎬 유튜브 영상 자동 제작 <small id="brandSub"></small><span class="pill-live" id="liveDot"></span></div>
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
     <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
@@ -56,7 +56,7 @@
     <h2>어떤 영상을 만들까요?</h2>
     <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
     <div class="row">
-      <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">심리해독소</button><button data-ch="mindam" onclick="setChannel('mindam')">민담·야담·옛이야기</button></div>
+      <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">정보형</button><button data-ch="mindam" onclick="setChannel('mindam')">이야기형</button></div>
       <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
       <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
     </div>
@@ -68,8 +68,8 @@
     <textarea id="customTitle" class="topic-input" rows="3" placeholder="예: 병원에 사주를 많이 보는 이유&#10;예: 비가 그친 골목에 남은 기억"></textarea>
     <div class="chips hidden" id="genreChips"><span class="hint" style="align-self:center">장르만 고를 수도 있어요:</span></div>
     <div class="row" style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
-    <div class="row" id="personLenRow" style="margin-top:10px"><label><b>심리해독소</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
-    <div id="mindamLenRow" class="row hidden"><label><b>민담·야담</b> 영상 길이</label><select id="mindamLen"></select></div>
+    <div class="row" id="personLenRow" style="margin-top:10px"><label><b class="pname-person">정보형</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
+    <div id="mindamLenRow" class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
     <div class="row"><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상(KIE) <input type="number" id="optHook" value="7" min="0" max="30" style="width:70px"> 장면</label></div>
     <div class="row"><label>대본 지침 <select id="optGuide"></select></label><label>이미지 지침 <select id="optImgGuide"></select><span class="hint" style="margin-left:4px">(민담 대본은 자동으로 이미지지침_민담 사용)</span></label><label>프롬프트 한 번에 <input type="number" id="optChunk" value="30" min="5" max="60" style="width:70px"> 문장</label></div>
     <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
@@ -172,7 +172,7 @@
 <div class="panel" id="adv-tools">
   <div class="panel-head"><span class="tag-lbl">단계별 따로 실행</span><span class="hint">보통은 제작 시작 한 번이면 됩니다</span></div>
   <div class="inner">
-    <div class="row"><div class="seg"><button data-ch="person" class="on" onclick="setToolChannel('person')">심리해독소</button><button data-ch="mindam" onclick="setToolChannel('mindam')">민담·야담</button></div><input type="text" id="toolTitle" placeholder="주제 또는 제목"><button class="primary" onclick="startScriptOnly()">대본만 만들기</button></div>
+    <div class="row"><div class="seg"><button data-ch="person" class="on" onclick="setToolChannel('person')">정보형</button><button data-ch="mindam" onclick="setToolChannel('mindam')">이야기형</button></div><input type="text" id="toolTitle" placeholder="주제 또는 제목"><button class="primary" onclick="startScriptOnly()">대본만 만들기</button></div>
     <div id="toolMindam" class="hidden">
       <div class="row"><label>길이 <select id="toolLen"></select></label><label>지침 <select id="toolMGuide"></select></label><label>이어쓰기 폴더 <input type="text" id="toolResume" placeholder="비우면 새로 시작" style="min-width:240px"></label></div>
       <div class="row"><button onclick="startVariations()">제목 변형 A~D 만들기</button><span class="hint">골격은 살리고 주인공·반전을 바꾼 안 4개 중 고릅니다</span></div>
@@ -197,8 +197,37 @@
     <div class="ready-bar" id="setupReady" style="padding:0;margin:0"></div>
   </div>
 
+  <div class="card" id="profileCard">
+    <h2>1. 내 채널 프로필 <span class="stat ok" id="profStat"></span></h2>
+    <p class="lead">채널 이름·소개·시청자·마스코트를 여기서 정하면 대본·주제 추천·제목·설명·이미지·썸네일 프롬프트가 전부 이 내용에 맞춰집니다. 채널이 바뀌면 여기만 고치면 됩니다.</p>
+    <div class="row"><div class="seg" id="profSeg"><button data-slot="person" class="on" onclick="setProfileSlot('person')">정보형 채널</button><button data-slot="mindam" onclick="setProfileSlot('mindam')">이야기형 채널</button></div><span class="hint" id="profTypeHint"></span></div>
+    <div class="keyrow"><b>채널 이름</b><input type="text" id="pf_이름" placeholder="예: 심리해독소"></div>
+    <div class="keyrow"><b>시청자</b><input type="text" id="pf_대상_시청자" placeholder="예: 관계·심리에 관심 있는 40~60대"></div>
+    <div class="keyrow"><b>영상 길이</b><input type="text" id="pf_영상_길이" placeholder="예: 20~30분" style="max-width:160px"><b style="min-width:auto">해시태그</b><input type="text" id="pf_해시태그" placeholder="#채널명" style="max-width:200px"></div>
+    <div class="keyrow"><b>채널 소개</b></div>
+    <textarea id="pf_설명" class="short" style="font-size:15px" placeholder="이 채널이 어떤 영상을 만드는지 2~4문장. 대본·제목·주제 추천 프롬프트에 그대로 들어갑니다."></textarea>
+    <div class="keyrow"><b>주제 분류</b><input type="text" id="pf_카테고리" placeholder="쉼표로 구분 (예: 관계 해독, 감정 해독, 처세 해독)"></div>
+    <div class="keyrow"><b>벤치 검색어</b><input type="text" id="pf_검색어" placeholder="비슷한 채널을 찾을 때 쓰는 검색어, 쉼표로 구분"></div>
+    <div class="keyrow"><b>기본 태그</b><input type="text" id="pf_기본_태그" placeholder="업로드 태그에 항상 넣을 낱말, 쉼표로 구분"></div>
+    <div class="keyrow"><b>면책 문구</b><input type="text" id="pf_면책" placeholder="설명글 끝에 붙는 안내 문구 (비워도 됨)"></div>
+    <div class="keyrow"><b>업로드 폴더</b><input type="text" id="pf_업로드_폴더" placeholder="업로드/ 아래 폴더 이름" style="max-width:220px"><b style="min-width:auto">대본 지침</b><select id="pf_지침_대본" style="max-width:240px"></select><b style="min-width:auto">이미지 지침</b><select id="pf_지침_이미지" style="max-width:240px"></select></div>
+    <h3>마스코트 (레퍼런스 캐릭터) <span class="stat" id="mascotStat"></span><span class="hint">없으면 비워 두세요</span></h3>
+    <div class="row" style="align-items:flex-start"><img id="mascotImg" class="hidden" style="width:120px;height:120px;object-fit:contain;background:#fff;border-radius:12px" alt="">
+      <div style="flex:1;min-width:260px">
+        <div class="keyrow"><b>이름</b><input type="text" id="pf_마스코트_이름" placeholder="예: 해" style="max-width:160px"><b style="min-width:auto">그림 파일</b><input type="text" id="pf_마스코트_이미지" placeholder="assets/캐릭터/해.png"></div>
+        <div class="keyrow"><b>생김새(한글)</b><input type="text" id="pf_마스코트_설명" placeholder="지침에 들어가는 한글 설명"></div>
+        <div class="keyrow"><b>영어 문구</b><input type="text" id="pf_마스코트_프롬프트" placeholder="이미지 프롬프트에 그대로 들어갈 영어 캐릭터 문구"></div>
+        <p class="hint">이미지는 드롭샷이 만들기 때문에 <b>드롭샷 References 패널에 이 그림을 올리고 Subject로 지정</b>해 두어야 장면·썸네일에서 같은 캐릭터가 나옵니다 (한 번만 하면 됨).</p>
+      </div></div>
+    <h3>썸네일 방식</h3>
+    <div class="keyrow"><b>글자 배치</b><select id="pf_썸네일_레이아웃" style="max-width:320px"></select><b style="min-width:auto">띠 태그 문구</b><input type="text" id="pf_썸네일_띠_문구" placeholder="하단 띠형에서 왼쪽 위 빨간 태그 (예: 옛이야기)" style="max-width:220px"></div>
+    <div class="keyrow"><b>썸네일 화풍</b><input type="text" id="pf_썸네일_화풍" placeholder="비우면 장면 화풍을 그대로 씀 (영어)"></div>
+    <div class="keyrow"><b>구도 지시</b><input type="text" id="pf_썸네일_구도" placeholder="썸네일 프롬프트에 들어갈 구도 설명 (한글)"></div>
+    <div class="row"><button class="primary" onclick="saveProfile()">프로필 저장</button><span class="hint">지침 파일 안의 {{채널명}} {{채널_설명}} {{대상_시청자}} {{마스코트_이름}} {{마스코트_설명}} {{마스코트_프롬프트}} {{해시태그}} 자리에 이 값이 들어갑니다.</span></div>
+  </div>
+
   <div class="card">
-    <h2>1. 대본을 쓰는 AI <span class="stat" id="aiStat"></span></h2>
+    <h2>2. 대본을 쓰는 AI <span class="stat" id="aiStat"></span></h2>
     <div class="row"><label>AI <select id="sAI" onchange="saveAI()"><option value="deepseek-web">딥시크 웹 (무료 · 크롬 확장 필요)</option><option value="deepseek">딥시크 API</option><option value="gemini">제미나이 API</option><option value="claude">클로드 API</option></select></label><label>모델 <input type="text" id="sModel" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
     <p class="hint" id="sStatus"></p>
     <details class="box soft" id="webHelp" open><summary>딥시크 웹(무료) 쓰는 법</summary><div><ol class="guide hint">
@@ -214,15 +243,15 @@
   </div>
 
   <div class="card">
-    <h2>2. 나레이션 목소리 (인월드)</h2>
+    <h2>3. 나레이션 목소리 (인월드)</h2>
     <div class="row"><label>모델 <select id="sInworldModel"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>
-    <div class="keyrow"><b>심리해독소</b><span class="stat" id="vPerson"></span><input type="text" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
-    <div class="keyrow"><b>민담·야담</b><span class="stat" id="vMindam"></span><input type="text" id="sVoiceM" placeholder="비우면 심리해독소 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>
+    <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="vPerson"></span><input type="text" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
+    <div class="keyrow"><b class="pname-mindam">이야기형</b><span class="stat" id="vMindam"></span><input type="text" id="sVoiceM" placeholder="비우면 정보형 채널 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>
     <div class="keyrow"><b>분당 글자수</b><span class="stat ok" id="vCpm"></span><label>영상 길이 계산용 <input type="number" id="sCpm" value="270" min="150" max="400" step="10" style="width:90px"></label><button class="mini" onclick="saveCpm()">저장</button></div>
   </div>
 
   <div class="card">
-    <h2>3. 드롭샷 이미지 생성 좌표</h2>
+    <h2>4. 드롭샷 이미지 생성 좌표</h2>
     <p class="lead">이미지는 드롭샷 AI 화면을 자동으로 클릭해서 만듭니다. 입력창과 다운로드 버튼 위치를 한 번만 잡아 두세요.</p>
     <div class="row"><button class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board','_blank','noopener')">↗ 드롭샷 AI 열기</button><label>창 제목 <input type="text" id="sWindowKeyword" value="드롭샷" style="width:140px"></label><span class="xy-countdown" id="xyCountdown">6</span></div>
     <p class="hint">[6초 좌표 잡기]를 누르면 숫자가 6부터 줄어듭니다. 1이 끝날 때까지 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 자동 저장됩니다.</p>
@@ -230,33 +259,30 @@
     <div class="keyrow"><b>생성하기 버튼</b><label>X <input type="number" id="s_generate_x" style="width:90px"></label><label>Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini primary" onclick="detectGenerateButton()">자동 찾기</button><button class="mini" onclick="captureEditorXY('generate')">6초 좌표 잡기</button></div>
     <div class="keyrow"><b>이미지 다운로드</b><label>X <input type="number" id="s_download_x" style="width:90px"></label><label>Y <input type="number" id="s_download_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('download')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('download')">위치 확인</button></div>
     <div class="row"><button onclick="saveEditorXY()">좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
-    <h3>레퍼런스 캐릭터 (마스코트 '해') <span class="stat" id="mascotStat"></span></h3>
-    <div class="row" style="align-items:flex-start"><img id="mascotImg" class="hidden" style="width:120px;height:120px;object-fit:contain;background:#fff;border-radius:12px" alt="">
-      <div class="hint">캐릭터 그림을 <code>assets/캐릭터/해.png</code> 로 저장해 두면 여기에 보입니다. 이미지는 드롭샷이 만들기 때문에, <b>드롭샷 References 패널에 이 그림을 올리고 Subject로 지정</b>해 두어야 장면·썸네일에서 같은 캐릭터가 나옵니다 (한 번만 하면 됨). 프롬프트에는 캐릭터 설명이 자동으로 들어갑니다.</div></div>
     <p class="hint" id="sXyStatus">저장된 좌표를 읽는 중…</p>
   </div>
 
   <div class="card" id="chanCard">
-    <h2>4. 내 유튜브 채널 연동</h2>
+    <h2>5. 내 유튜브 채널 연동</h2>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>
-    <div class="keyrow"><b>심리해독소</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
+    <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px;white-space:pre-wrap"></p>
-    <div class="keyrow"><b>민담·야담</b><span class="stat" id="chStatM"></span><input type="text" id="chUrlM" placeholder="민담 채널 주소 (없으면 비워 두세요)"><button class="mini primary" onclick="saveChannel('mindam')">저장</button><button class="mini" onclick="refreshChannel('mindam')">제목 다시 읽기</button></div>
+    <div class="keyrow"><b class="pname-mindam">이야기형</b><span class="stat" id="chStatM"></span><input type="text" id="chUrlM" placeholder="이야기형 채널 주소 (없으면 비워 두세요)"><button class="mini primary" onclick="saveChannel('mindam')">저장</button><button class="mini" onclick="refreshChannel('mindam')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoM" style="margin:-2px 0 0 120px;white-space:pre-wrap"></p>
-    <h3>벤치마킹할 심리 채널 <span class="hint">비워 두면 검색으로 자동 발견</span></h3>
-    <p class="hint">꼭 참고하고 싶은 채널 주소를 한 줄에 하나씩. [📊 심리 채널 벤치마킹]을 누르면 이 채널들과 자동으로 찾은 채널에서 평소보다 몇 배 터진 영상을 모아, 새 주제 추천·제목·썸네일 문구에 참고합니다.</p>
+    <h3>벤치마킹할 채널 <span class="hint">비워 두면 프로필의 검색어로 자동 발견</span></h3>
+    <p class="hint">꼭 참고하고 싶은 채널 주소를 한 줄에 하나씩. [📊 채널 벤치마킹]을 누르면 이 채널들과 자동으로 찾은 채널에서 평소보다 몇 배 터진 영상을 모아, 새 주제 추천·제목·썸네일 문구에 참고합니다.</p>
     <textarea id="benchChannels" class="short" style="font-family:var(--sans)" placeholder="https://www.youtube.com/@채널이름&#10;https://www.youtube.com/channel/UC…"></textarea>
     <div class="row"><button class="primary mini" onclick="saveBenchChannels()">벤치 채널 저장</button><button class="mini" onclick="runBenchmark()">📊 지금 벤치마킹 실행</button></div>
     <h3>유튜브 API 키 <span class="stat" id="ytKeyStat"></span><span class="hint" id="ytKeyInfo"></span></h3>
     <p class="hint">넣으면 조회수·좋아요·게시일까지 정확히 읽어 채널 분석에 씁니다 (없으면 제목만 읽음). 발급: console.cloud.google.com → 프로젝트 만들기 → <b>YouTube Data API v3</b> 사용 설정 → 사용자 인증 정보 → API 키 만들기. 무료입니다.</p>
     <div class="keyrow"><b>API 키</b><input type="password" id="ytKey" placeholder="AIza…"><button class="mini primary" onclick="saveYtKey()">저장</button><button class="mini" onclick="testYtKey()">연결 확인</button><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener" class="mini" style="font-size:13px">↗ 발급 페이지</a></div>
     <h3>내 채널 분석 <span class="hint">채널을 읽을 때마다 자동 갱신</span></h3>
-    <div class="row"><div class="seg"><button data-ach="person" class="on" onclick="loadAnalysis('person')">심리해독소</button><button data-ach="mindam" onclick="loadAnalysis('mindam')">민담·야담</button></div><button class="mini" onclick="loadAnalysis()">다시 계산</button></div>
+    <div class="row"><div class="seg"><button data-ach="person" class="on" onclick="loadAnalysis('person')">정보형</button><button data-ach="mindam" onclick="loadAnalysis('mindam')">이야기형</button></div><button class="mini" onclick="loadAnalysis()">다시 계산</button></div>
     <div id="chAnalysis" class="hint">채널을 연동하면 여기에 분석이 나옵니다.</div>
   </div>
 
   <div class="card">
-    <h2>5. 텔레그램 완성 알림 <span class="stat">선택</span></h2>
+    <h2>6. 텔레그램 완성 알림 <span class="stat">선택</span></h2>
     <p class="hint">① BotFather에서 받은 봇 토큰 저장 → ② 텔레그램에서 그 봇에게 아무 메시지 보내기 → ③ 채팅 자동 찾기 → 저장 → 테스트</p>
     <div class="keyrow"><b>봇 토큰</b><span class="stat" id="tgTokenStat"></span><input type="password" id="tgToken" placeholder="123456:ABC…"><button class="mini" onclick="saveTelegramToken()">저장</button></div>
     <div class="row"><button onclick="findTelegramChats()">🔎 채팅 자동 찾기</button><select id="tgChats" style="min-width:220px"><option value="">먼저 채팅을 찾으세요</option></select><button onclick="saveTelegramChat()">선택한 채팅 저장</button><button class="primary" onclick="testTelegram()">테스트 메시지</button></div>

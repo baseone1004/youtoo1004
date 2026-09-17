@@ -22,10 +22,11 @@
 프롬프트는 영어로 쓰고 장면마다 약 70~110단어로 작성한다. 이미지는 16:9 장면이다.
 
 [채널과 캐릭터]
-이 채널(심리해독소)은 사람의 속마음과 관계의 심리를 '해독'해 주는 채널이다. 장면은 현대 대한민국, 40~60대 한국 성인의 일상(집, 직장, 식당, 카페, 가족 모임, 전화·문자, 동창 모임)이 기본이다.
-채널 마스코트 '해'는 사용자가 드롭샷 References 에 올린 레퍼런스 캐릭터다: 크림색 아기곰, 크고 동그란 안경, 발그레한 볼과 미소, 목에 하늘색 리본과 '해' 글자가 적힌 동그란 배지, 한 손에 하트 모양 열쇠, 옆에 하트가 새겨진 자물쇠. 굵은 갈색 외곽선의 단순한 2D 캐릭터.
+이 채널({{채널명}})은 {{채널_설명}}
+시청자는 {{대상_시청자}}. 장면은 현대 대한민국, 40~60대 한국 성인의 일상(집, 직장, 식당, 카페, 가족 모임, 전화·문자, 동창 모임)이 기본이다.
+채널 마스코트 '{{마스코트_이름}}'는 사용자가 드롭샷 References 에 올린 레퍼런스 캐릭터다: {{마스코트_설명}}
 마스코트가 등장하는 장면에는 반드시 아래 문구를 넣는다:
-the channel mascot Hae exactly matching the uploaded reference image: a cream-colored chibi bear with big round glasses, rosy cheeks, a light-blue ribbon collar with a round badge, holding a heart-shaped key next to a small heart padlock, same face, same design, consistent character design
+{{마스코트_프롬프트}}
 
 [장면 유형 판단 규칙]
 각 문장을 아래 네 가지 중 하나로 판단한다.
@@ -91,7 +92,7 @@ No subtitle, no caption, no narration box, no speech bubble text, no bottom text
 대사: 그 무거움에는 이름이 있습니다.
 감정: 호기심, 차분한 발견
 행동: 하트 자물쇠를 열쇠로 열기 시작한다
-프롬프트: [화풍 문구], the channel mascot Hae exactly matching the uploaded reference image: a cream-colored chibi bear with big round glasses, rosy cheeks, a light-blue ribbon collar with a round badge, holding a heart-shaped key next to a small heart padlock, same face, same design, consistent character design, standing beside a large heart-shaped padlock that is just beginning to open, a soft glow escaping from the keyhole, simple warm cream background with a few floating empty thought clouds without any text, close-up, gentle curious expression. No subtitle, no caption, no narration box, no speech bubble text, no bottom text overlay, no floating text, no Korean sentence overlay. Korean text only appears naturally on physical objects such as signs, book covers, memos, phone screens, or storefronts. Do not put the narration text inside the image. 16:9 aspect ratio
+프롬프트: [화풍 문구], {{마스코트_프롬프트}}, standing beside a large heart-shaped padlock that is just beginning to open, a soft glow escaping from the keyhole, simple warm cream background with a few floating empty thought clouds without any text, close-up, gentle curious expression. No subtitle, no caption, no narration box, no speech bubble text, no bottom text overlay, no floating text, no Korean sentence overlay. Korean text only appears naturally on physical objects such as signs, book covers, memos, phone screens, or storefronts. Do not put the narration text inside the image. 16:9 aspect ratio
 
 [나쁜 예]
 bottom caption reading "좋은 사람인데도 만나고 돌아오는 길이 무겁습니다", white narration box, comic panel style, 16:9

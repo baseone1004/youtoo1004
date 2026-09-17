@@ -13,12 +13,13 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BASE = os.path.dirname(os.path.abspath(__file__)); os.chdir(BASE)
 
 지침_파일 = os.path.join("지침", "알고리즘_최적화_지침.txt")
-채널_설명 = {
-    "person": ("채널 '심리해독소' — 복잡한 사람의 속마음과 관계의 해답을 찾아 주는 정보형 롱폼. 관계 해독(이용하려는 사람 구분·건강한 손절), "
-               "감정 해독(피로감·불안·번아웃 관리), 처세 해독(만만해 보이지 않는 대화법·거리 두기). 시청자 40~60대. "
-               "기본 태그: 심리학, 인간관계, 심리해독, 인간관계피로, 처세술, 감정조절, 속마음, 대화법, 마음치유."),
-    "mindam": "야담·민담·옛이야기 채널 — 조선 배경 창작 이야기 롱폼(1~2시간). 시청자 50~70대. 제목 끝에 ' | 야담 옛날이야기 민담 전설 설화'.",
-}
+def 채널_설명(channel):
+    """채널 프로필에서 최적화 프롬프트용 채널 소개를 만든다."""
+    import 채널_프로필
+    p = 채널_프로필.get(channel)
+    tail = " 제목 끝에 ' | 야담 옛날이야기 민담 전설 설화'." if channel == "mindam" else ""
+    return (f"채널 '{p['이름']}' — {p['설명']} 시청자: {p['대상_시청자']}. 영상 길이 {p.get('영상_길이', '')}. "
+            f"기본 태그: {', '.join(p.get('기본_태그') or [])}.{tail}")
 
 
 def load_trends(channel):
@@ -82,7 +83,7 @@ def optimize(ai, channel, script_text, extra="", log=print):
     head = body[:2500]
     tail = body[-1200:] if len(body) > 4000 else ""
     mid = body[len(body) // 2: len(body) // 2 + 800] if len(body) > 6000 else ""
-    user = (f"[채널]\n{채널_설명.get(channel, '')}\n\n"
+    user = (f"[채널]\n{채널_설명(channel)}\n\n"
             + (f"[요즘 터지는 단어 — 비슷한 채널 히트 제목에서 자주 나온 말]\n{', '.join(trends)}\n\n" if trends else "")
             + (("[벤치마킹 — 비슷한 심리 채널에서 평소보다 몇 배 터진 제목. 제목의 구조·후킹 방식·썸네일 문구 길이를 참고하되 문장을 베끼지 않는다]\n"
                 + "\n".join(f"- {v['title']} ({v['channel']} · {v['ratio']}배)" for v in bench) + "\n\n") if bench else "")

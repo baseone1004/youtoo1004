@@ -139,8 +139,9 @@ async function refresh() {
   // 1단계
   renderTopics();
   // 2단계
-  fill($('optGuide'), g.script, '사람의이유_대본지침.txt');
-  fill($('optImgGuide'), g.image, '이미지지침_심리해독소.txt');
+  renderProfileNames();
+  fill($('optGuide'), g.script, (STATE.profiles.person.지침 || {}).대본 || '사람의이유_대본지침.txt');
+  fill($('optImgGuide'), g.image, (STATE.profiles[channel] && STATE.profiles[channel].지침 || {}).이미지 || '이미지지침_심리해독소.txt');
   $('optChunk').value = c.프롬프트_묶음 || 30; $('optHook').value = c.후킹_장면수 ?? 7;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) { $('mindamLen').innerHTML = lenOpts; $('toolLen').innerHTML = lenOpts; }
@@ -180,7 +181,7 @@ async function refresh() {
   $('tgTokenStat').textContent = c.텔레그램_토큰 ? '저장됨 ' + c.텔레그램_토큰 : '없음'; $('tgTokenStat').className = 'stat ' + (c.텔레그램_토큰 ? 'ok' : '');
   $('tgChatStat').textContent = c.텔레그램_채팅_ID ? '연결된 채팅: ' + c.텔레그램_채팅_ID : '연결된 채팅 없음';
   $('tgEnabled').checked = c.텔레그램_알림 !== false;
-  renderChannels(STATE.channels || {}); loadTrash();
+  renderChannels(STATE.channels || {}); loadTrash(); renderProfileForm();
   $('ytKeyStat').textContent = c.유튜브_API_키 ? '저장됨 ' + c.유튜브_API_키 : '없음'; $('ytKeyStat').className = 'stat ' + (c.유튜브_API_키 ? 'ok' : '');
   loadAnalysis(channel); loadBench();
   // 경고
@@ -198,7 +199,8 @@ async function refresh() {
 function setChannel(ch) {
   channel = ch;
   document.querySelectorAll('#chSeg button').forEach(b => b.classList.toggle('on', b.dataset.ch === ch));
-  $('chHint').textContent = ch === 'mindam' ? '1~2시간 · 옛이야기·야담' : '20~30분 · 심리·관계 이야기';
+  const pf = (STATE && STATE.profiles && STATE.profiles[ch]) || {};
+  $('chHint').textContent = `${pf.이름 || ''} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
   $('genreChips').classList.toggle('hidden', ch !== 'mindam');
   if (STATE) { renderChannels(STATE.channels || {}); loadAnalysis(ch); }
   $('customTitle').placeholder = ch === 'mindam' ? '예) 장터에서 아기를 백 냥에 사온 과부, 그 아이의 정체는' : '예) 나이 들수록 친구가 줄어드는 진짜 이유';
@@ -261,11 +263,11 @@ function renderSelection() {
   $('selText').textContent = n ? `편 제작 예정 — 그림체를 확인하고 시작하세요` : '개 선택 — 위에서 주제를 체크하거나 적으세요';
   $('toStep2').disabled = !n && !$('customTitle').value.trim();
   $('orderCount').textContent = n ? `${n}편 · 위에서부터 순서대로` : '';
-  $('orderList').innerHTML = items.map(([key, x], i) => `<li><span class="n">${i + 1}</span><span class="t">${esc(x.title)}</span><span class="ch">${x.channel === 'mindam' ? '민담·야담' : '심리해독소'}</span><button class="mini ghost" onclick="removeSel('${js(key)}')">빼기</button></li>`).join('') || '<li class="hint">선택한 주제가 없습니다. 1단계에서 체크하세요.</li>';
+  $('orderList').innerHTML = items.map(([key, x], i) => `<li><span class="n">${i + 1}</span><span class="t">${esc(x.title)}</span><span class="ch">${pname(x.channel)}</span><button class="mini ghost" onclick="removeSel('${js(key)}')">빼기</button></li>`).join('') || '<li class="hint">선택한 주제가 없습니다. 1단계에서 체크하세요.</li>';
   const hasP = items.some(([, x]) => x.channel === 'person'), hasM = items.some(([, x]) => x.channel === 'mindam');
   $('personLenRow').classList.toggle('hidden', !hasP); $('mindamLenRow').classList.toggle('hidden', !hasM);
   const est = [];
-  if (hasP) est.push(`심리해독소 ${items.filter(([, x]) => x.channel === 'person').length}편 (편당 30~60분)`);
+  if (hasP) est.push(`${pname('person')} ${items.filter(([, x]) => x.channel === 'person').length}편 (편당 30~60분)`);
   if (hasM) est.push(`민담 ${items.filter(([, x]) => x.channel === 'mindam').length}편 (편당 1~2시간)`);
   $('startHint').textContent = est.length ? est.join(' + ') + ' 정도 걸립니다. 이미지 생성 중에는 마우스·키보드를 쓰지 마세요.' : '';
   $('startBtn').disabled = !n && !$('customTitle').value.trim();
@@ -328,7 +330,7 @@ async function continuePipeline() {
 // ── 3단계: 진행 ─────────────────────────────────────────
 const PIPE_STEPS = ['① 대본', '② 이미지 프롬프트', '③ 나레이션', '④ 이미지 생성', '⑤ 움직이는 영상', "⑤' 썸네일", '⑥ 최종 영상', '완료'];
 const STEP_OUT = [['script', 'file'], ['prompts', 'file'], ['narration', 'folder'], ['images', 'folder'], ['hook', 'folder'], ['thumbnails', 'folder'], ['video', 'folder'], ['assets', 'folder']];
-const KIND_LABEL = {bench: '심리 채널 벤치마킹', script: '대본 만들기', mindam: '민담 대본 만들기', images: '이미지 프롬프트', variations: '제목 변형', optimize: '제목·설명·태그', tts: '나레이션', pipeline: '한 편 자동 제작', queue_pipeline: '연속 제작 중', thumbnail: '썸네일'};
+const KIND_LABEL = {bench: '채널 벤치마킹', script: '대본 만들기', mindam: '이야기 대본 만들기', images: '이미지 프롬프트', variations: '제목 변형', optimize: '제목·설명·태그', tts: '나레이션', pipeline: '한 편 자동 제작', queue_pipeline: '연속 제작 중', thumbnail: '썸네일'};
 function startPolling(scroll) {
   clearInterval(pollTimer); $('pgResult').classList.add('hidden'); $('pgErr').classList.add('hidden'); $('pgPreview').classList.add('hidden');
   poll(); pollTimer = setInterval(poll, 1500);
@@ -750,7 +752,7 @@ async function loadBench() {
 }
 async function runBenchmark() {
   if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업이 끝난 뒤 실행하세요.', true);
-  if (!confirm((channel === 'mindam' ? '민담·야담 채널에서 터진 제목을 모읍니다' : '비슷한 심리 채널을 찾아 터진 영상을 모읍니다') + ' (1~3분). 지금 실행할까요?')) return;
+  if (!confirm(`${pname(channel)}와 비슷한 채널을 찾아 터진 영상을 모읍니다` + ' (1~3분). 지금 실행할까요?')) return;
   try { await api('/api/bench/run', {channel}); startPolling(true); toast('벤치마킹을 시작했습니다. 끝나면 추천 주제가 새로 채워집니다.'); } catch (e) { toast(e.message, true); }
 }
 async function saveBenchChannels() {
@@ -843,7 +845,7 @@ async function saveVoice(ch) {
   const body = ch === 'mindam' ? {인월드_목소리_민담: $('sVoiceM').value.trim(), 인월드_속도_민담: +$('sSpeedM').value}
     : {인월드_목소리_사람: $('sVoiceP').value.trim(), 인월드_속도_사람: +$('sSpeedP').value, 인월드_목소리: $('sVoiceP').value.trim(), 인월드_속도: +$('sSpeedP').value, 인월드_모델: $('sInworldModel').value};
   if (!(ch === 'mindam' ? body.인월드_목소리_민담 : body.인월드_목소리_사람)) return toast('목소리 ID를 입력하세요', true);
-  await api('/api/config', body); toast((ch === 'mindam' ? '민담·야담' : '심리해독소') + ' 목소리 저장됨'); refresh();
+  await api('/api/config', body); toast(pname(ch) + ' 목소리 저장됨'); refresh();
 }
 async function saveCpm() { await api('/api/config', {분당_글자수: +$('sCpm').value, 인월드_모델: $('sInworldModel').value}); toast('저장됨'); refresh(); }
 async function saveTelegramToken() { const token = $('tgToken').value.trim(); if (!token) return toast('BotFather에서 받은 봇 토큰을 입력하세요.', true); await api('/api/config', {텔레그램_봇_토큰: token}); $('tgToken').value = ''; toast('토큰 저장. 이제 봇에게 메시지를 보내고 채팅 자동 찾기를 누르세요.'); refresh(); }
@@ -852,7 +854,8 @@ async function saveTelegramChat() { const id = $('tgChats').value; if (!id) retu
 async function saveTelegramEnabled() { await api('/api/config', {텔레그램_알림: $('tgEnabled').checked}); toast($('tgEnabled').checked ? '텔레그램 알림 켬' : '텔레그램 알림 끔'); }
 async function testTelegram() { try { await api('/api/telegram/test', {}); toast('텔레그램으로 테스트 메시지를 보냈습니다.'); } catch (e) { toast(e.message, true); } }
 async function loadMascot() {
-  const path = 'assets\캐릭터\해.png';
+  const path = ((STATE.profiles || {}).person || {}).마스코트 && STATE.profiles.person.마스코트.이미지 || 'assets/캐릭터/해.png';
+  if (!$('mascotImg')) return;
   try { const r = await fetch('/api/image?path=' + encodeURIComponent(path), {cache: 'no-store'}); if (!r.ok) throw 0;
     $('mascotImg').src = '/api/image?path=' + encodeURIComponent(path) + '&t=' + Date.now(); $('mascotImg').classList.remove('hidden'); $('mascotStat').textContent = '저장됨'; $('mascotStat').className = 'stat ok'; }
   catch (e) { $('mascotImg').classList.add('hidden'); $('mascotStat').textContent = '파일 없음'; $('mascotStat').className = 'stat'; }
@@ -906,3 +909,41 @@ async function detectGenerateButton() {
   setInterval(refreshQueue, 3000); setInterval(checkReady, 20000); checkVersion(); setInterval(checkVersion, 30000); setInterval(() => refreshGallery(false), 4000);
   refreshGallery(true);
 })();
+
+
+// ── 채널 프로필 ─────────────────────────────────────
+let profileSlot = 'person';
+function pname(slot) { const p = (STATE && STATE.profiles && STATE.profiles[slot]) || {}; return p.이름 || (slot === 'mindam' ? '이야기형' : '정보형'); }
+function renderProfileNames() {
+  const P = STATE.profiles || {}; if (!P.person) return;
+  $('brandSub').textContent = `${pname('person')} · ${pname('mindam')}`;
+  document.querySelectorAll('#chSeg button, #adv-tools .seg button[data-ch], [data-ach]').forEach(b => { const k = b.dataset.ch || b.dataset.ach; b.textContent = pname(k); });
+  document.querySelectorAll('.pname-person').forEach(el => el.textContent = pname('person'));
+  document.querySelectorAll('.pname-mindam').forEach(el => el.textContent = pname('mindam'));
+  document.querySelectorAll('#profSeg button').forEach(b => { b.textContent = `${pname(b.dataset.slot)} (${(P[b.dataset.slot] || {}).유형 || ''})`; });
+  const pf = P[channel] || {}; $('chHint').textContent = `${pf.이름 || ''} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
+}
+function setProfileSlot(slot) { profileSlot = slot; document.querySelectorAll('#profSeg button').forEach(b => b.classList.toggle('on', b.dataset.slot === slot)); renderProfileForm(); }
+function renderProfileForm() {
+  const P = STATE.profiles || {}, p = P[profileSlot]; if (!p || !$('pf_이름')) return;
+  const g = STATE.guidelines || {script: [], image: []};
+  const opt = (list, cur) => `<option value="">(기본)</option>` + list.map(x => `<option value="${esc(x)}" ${x === cur ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  $('pf_지침_대본').innerHTML = opt(g.script, (p.지침 || {}).대본 || ''); $('pf_지침_이미지').innerHTML = opt(g.image, (p.지침 || {}).이미지 || '');
+  $('pf_썸네일_레이아웃').innerHTML = Object.entries(STATE.layouts || {}).map(([k, v]) => `<option value="${k}" ${(p.썸네일 || {}).레이아웃 === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더']) $('pf_' + k).value = p[k] || '';
+  for (const k of ['검색어', '기본_태그']) $('pf_' + k).value = (p[k] || []).join(', ');
+  const m = p.마스코트 || {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) $('pf_마스코트_' + k).value = m[k] || '';
+  const t = p.썸네일 || {}; for (const k of ['띠_문구', '화풍', '구도']) $('pf_썸네일_' + k).value = t[k] || '';
+  $('profTypeHint').textContent = profileSlot === 'mindam' ? '이야기형: 기획 → 챕터로 창작 이야기를 씁니다 (야담·민담·전설 등)' : '정보형: 주제 하나를 9구간 나레이션으로 풀어 씁니다 (심리·건강·역사·상식 등)';
+  $('profStat').textContent = p.이름 || '';
+  profileSlot === 'person' ? loadMascot() : ($('mascotImg').classList.add('hidden'), $('mascotStat').textContent = '');
+}
+async function saveProfile() {
+  const data = {};
+  for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더', '검색어', '기본_태그']) data[k] = $('pf_' + k).value;
+  data.지침 = {대본: $('pf_지침_대본').value, 이미지: $('pf_지침_이미지').value};
+  data.마스코트 = {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) data.마스코트[k] = $('pf_마스코트_' + k).value;
+  data.썸네일 = {레이아웃: $('pf_썸네일_레이아웃').value}; for (const k of ['띠_문구', '화풍', '구도']) data.썸네일[k] = $('pf_썸네일_' + k).value;
+  if (!data.이름.trim()) return toast('채널 이름을 넣으세요.', true);
+  try { await api('/api/profile', {slot: profileSlot, data}); toast(`${data.이름} 프로필 저장됨 — 다음 제작부터 반영됩니다`); await refresh(); } catch (e) { toast(e.message, true); }
+}

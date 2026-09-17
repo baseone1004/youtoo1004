@@ -114,10 +114,12 @@ def layout_bottom_two(im, top, bottom):
     return im
 
 
-def compose(image, out, top, bottom, channel="person"):
-    """원본 이미지 + 문구 → out (1280×720 JPG). 쓴 레이아웃 이름을 돌려준다."""
-    if channel == "mindam":
-        im, layout = layout_band(_load(image, 0.55), top, bottom), "band"
+def compose(image, out, top, bottom, channel="person", layout=None, tag_text=None):
+    """원본 이미지 + 문구 → out (1280×720 JPG). 쓴 레이아웃 이름을 돌려준다.
+    layout: 'band'(하단 띠+붓글씨) / 'bottom_two'(아래 두 줄). 비우면 채널 자리의 기본(민담=band, 그 외=bottom_two)."""
+    layout = (layout or ("band" if channel == "mindam" else "bottom_two")).strip()
+    if layout == "band":
+        im, layout = layout_band(_load(image, 0.55), top, bottom, tag_text or "옛이야기"), "band"
     else:
         im, layout = layout_bottom_two(_load(image, 0.5), top, bottom), "bottom"
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)

@@ -47,7 +47,9 @@ def split_groups(n_parts):
 def generate(ai, system, t, target, n_parts):
     card = topic_card(t, target)
     kw = " ".join(t.get("태그", [])[:2])
-    src = web_search([t["제목"], f"{kw} 심리학 연구 결과", f"{kw} 연구 논문", f"{kw} 통계 조사"], per_query=5, max_total=8)
+    import 채널_프로필
+    suffixes = 채널_프로필.get("person").get("자료_검색_접미") or ["연구 결과", "통계 조사"]
+    src = web_search([t["제목"]] + [f"{kw} {sfx}" for sfx in suffixes], per_query=5, max_total=8)
     print(f"   참고 자료 {len(src)}건 검색")
     src_text = format_sources(src)
     groups = split_groups(n_parts)
@@ -105,8 +107,14 @@ def generate(ai, system, t, target, n_parts):
     full = head.strip() + "\n[대본]\n" + body + "\n\n===sum===\n" + thumb.strip() + "\n"
     return full, body
 
-면책 = ("※ 본 영상은 사람과 관계, 심리 현상을 이해하기 위한 정보 제공을 목적으로 제작되었습니다. 특정 개인을 진단하거나 모든 경우에 동일하게 적용하기 위한 내용은 아닙니다.\n"
-       "※ 본 영상의 대본·이미지·음성 제작에는 인공지능 기술이 사용되었습니다.")
+def 면책문():
+    """채널 프로필의 면책 문구 + 인공지능 사용 고지."""
+    try:
+        import 채널_프로필
+        own = (채널_프로필.get("person").get("면책") or "").strip()
+    except Exception:  # noqa: BLE001
+        own = ""
+    return (own + "\n" if own else "") + "※ 본 영상의 대본·이미지·음성 제작에는 인공지능 기술이 사용되었습니다."
 
 
 def strip_english(text):
@@ -155,7 +163,7 @@ def compose_description(head):
     parts = [b["설명글"].strip(), "", 구분선, ""]
     if src_lines:
         parts += ["📚 참고 자료"] + src_lines + [""]
-    parts += [면책, "", 구분선, ""]
+    parts += [면책문(), "", 구분선, ""]
     if tags:
         parts.append(" ".join(tags))
     b["설명글"] = "\n".join(parts).strip()

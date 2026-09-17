@@ -21,6 +21,7 @@ import 최적화
 import 나레이션
 import 웹큐
 import 채널_연동
+import 채널_프로필
 import 주제_추천
 import 유튜브_API
 import 썸네일_합성
@@ -407,12 +408,13 @@ def refresh_topics(channel, shown):
             have = current["mindam"] if channel == "mindam" else current["plan"] + current["candidates"]
     return dict(channel=channel, items=have[:6], generated=generated)
 
-def read_guideline(name):
+def read_guideline(name, channel="person"):
+    """지침 파일을 읽고 {{채널명}} 같은 자리표시자를 채널 프로필 값으로 채운다."""
     p = os.path.join(지침_폴더, name)
     if not os.path.abspath(p).startswith(os.path.abspath(지침_폴더)) or not os.path.exists(p):
         raise FileNotFoundError(name)
     with open(p, encoding="utf-8-sig") as f:
-        return f.read()
+        return 채널_프로필.fill(f.read(), channel)
 
 def write_guideline(name, text):
     p = os.path.join(지침_폴더, name)
@@ -447,13 +449,14 @@ def make_person_script(job, req):
          "다룰내용": topic.get("다룰내용", []), "출처후보": topic.get("출처후보", []), "태그": topic.get("태그", [])}
     if not t["제목"]:
         raise SystemExit("주제(제목)를 입력하거나 목록에서 고르세요.")
-    system = read_guideline(req.get("guideline") or "사람의이유_대본지침.txt")
+    guideline = req.get("guideline") or 채널_프로필.get("person")["지침"].get("대본") or "사람의이유_대본지침.txt"
+    system = read_guideline(guideline, "person")
     cpm = int(cfg.get("분당_글자수", 270) or 270)
     requested = int(req.get("target") or cfg["대본_글자수"])
     minutes = max(20, min((20, 25, 30), key=lambda m: abs(requested - m * cpm)))     # 롱폼만: 20분 미만은 만들지 않는다
     target = minutes * cpm
     n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
-    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {req.get('guideline')}")
+    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {guideline}")
     job.add(f"▶ {t['제목']}")
     full, body = 대본생성.generate(ai, system, t, target, n_parts)
     os.makedirs(대본_폴더, exist_ok=True)
@@ -728,15 +731,13 @@ def script_body(text):
         text = text.split("===sum===", 1)[0]
     return text.strip()
 
-이미지지침_기본 = {"person": "이미지지침_심리해독소.txt", "mindam": "이미지지침_민담.txt"}
-
-
 def image_guideline_for(script_file, requested=""):
-    """채널에 맞는 이미지 지침. 화면에서 고른 지침이 다른 채널용(기본 지침)이면 이 채널의 기본으로 바꾼다."""
+    """채널 프로필에 정한 이미지 지침. 화면에서 고른 지침이 다른 채널의 기본 지침이면 이 채널의 것으로 바꾼다."""
     channel = channel_of(script_file)
-    own = 이미지지침_기본.get(channel, 이미지지침_기본["person"])
+    defaults = {slot: (채널_프로필.get(slot)["지침"].get("이미지") or "") for slot in 채널_프로필.SLOTS}
+    own = defaults.get(channel) or ("이미지지침_민담.txt" if channel == "mindam" else "이미지지침_심리해독소.txt")
     requested = (requested or "").strip()
-    if not requested or requested in 이미지지침_기본.values():
+    if not requested or requested in defaults.values():
         return own
     return requested                          # 사용자가 따로 만든 지침 파일이면 그대로
 
@@ -754,7 +755,7 @@ def make_image_prompts(job, req):
     if not sents:
         raise SystemExit("대본에서 문장을 찾지 못했습니다.")
     guideline = image_guideline_for(path, req.get("guideline"))
-    system = read_guideline(guideline)
+    system = read_guideline(guideline, channel_of(path))
     job.add(f"   이미지 지침: {guideline}")
     style = image_style_lock(req.get("style", "2D 일러스트"))
     chunk = int(req.get("chunk") or 25)
@@ -764,9 +765,7 @@ def make_image_prompts(job, req):
         e = min(s + chunk, len(sents))
         lines = "\n".join(f"{i+1:03d}. {sents[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
-                + ("[레퍼런스] 드롭샷 References 패널에 채널 마스코트 '해'(안경 쓴 크림색 아기곰) 이미지가 올라가 있다. "
-                   "마스코트가 나오는 장면(C형)에는 지침의 레퍼런스 일관성 문구를 그대로 넣고, 사람 장면(D형)과 대상 장면(A형)에는 마스코트를 넣지 않는다.\n"
-                   if channel_of(path) == "person" else "")
+                + 채널_프로필.mascot_reference_note(channel_of(path))
                 + ("[레퍼런스] 드롭샷 References 패널에 업로드된 이미지를 반드시 참조한다. "
                    "C형의 동일 인물은 얼굴형·눈·머리·체형·의상을 유지하고, "
                    "A형은 인물을 억지로 추가하지 말고 선화·색감만 일치시킨다. "
@@ -942,8 +941,8 @@ def make_tts(job, req):
     if req.get("speed"):
         speed = float(req["speed"])
     if not voice:
-        raise SystemExit(f"{'민담·야담' if channel == 'mindam' else '심리해독소'} 채널 목소리 ID 가 없습니다. [설정] 탭의 인월드 목소리에 넣어주세요.")
-    job.add(f"   목소리: {'민담·야담' if channel == 'mindam' else '심리해독소'} 채널 → {voice} · 속도 {speed}")
+        raise SystemExit(f"{채널_프로필.name(channel)} 채널 목소리 ID 가 없습니다. [설정] 탭의 인월드 목소리에 넣어주세요.")
+    job.add(f"   목소리: {채널_프로필.name(channel)} 채널 → {voice} · 속도 {speed}")
     job.stage = "나레이션 합성"
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
                          req.get("model") or cfg.get("인월드_모델", "inworld-tts-1.5-max"), speed,
@@ -1107,7 +1106,7 @@ def thumbnail_seo_context(opt_text, script_text, is_mindam):
             f"[SEO 추천 제목] {recommended[:240] or script_title[:180]}\n"
             f"[설명 첫 두 줄] {description_first[:260]}\n"
             f"[핵심 검색어] {', '.join(search_terms)}\n"
-            f"[대상 시청자] {'한국 야담·민담을 즐기는 50~70대' if is_mindam else '관계·심리·인생 이야기에 관심 있는 40~60대'}")
+            f"[대상 시청자] {채널_프로필.get('mindam' if is_mindam else 'person')['대상_시청자']}")
 
 
 def thumb_copies_for(script, assets, is_mindam, log=None):
@@ -1158,7 +1157,9 @@ def compose_thumbnails(script, log=None):
     for i in sorted(raws):
         top, bottom, _ = copies[(i - 1) % len(copies)]
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
-        layout = 썸네일_합성.compose(raws[i], out, top, bottom, "mindam" if is_mindam else "person")
+        tp = 채널_프로필.get("mindam" if is_mindam else "person").get("썸네일") or {}
+        layout = 썸네일_합성.compose(raws[i], out, top, bottom, "mindam" if is_mindam else "person",
+                                 layout=tp.get("레이아웃") or None, tag_text=tp.get("띠_문구") or None)
         outs.append(out)
         if log:
             log(f"   ✓ {out}  ({top} / {bottom}) · {dict(bottom='아래 두 줄형', band='하단 띠형')[layout]}")
@@ -1205,25 +1206,21 @@ def make_thumbnails(job, req):
     bp = os.path.join(assets, "thumbnail_brief.md")
     if os.path.exists(bp):
         brief = open(bp, encoding="utf-8").read()[:1500]
-    # 심리해독소 썸네일은 장면 화풍과 상관없이 벤치마킹 채널처럼 밝은 2D 치비 스티커 화풍으로 고정한다 (마스코트 '해'가 주인공)
-    style = (화풍.get(req.get("style", "실사"), 화풍["실사"]) if is_mindam else
-             "bright flat 2D chibi sticker illustration for a YouTube thumbnail, thick clean dark outlines, big expressive eyes, "
-             "vivid high-contrast pastel colors, simple background, exaggerated emotion, 16:9 aspect ratio")
+    # 썸네일 화풍·구도는 채널 프로필에서 온다 (화풍을 비워 두면 장면 화풍을 그대로 쓴다)
+    profile = 채널_프로필.get("mindam" if is_mindam else "person")
+    tp = profile.get("썸네일") or {}
+    style = (tp.get("화풍") or "").strip() or 화풍.get(req.get("style", "실사"), 화풍["실사"])
     position = "bottom"
-    layout = ("감정이 터지는 순간 한 컷 — 조선 시대 인물 얼굴 클로즈업, 두 인물의 시선 충돌, 또는 사건의 정점 중 하나. 인물 최대 2명, "
-              "밤이어도 등잔불로 얼굴이 밝게, 문구가 들어갈 화면 아래쪽은 단순하고 조금 어둡게"
-              if is_mindam else
-              "채널 마스코트 '해'(드롭샷 References의 안경 쓴 크림색 아기곰)를 화면 위쪽·가운데에 크게, 과장된 감정과 상징 하나, "
-              "밝고 단순한 배경, 문구 두 줄이 들어갈 화면 아래쪽 35%는 단순하고 조금 어둡게")
+    layout = (tp.get("구도") or "").strip() or "핵심 인물 한 명의 감정이 즉시 읽히는 단순한 장면, 문구가 들어갈 화면 아래쪽은 단순하고 조금 어둡게"
     seo_context = thumbnail_seo_context(opt_text, script_text, is_mindam)
     user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n"
-            f"[채널] {'민담·야담' if is_mindam else '심리해독소'}\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
+            f"[채널] {profile['이름']} ({profile['유형']})\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
             + "\n".join(f"{i}. 상단: {t} / 하단: {b}" + (f" / 이미지: {d}" if d else "") for i, (t, b, d) in enumerate(copies, 1))
             + f"\n\n[영상별 SEO 정보]\n{seo_context}"
             + (f"\n\n[브리프]\n{brief}" if brief else ""))
     job.stage = "썸네일 프롬프트"
     job.add("   썸네일 프롬프트 3개 ")
-    text = ai.ask(read_guideline("썸네일_지침.txt"), user).replace("```", "")
+    text = ai.ask(read_guideline("썸네일_지침.txt", "mindam" if is_mindam else "person"), user).replace("```", "")
     prompts = [민담_대본.block_of(text, str(i)).strip() for i in (1, 2, 3)]
     prompts = [p for p in prompts if p]
     if not prompts:
@@ -1268,7 +1265,7 @@ def make_upload_package(script_file, result):
     title = title.splitlines()[0].strip()
     description = saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글")
     tags = saved.get("tags") or _block(opt_text, "태그") or _block(script_text, "태그")
-    channel_dir = "민담" if is_mindam else "심리해독소"
+    channel_dir = 대본생성.safe_name(채널_프로필.get("mindam" if is_mindam else "person").get("업로드_폴더") or ("민담" if is_mindam else "심리해독소"))
     package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
     package.mkdir(parents=True, exist_ok=True)
     (package / "제목.txt").write_text(title, encoding="utf-8")
@@ -1619,7 +1616,7 @@ class H(BaseHTTPRequestHandler):
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
                                 job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items(),
-                                channels=채널_연동.status(cfg)))
+                                channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), layouts=채널_프로필.레이아웃_이름))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
             elif u.path == "/api/version":
@@ -1755,6 +1752,10 @@ class H(BaseHTTPRequestHandler):
                     raise ValueError("진행 중인 작업이 끝난 뒤 다시 시작하세요.")
                 self._json({"ok": True})
                 threading.Thread(target=restart_program, args=(self.server,), daemon=True).start()
+            elif u.path == "/api/profile":
+                slot = body.get("slot") or "person"
+                saved = 채널_프로필.save(slot, body.get("data") or {})
+                self._json(dict(ok=True, profile=saved))
             elif u.path == "/api/youtube/test":
                 cfg = load_json("설정.json", {})
                 key = str(cfg.get("유튜브_API_키", "") or "").strip()

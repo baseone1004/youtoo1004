@@ -10,13 +10,15 @@ import re
 from 공통_api import AI
 
 FILE = "추천_추가.json"
-CHANNEL_DESC = {
-    "person": ("40~60대 시청자를 위한 '심리해독소' 채널 — 복잡한 사람의 속마음과 관계의 해답을 찾아 주는 20~30분 나레이션 영상. "
-               "관계 해독(나를 이용하려는 사람 구분법·건강한 손절 기준), 감정 해독(피로감·불안·번아웃을 줄이는 마음 관리), "
-               "처세 해독(만만해 보이지 않는 대화법·상처받지 않는 거리 두기)을 다룬다. 예: '왜 그 사람은 나에게 그렇게 말했을까', '좋은 사람인데 만나고 오면 진이 빠지는 이유'"),
-    "mindam": "50~70대 시청자를 위한 민담·야담·옛이야기 채널 — 조선 시대 배경의 권선징악·반전·귀신·해학 이야기를 1~2시간 나레이션으로 들려주는 영상",
-}
-CATEGORIES = {"person": "관계 해독, 감정 해독, 처세 해독 중 하나", "mindam": "권선징악, 귀신·도깨비, 해학·풍자, 사랑·비극, 역사인물, 미스터리·추리, 가족·성장 중 하나"}
+def channel_desc(channel):
+    import 채널_프로필
+    p = 채널_프로필.get(channel)
+    return f"{p['대상_시청자']}를 위한 '{p['이름']}' 채널 — {p['설명']} (영상 길이 {p.get('영상_길이', '')})"
+
+
+def categories(channel):
+    import 채널_프로필
+    return (채널_프로필.get(channel).get("카테고리") or "").strip() + " 중 하나"
 
 
 def bench_hits(limit=20):
@@ -77,8 +79,8 @@ def generate(cfg, channel, count, exclude, analysis=None, log=None):
     if hits_bench:
         hits += "\n[비슷한 심리 채널에서 평소보다 몇 배 터진 제목 — 소재·제목 형태를 벤치마킹하되 베끼지 않는다]\n" + "\n".join(
             f"- {v['title']} ({v['channel']} · 평소의 {v['ratio']}배)" for v in hits_bench)
-    system = (f"너는 {CHANNEL_DESC[channel]}의 기획자다. 새 영상 제목 {count}개를 JSON 배열로만 답한다. "
-              f'형식: [{{"제목": "...", "{key}": "{CATEGORIES[channel]}", "한줄": "왜 이 주제가 클릭될지 한 문장"}}]. '
+    system = (f"너는 {channel_desc(channel)}의 기획자다. 새 영상 제목 {count}개를 JSON 배열로만 답한다. "
+              f'형식: [{{"제목": "...", "{key}": "{categories(channel)}", "한줄": "왜 이 주제가 클릭될지 한 문장"}}]. '
               "설명·표·코드블록 없이 JSON 만 쓴다.\n"
               "규칙: 제목은 15~30자, 궁금증을 남기는 구체적인 문장(‘~하는 진짜 이유’, ‘~하면 생기는 일’, 숫자 활용). "
               "제외 목록과 같은 소재·비슷한 제목은 절대 내지 않는다. 잘 된 영상의 소재·말투를 참고하되 그대로 반복하지 않는다. 서로 다른 소재로 고르게 뽑는다.")
