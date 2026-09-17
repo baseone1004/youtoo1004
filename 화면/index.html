@@ -71,7 +71,7 @@
     <div class="row" id="personLenRow" style="margin-top:10px"><label><b>심리해독소</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
     <div id="mindamLenRow" class="row hidden"><label><b>민담·야담</b> 영상 길이</label><select id="mindamLen"></select></div>
     <div class="row"><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상(KIE) <input type="number" id="optHook" value="7" min="0" max="30" style="width:70px"> 장면</label></div>
-    <div class="row"><label>대본 지침 <select id="optGuide"></select></label><label>이미지 지침 <select id="optImgGuide"></select></label><label>프롬프트 한 번에 <input type="number" id="optChunk" value="30" min="5" max="60" style="width:70px"> 문장</label></div>
+    <div class="row"><label>대본 지침 <select id="optGuide"></select></label><label>이미지 지침 <select id="optImgGuide"></select><span class="hint" style="margin-left:4px">(민담 대본은 자동으로 이미지지침_민담 사용)</span></label><label>프롬프트 한 번에 <input type="number" id="optChunk" value="30" min="5" max="60" style="width:70px"> 문장</label></div>
     <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
     <div id="startHint" class="hint" style="margin-top:8px"></div>
     <ol class="order" id="orderList" style="margin-top:8px"></ol><span class="hidden" id="orderCount"></span>

@@ -728,6 +728,19 @@ def script_body(text):
         text = text.split("===sum===", 1)[0]
     return text.strip()
 
+이미지지침_기본 = {"person": "이미지지침_심리해독소.txt", "mindam": "이미지지침_민담.txt"}
+
+
+def image_guideline_for(script_file, requested=""):
+    """채널에 맞는 이미지 지침. 화면에서 고른 지침이 다른 채널용(기본 지침)이면 이 채널의 기본으로 바꾼다."""
+    channel = channel_of(script_file)
+    own = 이미지지침_기본.get(channel, 이미지지침_기본["person"])
+    requested = (requested or "").strip()
+    if not requested or requested in 이미지지침_기본.values():
+        return own
+    return requested                          # 사용자가 따로 만든 지침 파일이면 그대로
+
+
 def make_image_prompts(job, req):
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
@@ -740,7 +753,9 @@ def make_image_prompts(job, req):
     sents = split_sentences(body)
     if not sents:
         raise SystemExit("대본에서 문장을 찾지 못했습니다.")
-    system = read_guideline(req.get("guideline") or "이미지지침_심리해독소.txt")
+    guideline = image_guideline_for(path, req.get("guideline"))
+    system = read_guideline(guideline)
+    job.add(f"   이미지 지침: {guideline}")
     style = image_style_lock(req.get("style", "2D 일러스트"))
     chunk = int(req.get("chunk") or 25)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 · {chunk}문장씩 · 화풍 {req.get('style', '실사')}")
