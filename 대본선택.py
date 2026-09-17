@@ -306,6 +306,27 @@ def topics():
 SEEN_TOPICS = {"person": set(), "mindam": set()}
 
 
+def run_benchmark(job, req):
+    """주제뽑기.py 를 실행해 비슷한 심리 채널을 새로 찾고 계획·후보·트렌드·벤치_히트 를 갱신한다 (1~3분)."""
+    job.stage = "벤치마킹 채널 분석"
+    job.add("▶ 비슷한 심리 채널을 찾아 터진 영상을 모읍니다 (1~3분)")
+    env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
+    proc = subprocess.Popen([sys.executable, "주제뽑기.py", "--no-browser"], cwd=BASE, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+    for line in proc.stdout:
+        if line.strip():
+            job.add("   " + line.rstrip())
+        if job.cancel_requested:
+            proc.kill(); raise RuntimeError("취소됨")
+    if proc.wait() != 0:
+        raise RuntimeError("주제뽑기 실행 실패 — 로그를 확인하세요.")
+    for s in SEEN_TOPICS.values():
+        s.clear()
+    hits = 주제_추천.bench_hits(60)
+    job.add(f"   ✓ 벤치마킹 완료 · 히트 영상 {len(hits)}개")
+    return dict(hits=len(hits), file=os.path.abspath("벤치_히트.json"))
+
+
 def refresh_topics(channel, shown):
     """지금 보이는 주제를 '본 것'으로 표시하고, 남은 후보가 6개 미만이면 AI 로 새 주제를 만들어 채운다."""
     channel = "mindam" if channel == "mindam" else "person"
@@ -383,7 +404,7 @@ def make_person_script(job, req):
     system = read_guideline(req.get("guideline") or "사람의이유_대본지침.txt")
     cpm = int(cfg.get("분당_글자수", 270) or 270)
     requested = int(req.get("target") or cfg["대본_글자수"])
-    minutes = min((20, 25, 30), key=lambda m: abs(requested - m * cpm))
+    minutes = max(20, min((20, 25, 30), key=lambda m: abs(requested - m * cpm)))     # 롱폼만: 20분 미만은 만들지 않는다
     target = minutes * cpm
     n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
     job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {req.get('guideline')}")
@@ -415,6 +436,7 @@ def make_person_script(job, req):
     if req.get("optimize", True):
         try:
             text, _ = 최적화.optimize(ai, "person", body, extra=full.split("[대본]", 1)[0][:1500], log=job.add)
+            text = 대본생성.strip_english(text)
             opt = re.sub(r"\.txt$", "", path) + "_유튜브최적화.txt"
             with open(opt, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -491,6 +513,8 @@ def make_optimize_only(job, req):
                 extra = f.read()[:1500]
     job.add(f"AI: {ai.name} ({ai.model}) · 채널 {channel} · {os.path.basename(path)}")
     text, titles = 최적화.optimize(ai, channel, body, extra=extra, log=job.add)
+    if channel == "person":
+        text = 대본생성.strip_english(text)
     out = os.path.join(os.path.dirname(path), "유튜브_최적화.txt") if is_final else re.sub(r"\.txt$", "", path) + "_유튜브최적화.txt"
     with open(out, "w", encoding="utf-8") as f:
         f.write(text)
@@ -670,7 +694,7 @@ def make_image_prompts(job, req):
     sents = split_sentences(body)
     if not sents:
         raise SystemExit("대본에서 문장을 찾지 못했습니다.")
-    system = read_guideline(req.get("guideline") or "이미지프롬프트_변환지침(DeepSeek).txt")
+    system = read_guideline(req.get("guideline") or "이미지지침_심리해독소.txt")
     style = image_style_lock(req.get("style", "2D 일러스트"))
     chunk = int(req.get("chunk") or 25)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 · {chunk}문장씩 · 화풍 {req.get('style', '실사')}")
@@ -679,11 +703,14 @@ def make_image_prompts(job, req):
         e = min(s + chunk, len(sents))
         lines = "\n".join(f"{i+1:03d}. {sents[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
+                + ("[레퍼런스] 드롭샷 References 패널에 채널 마스코트 '해'(안경 쓴 크림색 아기곰) 이미지가 올라가 있다. "
+                   "마스코트가 나오는 장면(C형)에는 지침의 레퍼런스 일관성 문구를 그대로 넣고, 사람 장면(D형)과 대상 장면(A형)에는 마스코트를 넣지 않는다.\n"
+                   if channel_of(path) == "person" else "")
                 + ("[레퍼런스] 드롭샷 References 패널에 업로드된 이미지를 반드시 참조한다. "
                    "C형의 동일 인물은 얼굴형·눈·머리·체형·의상을 유지하고, "
                    "A형은 인물을 억지로 추가하지 말고 선화·색감만 일치시킨다. "
                    "각 영어 프롬프트에 이 레퍼런스 지시를 명시한다. 수채화·사진·3D 표현은 금지한다.\n"
-                   if req.get("style") == "2D 일러스트" else "")
+                   if req.get("style") == "2D 일러스트" and channel_of(path) != "person" else "")
                 +
                 f"[이번 범위] {s+1:03d} ~ {e:03d} (총 {e-s}개 장면)\n\n[이번 범위 원문]\n{lines}\n\n"
                 f"위 {e-s}개 문장 각각에 대해 ===NNN=== 장면 블록을 {s+1:03d}부터 {e:03d}까지 순서대로 출력한다.")
@@ -1532,6 +1559,15 @@ class H(BaseHTTPRequestHandler):
                     data = f.read()
                 self.send_response(200); self.send_header("Content-Type", IMAGE_MIME[ext]); self.send_header("Cache-Control", "max-age=3600")
                 self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+            elif u.path == "/api/bench":
+                try:
+                    with open("벤치_히트.json", encoding="utf-8") as f:
+                        data = json.load(f)
+                except (OSError, ValueError):
+                    data = {"날짜": "", "채널": [], "히트": []}
+                cfg = load_json("설정.json", {})
+                data["추가_채널"] = cfg.get("벤치_채널_추가") or []
+                self._json(data)
             elif u.path == "/api/channel/analysis":
                 cfg = load_json("설정.json", {})
                 self._json(채널_연동.analysis(cfg, q.get("channel", ["person"])[0]))
@@ -1698,6 +1734,14 @@ class H(BaseHTTPRequestHandler):
                     if key in body or "유튜브_API_키" in body:
                         채널_연동.fetch_in_background(cfg, ch, force=True)
                 self._json({"ok": True})
+            elif u.path == "/api/bench/run":
+                run_job("bench", lambda job: run_benchmark(job, body)); self._json({"ok": True})
+            elif u.path == "/api/bench/channels":
+                cfg = load_json("설정.json", {})
+                cfg["벤치_채널_추가"] = [str(x).strip() for x in (body.get("channels") or []) if str(x).strip()]
+                with open("설정.json", "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+                self._json({"ok": True, "count": len(cfg["벤치_채널_추가"])})
             elif u.path == "/api/topics/refresh":
                 self._json(refresh_topics(body.get("channel"), body.get("shown") or []))
             elif u.path == "/api/channel/refresh":

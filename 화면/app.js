@@ -140,7 +140,7 @@ async function refresh() {
   renderTopics();
   // 2단계
   fill($('optGuide'), g.script, '사람의이유_대본지침.txt');
-  fill($('optImgGuide'), g.image, '이미지프롬프트_변환지침(DeepSeek).txt');
+  fill($('optImgGuide'), g.image, '이미지지침_심리해독소.txt');
   $('optChunk').value = c.프롬프트_묶음 || 30; $('optHook').value = c.후킹_장면수 ?? 7;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) { $('mindamLen').innerHTML = lenOpts; $('toolLen').innerHTML = lenOpts; }
@@ -182,7 +182,7 @@ async function refresh() {
   $('tgEnabled').checked = c.텔레그램_알림 !== false;
   renderChannels(STATE.channels || {});
   $('ytKeyStat').textContent = c.유튜브_API_키 ? '저장됨 ' + c.유튜브_API_키 : '없음'; $('ytKeyStat').className = 'stat ' + (c.유튜브_API_키 ? 'ok' : '');
-  loadAnalysis(channel);
+  loadAnalysis(channel); loadBench();
   // 경고
   const warn = $('envwarn');
   if (isWeb && !STATE.web_alive) { warn.classList.remove('hidden'); warn.textContent = '딥시크 웹 확장이 연결되지 않았습니다. 크롬에서 chat.deepseek.com 탭을 열어 두거나, [설정]에서 "딥시크 웹 쓰는 법"을 보세요.'; }
@@ -328,7 +328,7 @@ async function continuePipeline() {
 // ── 3단계: 진행 ─────────────────────────────────────────
 const PIPE_STEPS = ['① 대본', '② 이미지 프롬프트', '③ 나레이션', '④ 이미지 생성', '⑤ 움직이는 영상', "⑤' 썸네일", '⑥ 최종 영상', '완료'];
 const STEP_OUT = [['script', 'file'], ['prompts', 'file'], ['narration', 'folder'], ['images', 'folder'], ['hook', 'folder'], ['thumbnails', 'folder'], ['video', 'folder'], ['assets', 'folder']];
-const KIND_LABEL = {script: '대본 만들기', mindam: '민담 대본 만들기', images: '이미지 프롬프트', variations: '제목 변형', optimize: '제목·설명·태그', tts: '나레이션', pipeline: '한 편 자동 제작', queue_pipeline: '연속 제작 중', thumbnail: '썸네일'};
+const KIND_LABEL = {bench: '심리 채널 벤치마킹', script: '대본 만들기', mindam: '민담 대본 만들기', images: '이미지 프롬프트', variations: '제목 변형', optimize: '제목·설명·태그', tts: '나레이션', pipeline: '한 편 자동 제작', queue_pipeline: '연속 제작 중', thumbnail: '썸네일'};
 function startPolling(scroll) {
   clearInterval(pollTimer); $('pgResult').classList.add('hidden'); $('pgErr').classList.add('hidden'); $('pgPreview').classList.add('hidden');
   poll(); pollTimer = setInterval(poll, 1500);
@@ -401,6 +401,7 @@ async function poll() {
   if (j.status === 'done') {
     const r = j.result, box = $('pgResult'); box.classList.remove('hidden'); loadWorkspace(false);
     if (j.kind === 'thumbnail' && $('workFile').value) loadWorkspace(false);
+    if (j.kind === 'bench') { loadBench(); }
     if (r.script || r.file) { localStorage.setItem('workScript', r.script || r.file); WORK = null; }
     const line = (label, v, btn) => v ? `<div>${label}: <code>${esc(v)}</code> ${btn || ''}</div>` : '';
     box.innerHTML = `<b>✅ 완료</b> ${r.title ? esc(r.title) : ''} ${r.chars ? `(${r.chars.toLocaleString()}자)` : ''} ${r.scenes ? `(장면 ${r.scenes}개)` : ''}`
@@ -727,6 +728,27 @@ async function resetSelected() {
   if (!item) return toast('초기화할 작업을 고르세요', true);
   if (!confirm(`「${item.label}」의 대본과 생성 자료를 모두 휴지통으로 옮길까요?`)) return;
   try { const r = await api('/api/reset', {id, scope: 'all'}); await refresh(); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다`); } catch (e) { toast(e.message, true); }
+}
+
+// ── 벤치마킹: 비슷한 심리 채널의 히트 영상 (제목·썸네일 참고) ──
+async function loadBench() {
+  try {
+    const b = await api('/api/bench'); const hits = b.히트 || [];
+    $('benchBox').classList.toggle('hidden', !hits.length || channel !== 'person');
+    if (document.activeElement !== $('benchChannels')) $('benchChannels').value = (b.추가_채널 || []).join('\n');
+    if (!hits.length) return;
+    $('benchStat').textContent = `벤치마킹 ${b.날짜} · 채널 ${(b.채널 || []).length}곳 · 평소보다 몇 배 터진 영상 ${hits.length}개 — 제목·썸네일 참고`;
+    $('benchGal').innerHTML = hits.slice(0, 12).map(v => `<div class="g done" title="${esc(v.title)}"><div class="pic"><a href="${esc(v.url)}" target="_blank" rel="noopener"><img src="${esc(v.thumb)}" loading="lazy" referrerpolicy="no-referrer"></a></div><div class="st" style="white-space:normal;font-size:11.5px;line-height:1.3;color:var(--ink)">${esc(v.title.slice(0, 40))}</div><div class="hint" style="font-size:11px">${esc(v.channel)} · ${v.ratio}배</div></div>`).join('');
+  } catch (e) {}
+}
+async function runBenchmark() {
+  if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업이 끝난 뒤 실행하세요.', true);
+  if (!confirm('비슷한 심리 채널을 찾아 터진 영상을 모읍니다 (1~3분). 지금 실행할까요?')) return;
+  try { await api('/api/bench/run', {}); startPolling(true); toast('벤치마킹을 시작했습니다. 끝나면 추천 주제가 새로 채워집니다.'); } catch (e) { toast(e.message, true); }
+}
+async function saveBenchChannels() {
+  const channels = $('benchChannels').value.split(/\n/).map(x => x.trim()).filter(Boolean);
+  try { const r = await api('/api/bench/channels', {channels}); toast(`벤치 채널 ${r.count}개 저장`); } catch (e) { toast(e.message, true); }
 }
 
 // ── 새 주제 추천 (누를 때마다 안 본 후보 → 모자라면 AI 가 새로 만듦) ──

@@ -131,8 +131,20 @@ def norm_channel_url(url):
     return url
 
 def fetch_channel(url, limit):
-    """채널의 최근 영상 목록(플랫)을 가져온다."""
+    """채널의 최근 영상 목록을 가져온다. 유튜브 API 키가 있으면 공식 API(조회수 정확), 없으면 yt-dlp."""
     url = norm_channel_url(url)
+    try:
+        api_key = str(json.load(open(설정_파일, encoding="utf-8")).get("유튜브_API_키", "") or "").strip()
+    except Exception:  # noqa: BLE001
+        api_key = ""
+    if api_key:
+        try:
+            import 유튜브_API
+            info = 유튜브_API.fetch_channel(api_key, url, limit)
+            return {"name": info["name"], "id": info["id"], "url": url, "subs": info["subs"],
+                    "videos": [dict(id=v["id"], title=v["title"], views=v["views"], url=v["url"], duration=v["duration"]) for v in info["videos"]]}
+        except Exception as e:  # noqa: BLE001
+            print(f"   ! 유튜브 API 실패, yt-dlp로 대신 읽음: {e}")
     info = ydl_extract(url + "/videos", playlistend=limit)
     if not info:
         return None
@@ -1184,11 +1196,22 @@ def main():
     save_candidates(rest)
     with open("트렌드.json", "w", encoding="utf-8") as f:
         json.dump({"날짜": datetime.date.today().isoformat(), "단어": [t for t, _ in trends[:30]]}, f, ensure_ascii=False, indent=1)
+    # 비슷한 채널에서 '평소보다 몇 배' 터진 영상 — 새 주제 추천·제목·썸네일 문구의 참고 자료
+    hits = []
+    for ch in bench:
+        for v in ch.get("hits", []):
+            hits.append(dict(title=v["title"], channel=ch["name"], views=v["views"], ratio=v.get("ratio", 0), url=v["url"],
+                             thumb=f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg" if v.get("id") else ""))
+    hits.sort(key=lambda v: -v["ratio"])
+    with open("벤치_히트.json", "w", encoding="utf-8") as f:
+        json.dump({"날짜": datetime.date.today().isoformat(), "채널": [dict(name=c["name"], url=c["url"], subs=c.get("subs", 0)) for c in bench],
+                   "히트": hits[:60]}, f, ensure_ascii=False, indent=1)
     out = os.path.join(BASE, "주제_리포트.html")
     with open(out, "w", encoding="utf-8") as f:
         f.write(render(mine, bench, top, rest, dups, trends, warnings))
     print(f"\n완료! 이번 주 {len(top)}편 · 후보 {len(rest)}편 · 겹쳐서 뺀 주제 {len(dups)}개")
-    webbrowser.open("file:///" + out.replace("\\", "/"))
+    if "--no-browser" not in sys.argv:
+        webbrowser.open("file:///" + out.replace("\\", "/"))
 
 if __name__ == "__main__":
     main()

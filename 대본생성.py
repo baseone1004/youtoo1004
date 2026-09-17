@@ -33,7 +33,7 @@ def topic_card(t, target):
              "[이 영상에서 다룰 내용]"] + [f"- {p}" for p in t.get("다룰내용", [])]
     if t.get("출처후보"):
         lines += ["[참고할 만한 저서·연구]"] + [f"- {s}" for s in t["출처후보"]]
-    lines += [f"[작성 목표] 공백 포함 약 {target:,}자, 9개 구간"]
+    lines += [f"[작성 목표] 공백 포함 {target:,}자 이상 (이십 분 이상 롱폼 · 이 분량을 반드시 채운다), 9개 구간"]
     return "\n".join(lines)
 
 def split_groups(n_parts):
@@ -87,9 +87,9 @@ def generate(ai, system, t, target, n_parts):
         body, thumb = script, ""
     body = strip_next_teaser(fix_script_sentences(body)).strip()
     # AI가 목표보다 짧게 끝내더라도 짧은 영상으로 넘어가지 않도록 자동 보충한다.
-    minimum = round(target * 0.90)
+    minimum = target                         # 20분 이상 롱폼: 목표 글자 수를 그대로 최소 분량으로 본다
     attempts = 0
-    while len(body) < minimum and attempts < 4:
+    while len(body) < minimum and attempts < 6:
         attempts += 1
         remaining = target - len(body)
         tail = body[-1000:]
@@ -106,7 +106,21 @@ def generate(ai, system, t, target, n_parts):
     return full, body
 
 면책 = ("※ 본 영상은 사람과 관계, 심리 현상을 이해하기 위한 정보 제공을 목적으로 제작되었습니다. 특정 개인을 진단하거나 모든 경우에 동일하게 적용하기 위한 내용은 아닙니다.\n"
-       "※ 본 영상의 대본·이미지·음성 제작에는 AI 기술이 사용되었습니다.")
+       "※ 본 영상의 대본·이미지·음성 제작에는 인공지능 기술이 사용되었습니다.")
+
+
+def strip_english(text):
+    """설명글·제목·태그에서 영어 단어를 걷어낸다 (URL 줄은 그대로). 괄호 속 영어 원어는 괄호째 지운다."""
+    out = []
+    for line in (text or "").split("\n"):
+        if re.search(r"https?://", line):
+            out.append(line); continue
+        line = re.sub(r"\s*[\(（][^()（）]*[A-Za-z]{2,}[^()（）]*[\)）]", "", line)
+        line = re.sub(r"[A-Za-z][A-Za-z0-9'’\-\.&/]*(?:\s+[A-Za-z][A-Za-z0-9'’\-\.&/]*)*(?:의|와|과|은|는|이|가|을|를|에서|으로|로|에|도)?", "", line)
+        line = re.sub(r"#(?=\s|$)", "", line)
+        line = re.sub(r"[ \t]{2,}", " ", line).rstrip()
+        out.append(line)
+    return "\n".join(out)
 구분선 = "────────────────────"
 
 def blocks_of(head):
@@ -125,6 +139,9 @@ def compose_description(head):
     b = blocks_of(head)
     if "설명글" not in b:
         return head
+    for k in ("제목", "상단 제목", "하단 제목", "설명글", "태그", "고정댓글"):
+        if k in b:
+            b[k] = strip_english(b[k])
     src_lines = []
     for line in b.get("출처", "").split("\n"):
         line = line.strip().lstrip("-•· ").strip()
