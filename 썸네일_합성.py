@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """썸네일 문구 합성 — 글자 없는 원본(raw) 위에 채널별 레이아웃으로 문구를 얹는다.
 
-  E 아래 두 줄형  (심리해독소 기본): 이미지 아래쪽에 상단 제목(흰색)·하단 제목(노란색) 두 줄을 가운데 정렬, 아래쪽만 어둡게, 굵은 검정 테두리
+  E 아래 두 줄형 (심리해독소 기본): 이미지 아래쪽에 상단 제목(흰색)·하단 제목(노란색, 더 크게) 두 줄, 상자 없이 굵은 검정 테두리, 화면 폭을 거의 채우는 큰 글씨
   A 키워드 강조형 (예비): 흰 글씨 두 줄 → 마지막 핵심어만 크고 노랗게, 왼쪽 위
   C 숫자 배지형   (예비): 빨간 원 배지 + 문구
   B 하단 띠형     (민담·야담): 아래쪽 어두운 띠 위에 큰 붓글씨 자막, 왼쪽 위 채널 태그
@@ -172,21 +172,26 @@ def layout_band(im, top, bottom, tag_text="옛이야기"):
 
 
 def layout_bottom_two(im, top, bottom):
-    """E — 이미지 아래 두 줄, 가운데 정렬. 1줄 상단 제목(흰색), 2줄 하단 제목(노란색·크게)."""
-    im = _shade_bottom(im, 0.50, 0.88)
+    """E — 이미지 아래 두 줄 (벤치마킹 채널 스타일): 상자 없이 굵은 검정 테두리 글씨. 1줄 흰색(상단 제목), 2줄 노란색·더 크게(하단 제목).
+    글씨가 화면 폭을 거의 채우고, 아래쪽만 살짝 어둡게 해서 어떤 그림 위에서도 읽힌다."""
+    im = _shade_bottom(im, 0.55, 0.55)
     draw = ImageDraw.Draw(im)
     top, bottom = (top or "").strip(), (bottom or "").strip()
     if not bottom:
         top, bottom = "", top
-    f1 = _fit(draw, top, 92, W - 140, 56) if top else None
-    f2 = _fit(draw, bottom, 134, W - 140, 64)
-    y = H - 44 - int(f2.size * 1.08) - ((int(f1.size * 1.1) + 8) if f1 else 0)
-    for text, f, color in ((top, f1, WHITE), (bottom, f2, YELLOW)):
-        if not text:
-            continue
-        lw = draw.textlength(text, font=f)
-        _outlined(draw, ((W - lw) / 2, y), text, f, color, max(7, f.size // 10))
-        y += int(f.size * 1.1) + 8
+    rows = []
+    if top:
+        rows.append([top, _fit(draw, top, 126, W - 90, 64), WHITE])
+    rows.append([bottom, _fit(draw, bottom, 150, W - 90, 64), YELLOW])
+    stroke = lambda f: max(8, f.size // 9)
+    boxes = [draw.textbbox((0, 0), t, font=f, stroke_width=stroke(f)) for t, f, _ in rows]
+    heights = [b[3] - b[1] for b in boxes]
+    gap = 6
+    y = H - 30 - sum(heights) - gap * (len(rows) - 1)
+    for (text, f, color), bb, h in zip(rows, boxes, heights):
+        x = (W - (bb[2] - bb[0])) / 2 - bb[0]
+        _outlined(draw, (x, y - bb[1]), text, f, color, stroke(f))
+        y += h + gap
     return im
 
 
