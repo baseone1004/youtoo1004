@@ -150,11 +150,11 @@ def compose_description(head):
         m = re.search(r"(https?://\S+)", line)
         url = m.group(1) if m else ""
         label = line.replace(url, "").strip(" /·-")
-        src_lines.append(f"• {label}  \n{url}" if url else f"• {label}")
+        src_lines.append(f"• {label}")                   # 설명란에는 기관·자료 이름만. 링크는 대본 파일의 [출처] 블록에 남는다
     tags = re.findall(r"#\S+", b.get("태그", ""))
     parts = [b["설명글"].strip(), "", 구분선, ""]
     if src_lines:
-        parts += ["📚 참고 자료 및 출처", ""] + [l + "\n" for l in src_lines]
+        parts += ["📚 참고 자료"] + src_lines + [""]
     parts += [면책, "", 구분선, ""]
     if tags:
         parts.append(" ".join(tags))
