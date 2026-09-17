@@ -195,7 +195,8 @@ def main():
     with open(out, "w", encoding="utf-8") as f:
         f.write(render(mine, bench, hits, warnings))
     print(f"\n완료! 터진 제목 {len(hits)}편 → 민담_리포트.html")
-    webbrowser.open("file:///" + out.replace("\\", "/"))
+    if "--no-browser" not in sys.argv:
+        webbrowser.open("file:///" + out.replace("\\", "/"))
 
 if __name__ == "__main__":
     main()

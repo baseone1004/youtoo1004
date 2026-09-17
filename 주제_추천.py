@@ -19,6 +19,15 @@ CHANNEL_DESC = {
 CATEGORIES = {"person": "관계 해독, 감정 해독, 처세 해독 중 하나", "mindam": "권선징악, 귀신·도깨비, 해학·풍자, 사랑·비극, 역사인물, 미스터리·추리, 가족·성장 중 하나"}
 
 
+def bench_hits(limit=20):
+    """주제뽑기가 저장한 비슷한 채널의 히트 제목."""
+    try:
+        with open("벤치_히트.json", encoding="utf-8") as f:
+            return (json.load(f).get("히트") or [])[:limit]
+    except (OSError, ValueError):
+        return []
+
+
 def load():
     try:
         with open(FILE, encoding="utf-8") as f:
@@ -64,6 +73,10 @@ def generate(cfg, channel, count, exclude, analysis=None, log=None):
             hits += "\n[잘 되는 키워드] " + ", ".join(k["word"] for k in analysis["keywords"][:10])
         if analysis.get("weak"):
             hits += "\n[반응이 약한 키워드] " + ", ".join(k["word"] for k in analysis["weak"][:6])
+    hits_bench = bench_hits(20) if channel == "person" else []
+    if hits_bench:
+        hits += "\n[비슷한 심리 채널에서 평소보다 몇 배 터진 제목 — 소재·제목 형태를 벤치마킹하되 베끼지 않는다]\n" + "\n".join(
+            f"- {v['title']} ({v['channel']} · 평소의 {v['ratio']}배)" for v in hits_bench)
     system = (f"너는 {CHANNEL_DESC[channel]}의 기획자다. 새 영상 제목 {count}개를 JSON 배열로만 답한다. "
               f'형식: [{{"제목": "...", "{key}": "{CATEGORIES[channel]}", "한줄": "왜 이 주제가 클릭될지 한 문장"}}]. '
               "설명·표·코드블록 없이 JSON 만 쓴다.\n"

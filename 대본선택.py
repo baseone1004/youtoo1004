@@ -254,6 +254,49 @@ def reset_everything():
         return dict(count=moved, trash=os.path.abspath(trash))
 
 
+TRASH_KEEP_DAYS = 30
+
+
+def trash_dir():
+    return os.path.join(os.path.realpath(대본_폴더), "_휴지통")
+
+
+def trash_status():
+    """휴지통 항목 수·용량·가장 오래된 날짜."""
+    root = trash_dir()
+    items, total, oldest = 0, 0, None
+    if os.path.isdir(root):
+        for name in os.listdir(root):
+            path = os.path.join(root, name)
+            items += 1
+            mtime = os.path.getmtime(path)
+            oldest = mtime if oldest is None or mtime < oldest else oldest
+            for dp, _, files in os.walk(path):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(dp, f))
+                    except OSError:
+                        pass
+    return dict(items=items, bytes=total, gb=round(total / 1024 ** 3, 2),
+                oldest=datetime.datetime.fromtimestamp(oldest).strftime("%Y-%m-%d") if oldest else "", keep_days=TRASH_KEEP_DAYS)
+
+
+def empty_trash(older_than_days=None):
+    """휴지통을 비운다. older_than_days 를 주면 그보다 오래된 항목만 지운다."""
+    root = trash_dir()
+    removed = 0
+    if not os.path.isdir(root):
+        return dict(removed=0)
+    cutoff = time.time() - (older_than_days or 0) * 86400
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        if older_than_days is not None and os.path.getmtime(path) > cutoff:
+            continue
+        shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else os.remove(path)
+        removed += 1
+    return dict(removed=removed)
+
+
 def delete_script(script_file):
     """화면의 대본 목록에서 선택된 파일만 삭제한다."""
     if script_file not in {item["path"] for item in script_files()}:
@@ -309,11 +352,12 @@ SEEN_TOPICS = {"person": set(), "mindam": set()}
 
 
 def run_benchmark(job, req):
-    """주제뽑기.py 를 실행해 비슷한 심리 채널을 새로 찾고 계획·후보·트렌드·벤치_히트 를 갱신한다 (1~3분)."""
+    """주제뽑기.py(심리해독소) 또는 민담_주제뽑기.py(민담)를 실행해 비슷한 채널을 새로 찾고 계획·후보·트렌드·벤치_히트 를 갱신한다 (1~3분)."""
+    mindam = (req or {}).get("channel") == "mindam"
     job.stage = "벤치마킹 채널 분석"
-    job.add("▶ 비슷한 심리 채널을 찾아 터진 영상을 모읍니다 (1~3분)")
+    job.add("▶ " + ("민담·야담 채널에서 터진 제목을 모읍니다" if mindam else "비슷한 심리 채널을 찾아 터진 영상을 모읍니다") + " (1~3분)")
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
-    proc = subprocess.Popen([sys.executable, "주제뽑기.py", "--no-browser"], cwd=BASE, env=env,
+    proc = subprocess.Popen([sys.executable, "민담_주제뽑기.py" if mindam else "주제뽑기.py", "--no-browser"], cwd=BASE, env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
     for line in proc.stdout:
         if line.strip():
@@ -909,7 +953,7 @@ def aip(path, body=None, method=None, timeout=90):
     return r.json()
 
 
-def run_image_generation(job, prompts_file, images_dir, style_prefix=""):
+def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries_left=2):
     """편집프로그램의 좌표 자동화로 이미지를 전부 만들 때까지 기다린다. 좌표·다운로드 폴더는 편집프로그램에 저장된 값을 쓴다."""
     info = aip("/api/info")
     ui = (info.get("config") or {}).get("gen_ui") or {}
@@ -948,7 +992,13 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix=""):
         if st.get("status") in ("done", "error", "stopped"):
             if st.get("status") != "done":
                 raise RuntimeError("이미지 생성이 끝나지 않음: " + (st.get("error") or st.get("status")))
-            job.add(f"   ✓ 이미지 {len(st.get('done', []))}장 · 실패 {len(st.get('failed', []))}장")
+            failed = list(st.get("failed") or [])
+            job.add(f"   ✓ 이미지 {len(st.get('done', []))}장 · 실패 {len(failed)}장")
+            # 실패한 장면은 사람이 다시 누르지 않아도 되도록 빠진 것만 최대 2번 더 시도한다
+            if failed and retries_left > 0:
+                job.add(f"   ↻ 실패 장면 {', '.join(f'{n:03d}' for n in failed[:12])}{' …' if len(failed) > 12 else ''} 다시 시도 ({3 - retries_left}/2)")
+                time.sleep(5)
+                return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left - 1)
             return st
         time.sleep(4)
 
@@ -1096,7 +1146,7 @@ def compose_thumbnails(script, log=None):
         layout = 썸네일_합성.compose(raws[i], out, top, bottom, "mindam" if is_mindam else "person")
         outs.append(out)
         if log:
-            log(f"   ✓ {out}  ({top} / {bottom}) · {dict(bottom='아래 두 줄형', keyword='키워드 강조형', badge='숫자 배지형', band='하단 띠형')[layout]}")
+            log(f"   ✓ {out}  ({top} / {bottom}) · {dict(bottom='아래 두 줄형', band='하단 띠형')[layout]}")
     return dict(thumbnails=outs, dir=tdir)
 
 
@@ -1581,6 +1631,8 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/channel/analysis":
                 cfg = load_json("설정.json", {})
                 self._json(채널_연동.analysis(cfg, q.get("channel", ["person"])[0]))
+            elif u.path == "/api/trash":
+                self._json(trash_status())
             elif u.path == "/api/channel":
                 cfg = load_json("설정.json", {})
                 for ch in ("person", "mindam"):
@@ -1700,6 +1752,8 @@ class H(BaseHTTPRequestHandler):
                 threading.Thread(target=shutdown_program, args=(self.server,), daemon=True).start()
             elif u.path == "/api/reset":
                 self._json(reset_output(body.get("id", ""), body.get("scope", "")))
+            elif u.path == "/api/trash/empty":
+                self._json(empty_trash(body.get("older_than_days")))
             elif u.path == "/api/reset-all":
                 self._json(reset_everything())
             elif u.path == "/api/delete-script":
@@ -1865,6 +1919,12 @@ def main():
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     print(f"대본 만들기 화면: {ADDR}  (종료: 이 창을 닫거나 Ctrl+C)")
     threading.Thread(target=auto_resume_queue, daemon=True, name="auto-resume").start()
+    try:
+        old = empty_trash(TRASH_KEEP_DAYS)
+        if old["removed"]:
+            print(f"휴지통 정리: {TRASH_KEEP_DAYS}일 지난 {old['removed']}개 항목을 지웠습니다")
+    except Exception as exc:  # noqa: BLE001
+        print("휴지통 정리 실패:", exc)
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(ADDR)).start()
     if QUEUE.data.get("status") == "running" and any(x.get("status") == "pending" for x in QUEUE.data.get("items", [])):

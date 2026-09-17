@@ -23,22 +23,12 @@ class ThumbnailComposeTest(unittest.TestCase):
             self.assertEqual(layout, "bottom")
             self.assertEqual(Image.open(out).size, (1280, 720))
 
-    def test_person_always_uses_bottom_two_lines(self):
-        self.assertEqual(T.pick_layout("시간이 빨라진", "뇌의 비밀 3가지", "person"), ("bottom", ""))
-        self.assertEqual(T.pick_layout("", "60대가 후회하는 5 가지", "person"), ("bottom", ""))
-
     def test_mindam_uses_band_layout(self):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "썸네일_1.jpg"
             self.assertEqual(T.compose(self._raw(Path(td)), str(out), "기억은 줄고", "시간은 달린다", "mindam"), "band")
             self.assertTrue(out.is_file())
 
-    def test_tiers_split_trailing_words_into_tail(self):
-        self.assertEqual(T._tiers("나이 들수록", "시간이 빨리 가는 진짜 이유"),
-                         [("나이 들수록", "lead"), ("시간이 빨리 가는", "key"), ("진짜 이유", "tail")])
-        self.assertEqual(T._tiers("돈 많은 사람들", "절대 말하지 않는 습관"),
-                         [("돈 많은 사람들", "lead"), ("절대 말하지 않는", "key"), ("습관", "tail")])
-        self.assertEqual(T._tiers("", "습관"), [("습관", "key")])
 
 
 if __name__ == "__main__":

@@ -180,7 +180,7 @@ async function refresh() {
   $('tgTokenStat').textContent = c.텔레그램_토큰 ? '저장됨 ' + c.텔레그램_토큰 : '없음'; $('tgTokenStat').className = 'stat ' + (c.텔레그램_토큰 ? 'ok' : '');
   $('tgChatStat').textContent = c.텔레그램_채팅_ID ? '연결된 채팅: ' + c.텔레그램_채팅_ID : '연결된 채팅 없음';
   $('tgEnabled').checked = c.텔레그램_알림 !== false;
-  renderChannels(STATE.channels || {});
+  renderChannels(STATE.channels || {}); loadTrash();
   $('ytKeyStat').textContent = c.유튜브_API_키 ? '저장됨 ' + c.유튜브_API_키 : '없음'; $('ytKeyStat').className = 'stat ' + (c.유튜브_API_키 ? 'ok' : '');
   loadAnalysis(channel); loadBench();
   // 경고
@@ -525,6 +525,13 @@ async function rerunTTS() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
   try { await saveWorkspaceText('script'); await api('/api/tts', {script_file: WORK.script_file}); startPolling(true); toast('고친 대본으로 나레이션을 다시 만듭니다.'); } catch (e) { toast(e.message, true); }
 }
+async function loadTrash() {
+  try { const t = await api('/api/trash'); $('trashStat').textContent = t.items ? `휴지통 ${t.items}개 · ${t.gb} GB (${t.keep_days}일 지나면 자동 삭제)` : '휴지통 비어 있음'; } catch (e) {}
+}
+async function emptyTrash() {
+  if (!confirm('휴지통(대본/_휴지통)을 완전히 비울까요? 되돌릴 수 없습니다.')) return;
+  try { const r = await api('/api/trash/empty', {}); toast(`휴지통 ${r.removed}개 항목을 지웠습니다.`); loadTrash(); } catch (e) { toast(e.message, true); }
+}
 async function resetEverything() {
   if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업을 먼저 중단하세요.', true);
   if (!confirm('작업했던 것을 전부 지울까요?\n대본·이미지·나레이션·썸네일·최종 영상·업로드 폴더·대기열이 모두 휴지통(대본/_휴지통)으로 옮겨집니다.\n설정(API 키·목소리·좌표)은 남습니다.')) return;
@@ -743,8 +750,8 @@ async function loadBench() {
 }
 async function runBenchmark() {
   if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업이 끝난 뒤 실행하세요.', true);
-  if (!confirm('비슷한 심리 채널을 찾아 터진 영상을 모읍니다 (1~3분). 지금 실행할까요?')) return;
-  try { await api('/api/bench/run', {}); startPolling(true); toast('벤치마킹을 시작했습니다. 끝나면 추천 주제가 새로 채워집니다.'); } catch (e) { toast(e.message, true); }
+  if (!confirm((channel === 'mindam' ? '민담·야담 채널에서 터진 제목을 모읍니다' : '비슷한 심리 채널을 찾아 터진 영상을 모읍니다') + ' (1~3분). 지금 실행할까요?')) return;
+  try { await api('/api/bench/run', {channel}); startPolling(true); toast('벤치마킹을 시작했습니다. 끝나면 추천 주제가 새로 채워집니다.'); } catch (e) { toast(e.message, true); }
 }
 async function saveBenchChannels() {
   const channels = $('benchChannels').value.split(/\n/).map(x => x.trim()).filter(Boolean);

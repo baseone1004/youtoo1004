@@ -32,6 +32,16 @@ def load_trends(channel):
         return []
 
 
+def load_bench_hits(channel, limit=15):
+    if channel == "mindam":
+        return []
+    try:
+        with open("벤치_히트.json", encoding="utf-8") as f:
+            return (json.load(f).get("히트") or [])[:limit]
+    except Exception:
+        return []
+
+
 def block_of(text, name):
     m = re.search(r"^\[" + re.escape(name) + r"\]\s*$(.*?)(?=^\[[^\]\n]+\]\s*$|\Z)", text, flags=re.S | re.M)
     return m.group(1).strip() if m else ""
@@ -67,12 +77,15 @@ def optimize(ai, channel, script_text, extra="", log=print):
     with open(지침_파일, encoding="utf-8-sig") as f:
         system = f.read()
     trends = load_trends(channel)
+    bench = load_bench_hits(channel)
     body = script_text.strip()
     head = body[:2500]
     tail = body[-1200:] if len(body) > 4000 else ""
     mid = body[len(body) // 2: len(body) // 2 + 800] if len(body) > 6000 else ""
     user = (f"[채널]\n{채널_설명.get(channel, '')}\n\n"
             + (f"[요즘 터지는 단어 — 비슷한 채널 히트 제목에서 자주 나온 말]\n{', '.join(trends)}\n\n" if trends else "")
+            + (("[벤치마킹 — 비슷한 심리 채널에서 평소보다 몇 배 터진 제목. 제목의 구조·후킹 방식·썸네일 문구 길이를 참고하되 문장을 베끼지 않는다]\n"
+                + "\n".join(f"- {v['title']} ({v['channel']} · {v['ratio']}배)" for v in bench) + "\n\n") if bench else "")
             + (f"[기획·현재 메타]\n{extra.strip()}\n\n" if extra.strip() else "")
             + f"[대본 시작 부분]\n{head}\n\n"
             + (f"[대본 중간 일부]\n{mid}\n\n" if mid else "")
