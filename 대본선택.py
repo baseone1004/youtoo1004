@@ -1140,11 +1140,15 @@ def make_thumbnails(job, req):
     bp = os.path.join(assets, "thumbnail_brief.md")
     if os.path.exists(bp):
         brief = open(bp, encoding="utf-8").read()[:1500]
-    style = 화풍.get(req.get("style", "실사"), 화풍["실사"])
-    position = "bottom" if is_mindam else "left"
+    # 심리해독소 썸네일은 장면 화풍과 상관없이 벤치마킹 채널처럼 밝은 2D 치비 스티커 화풍으로 고정한다 (마스코트 '해'가 주인공)
+    style = (화풍.get(req.get("style", "실사"), 화풍["실사"]) if is_mindam else
+             "bright flat 2D chibi sticker illustration for a YouTube thumbnail, thick clean dark outlines, big expressive eyes, "
+             "vivid high-contrast pastel colors, simple background, exaggerated emotion, 16:9 aspect ratio")
+    position = "bottom"
     layout = ("조선 시대 인물 2~3명과 사건 장소가 함께 보이는 넓은 이야기 장면, 문구가 들어갈 화면 아래쪽은 어둡고 단순하게"
               if is_mindam else
-              "감정이 선명한 현대 한국인 한 명의 얼굴을 화면 위쪽·가운데에 크게, 문구 두 줄이 들어갈 화면 아래쪽 35%는 어둡고 단순하게")
+              "채널 마스코트 '해'(드롭샷 References의 안경 쓴 크림색 아기곰)를 화면 위쪽·가운데에 크게, 과장된 감정과 상징 하나, "
+              "밝고 단순한 배경, 문구 두 줄이 들어갈 화면 아래쪽 35%는 단순하고 조금 어둡게")
     seo_context = thumbnail_seo_context(opt_text, script_text, is_mindam)
     user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n"
             f"[채널] {'민담·야담' if is_mindam else '심리해독소'}\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
