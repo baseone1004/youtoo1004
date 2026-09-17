@@ -14,7 +14,7 @@ PROVIDERS = {
     "deepseek": dict(base_url="https://api.deepseek.com", model="deepseek-chat",
                      env="DEEPSEEK_API_KEY", price=(0.27, 1.10), max_out=8000,
                      발급="https://platform.deepseek.com"),
-    "gemini":   dict(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", model="gemini-2.5-flash",
+    "gemini":   dict(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", model="gemini-3.6-flash",
                      env="GEMINI_API_KEY", price=(0.0, 0.0), max_out=60000,
                      발급="https://aistudio.google.com/apikey"),
     "claude":   dict(base_url=None, model="claude-opus-5",
@@ -26,13 +26,28 @@ PROVIDERS = {
 }
 환율 = 1400
 
+예비_순서 = ("gemini", "deepseek", "claude")      # 주 AI 가 계속 실패하면 키가 저장된 순서대로 넘어간다 (무료·저렴한 순)
+
+
+def fallback_candidates(cfg, current):
+    """현재 AI 를 뺀, 키가 저장된 예비 AI 이름 목록."""
+    out = []
+    for name in 예비_순서:
+        if name == current:
+            continue
+        if (cfg.get("API_키_" + name) or "").strip():
+            out.append(name)
+    return out
+
+
 class AI:
-    def __init__(self, cfg):
+    def __init__(self, cfg, _is_fallback=False):
         name = (cfg.get("AI") or "deepseek").strip().lower()
         if name not in PROVIDERS:
             raise SystemExit(f"설정.json 의 AI 값은 deepseek / deepseek-web / gemini / claude 중 하나여야 합니다. (지금: {name})")
         p = PROVIDERS[name]
         self.name, self.p = name, p
+        self.cfg, self.fallback, self._is_fallback = cfg, None, _is_fallback
         self.model = (cfg.get("모델") or "").strip() or p["model"]
         self.usage = {"in": 0, "out": 0}
         self.cancel_check = None
@@ -40,8 +55,11 @@ class AI:
             import 웹큐
             self.key, self.client = "", None
             if not 웹큐.extension_alive():
-                raise SystemExit("딥시크 확장이 연결되어 있지 않습니다. 크롬에서 chat.deepseek.com 탭을 열고(로그인) 확장이 '연결됨'인지 확인하세요. "
-                                 "확장 설치: 딥시크_확장 폴더 → chrome://extensions → 개발자 모드 → '압축해제된 확장 프로그램을 로드'")
+                spare = self._make_fallback("딥시크 확장이 연결되어 있지 않음")
+                if spare is None:
+                    raise SystemExit("딥시크 확장이 연결되어 있지 않습니다. 크롬에서 chat.deepseek.com 탭을 열고(로그인) 확장이 '연결됨'인지 확인하세요. "
+                                     "확장 설치: 딥시크_확장 폴더 → chrome://extensions → 개발자 모드 → '압축해제된 확장 프로그램을 로드'")
+                self.__dict__.update(spare.__dict__)      # 예비 AI 로 통째로 바꿔치기
             return
         self.key = (cfg.get("API_키") or "").strip() or os.environ.get(p["env"], "")
         if not self.key:
@@ -54,7 +72,24 @@ class AI:
             self.client = OpenAI(api_key=self.key, base_url=p["base_url"])
 
     # ── 한 번 묻고 전체 답을 받는다 (스트리밍, 진행 표시) ──────────────
+    def _make_fallback(self, reason):
+        """키가 저장된 예비 AI 를 만든다. 없으면 None."""
+        if self._is_fallback:
+            return None
+        for name in fallback_candidates(self.cfg, self.name):
+            try:
+                spare_cfg = dict(self.cfg, AI=name, API_키=self.cfg.get("API_키_" + name, ""), 모델="")
+                spare = AI(spare_cfg, _is_fallback=True)
+                spare.cancel_check = self.cancel_check
+                print(f"\n   ↻ {reason} → 예비 AI {name} 로 전환합니다", flush=True)
+                return spare
+            except Exception as exc:  # noqa: BLE001
+                print(f"\n   ! 예비 AI {name} 준비 실패: {str(exc)[:100]}", flush=True)
+        return None
+
     def ask(self, system, user, max_tokens=None, retries=2):
+        if self.fallback is not None:                 # 이미 예비로 넘어갔으면 계속 예비를 쓴다
+            return self.fallback.ask(system, user, max_tokens)
         max_tokens = min(max_tokens or self.p["max_out"], self.p["max_out"])
         for attempt in range(retries + 1):
             try:
@@ -65,7 +100,11 @@ class AI:
                 return self._ask_openai(system, user, max_tokens)
             except Exception as e:
                 if attempt >= retries:
-                    raise
+                    spare = self._make_fallback(f"{self.name} 가 {retries + 1}번 실패 ({str(e)[:80]})")
+                    if spare is None:
+                        raise
+                    self.fallback = spare
+                    return spare.ask(system, user, max_tokens)
                 wait = 8 * (attempt + 1)
                 print(f"\n   ! 호출 실패({e.__class__.__name__}: {str(e)[:120]}) — {wait}초 뒤 다시 시도")
                 time.sleep(wait)
@@ -130,9 +169,10 @@ class AI:
     def cost_text(self):
         i, o = self.p["price"]
         usd = self.usage["in"] / 1e6 * i + self.usage["out"] / 1e6 * o
+        extra = (" + 예비 " + self.fallback.cost_text()) if self.fallback is not None else ""
         if self.name == "deepseek-web":
-            return f"deepseek-web · 입력 {self.usage['in']:,} / 출력 {self.usage['out']:,} 토큰(어림) · 0원 (웹 채팅)"
-        return f"{self.name} · 입력 {self.usage['in']:,} / 출력 {self.usage['out']:,} 토큰 · 약 {usd*환율:,.0f}원"
+            return f"deepseek-web · 입력 {self.usage['in']:,} / 출력 {self.usage['out']:,} 토큰(어림) · 0원 (웹 채팅)" + extra
+        return f"{self.name} · 입력 {self.usage['in']:,} / 출력 {self.usage['out']:,} 토큰 · 약 {usd*환율:,.0f}원" + extra
 
 
 # ── 무료 웹 검색 (DuckDuckGo) — 모델에게 실제 URL을 쥐여 주기 위해 ─────
