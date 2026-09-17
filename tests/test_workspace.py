@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import json
 import tempfile
 import unittest
@@ -59,3 +60,30 @@ class WorkspaceEditorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResetEverythingTest(unittest.TestCase):
+    def test_moves_all_work_to_trash_and_keeps_settings(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "대본").mkdir(); (root / "대본" / "민담" / "2026-09-01_옛이야기").mkdir(parents=True)
+            (root / "대본" / "2026-09-01_주제.txt").write_text("x", encoding="utf-8")
+            (root / "대본" / "2026-09-01_주제_자료" / "images").mkdir(parents=True)
+            (root / "업로드" / "사람의 이유" / "2026-09-01_주제").mkdir(parents=True)
+            (root / "사용한_주제.txt").write_text("주제\n", encoding="utf-8")
+            (root / "설정.json").write_text("{}", encoding="utf-8")
+            cwd = os.getcwd(); os.chdir(root)
+            try:
+                store = app.QueueStore(str(root / "대본" / "_상태" / "q.json"))
+                store.data["items"] = [{"id": "a", "status": "pending"}]; store.data["status"] = "running"
+                with patch.object(app, "BASE", str(root)), patch.object(app, "QUEUE", store):
+                    result = app.reset_everything()
+            finally:
+                os.chdir(cwd)
+            self.assertGreaterEqual(result["count"], 4)
+            self.assertFalse((root / "대본" / "2026-09-01_주제.txt").exists())
+            self.assertFalse(list((root / "업로드" / "사람의 이유").iterdir()))
+            self.assertFalse((root / "사용한_주제.txt").exists())
+            self.assertTrue((root / "설정.json").exists())
+            self.assertTrue(any(p.name == "2026-09-01_주제.txt" for p in Path(result["trash"]).iterdir()))
+            self.assertEqual(store.data["status"], "idle")

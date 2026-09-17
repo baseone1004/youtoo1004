@@ -78,7 +78,13 @@ def restart_program(server):
 
 
 def shutdown_program(server):
-    """Stop the editor's image runner, then close both local servers."""
+    """Stop the editor's image runner, then close both local servers.
+    만들던 편은 '대기 중'으로 되돌려 두어, 다음에 켜면 하던 데까지 이어서 만든다."""
+    with QUEUE.lock:
+        if QUEUE.data.get("status") == "running":
+            QUEUE.data["status"] = "paused"
+            QUEUE.data["resume_on_start"] = True
+            QUEUE.save()
     job = STATE["job"]
     if job and job.status == "running":
         job.cancel_requested = True
@@ -209,6 +215,41 @@ def reset_output(item_id, scope):
             shutil.move(target, os.path.join(trash, os.path.basename(target)))
         STATE["job"] = None
         return dict(count=len(targets), trash=os.path.abspath(trash))
+
+
+def reset_everything():
+    """모든 작업(대본·자료·민담·업로드 폴더·대기열·사용한 주제)을 대본/_휴지통/날짜_전체초기화/ 로 옮긴다. 설정은 그대로."""
+    with LOCK:
+        if STATE["job"] and STATE["job"].status == "running":
+            raise ValueError("작업이 진행 중입니다. 중단한 뒤 초기화하세요.")
+        root = os.path.realpath(대본_폴더)
+        trash = os.path.join(root, "_휴지통", datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_전체초기화")
+        os.makedirs(trash, exist_ok=True)
+        moved = 0
+        for name in os.listdir(root) if os.path.isdir(root) else []:
+            if name in ("_휴지통", "_상태"):
+                continue
+            src = os.path.join(root, name)
+            if name == "민담" and os.path.isdir(src):
+                for sub in os.listdir(src):
+                    shutil.move(os.path.join(src, sub), os.path.join(trash, "민담_" + sub)); moved += 1
+                continue
+            shutil.move(src, os.path.join(trash, name)); moved += 1
+        upload_root = os.path.join(BASE, "업로드")
+        if os.path.isdir(upload_root):
+            for ch in os.listdir(upload_root):
+                for sub in os.listdir(os.path.join(upload_root, ch)):
+                    shutil.move(os.path.join(upload_root, ch, sub), os.path.join(trash, "업로드_" + sub)); moved += 1
+        for used in ("사용한_주제.txt", "민담_사용한_주제.txt"):
+            if os.path.isfile(used):
+                shutil.move(used, os.path.join(trash, used)); moved += 1
+        with QUEUE.lock:
+            QUEUE.data = {"status": "idle", "items": [], "options": {}, "current_id": "", "updated": ""}
+            QUEUE.save()
+        STATE["job"] = None
+        for s in SEEN_TOPICS.values():
+            s.clear()
+        return dict(count=moved, trash=os.path.abspath(trash))
 
 
 def delete_script(script_file):
@@ -1371,13 +1412,19 @@ def start_queue_worker():
                 shared = is_shared_failure(message)
                 with QUEUE.lock:
                     cancelled = QUEUE.data.get("status") == "cancelled"
-                    item.update(status="cancelled" if cancelled else ("pending" if shared else "error"),
-                                stage="취소됨" if cancelled else ("설정 확인 후 다시 대기" if shared else "실패"),
-                                error=message, progress=1.0 if cancelled or not shared else 0.0)
+                    stopping = QUEUE.data.get("resume_on_start") and job.cancel_requested     # 프로그램 종료로 멈춘 것
+                    if stopping:
+                        item.update(status="pending", stage="이어서 만들 예정", error="", progress=0.0)
+                    else:
+                        item.update(status="cancelled" if cancelled else ("pending" if shared else "error"),
+                                    stage="취소됨" if cancelled else ("설정 확인 후 다시 대기" if shared else "실패"),
+                                    error=message, progress=1.0 if cancelled or not shared else 0.0)
                     QUEUE.data["current_id"] = ""
                     if shared:
                         QUEUE.data["status"] = "paused"
                     QUEUE.save()
+                if stopping:
+                    return
                 if not cancelled:
                     telegram_notice(f"❌ 영상 제작에 실패했습니다.\n주제: {item['title']}\n오류: {message}" +
                                     ("\n공통 설정 문제로 대기열을 일시정지했습니다." if shared else "\n다음 주제를 계속 제작합니다."))
@@ -1607,6 +1654,8 @@ class H(BaseHTTPRequestHandler):
                 threading.Thread(target=shutdown_program, args=(self.server,), daemon=True).start()
             elif u.path == "/api/reset":
                 self._json(reset_output(body.get("id", ""), body.get("scope", "")))
+            elif u.path == "/api/reset-all":
+                self._json(reset_everything())
             elif u.path == "/api/delete-script":
                 self._json(delete_script(body.get("script_file", "")))
             elif u.path == "/api/thumbnail":
@@ -1720,6 +1769,32 @@ def static_file(name):
 
 
 
+def auto_resume_queue():
+    """프로그램을 껐다 켜면, 만들다 만 대기열을 편집프로그램이 뜨는 대로 자동으로 이어서 만든다.
+    (대본·프롬프트·나레이션·받아 둔 이미지·썸네일 원본은 그대로 재사용)"""
+    with QUEUE.lock:
+        items = QUEUE.data.get("items", [])
+        for x in items:                                # 종료·강제 종료로 끊긴 편은 다시 대기로
+            if x.get("status") == "error" and "취소" in str(x.get("error", "")) and int(x.get("attempts", 0)) < 5:
+                x.update(status="pending", stage="이어서 만들 예정", error="")
+        pending = [x for x in items if x.get("status") == "pending"]
+        resumable = QUEUE.data.get("status") == "running" or QUEUE.data.get("resume_on_start") or (QUEUE.data.get("status") == "done" and pending)
+        if not resumable or not pending:
+            return
+        QUEUE.data["status"] = "running"; QUEUE.data["resume_on_start"] = False; QUEUE.save()
+    print(f"이어서 만들기: 대기열 {len(pending)}편 · 편집프로그램이 준비되면 자동으로 시작합니다")
+    for _ in range(60):                               # 편집프로그램(8765)이 뜰 때까지 최대 3분
+        try:
+            aip("/api/info", timeout=5); break
+        except Exception:  # noqa: BLE001
+            time.sleep(3)
+    else:
+        print("편집프로그램이 켜지지 않아 자동으로 이어가지 못했습니다. 화면에서 [▶ 계속]을 누르세요.")
+        return
+    time.sleep(3)
+    start_queue_worker()
+
+
 def main():
     if "--wait-port" in sys.argv:                    # 이전 프로세스가 포트를 놓을 때까지 최대 10초
         for _ in range(40):
@@ -1732,6 +1807,7 @@ def main():
         채널_연동.fetch_in_background(cfg, ch)      # 내 채널 제목을 미리 받아 둔다 (없거나 오래됐을 때만)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     print(f"대본 만들기 화면: {ADDR}  (종료: 이 창을 닫거나 Ctrl+C)")
+    threading.Thread(target=auto_resume_queue, daemon=True, name="auto-resume").start()
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(ADDR)).start()
     if QUEUE.data.get("status") == "running" and any(x.get("status") == "pending" for x in QUEUE.data.get("items", [])):

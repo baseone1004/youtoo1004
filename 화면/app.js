@@ -524,6 +524,13 @@ async function rerunTTS() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
   try { await saveWorkspaceText('script'); await api('/api/tts', {script_file: WORK.script_file}); startPolling(true); toast('고친 대본으로 나레이션을 다시 만듭니다.'); } catch (e) { toast(e.message, true); }
 }
+async function resetEverything() {
+  if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업을 먼저 중단하세요.', true);
+  if (!confirm('작업했던 것을 전부 지울까요?\n대본·이미지·나레이션·썸네일·최종 영상·업로드 폴더·대기열이 모두 휴지통(대본/_휴지통)으로 옮겨집니다.\n설정(API 키·목소리·좌표)은 남습니다.')) return;
+  if (!confirm('정말 전체 초기화할까요? (되돌리려면 _휴지통 폴더에서 꺼내야 합니다)')) return;
+  try { const r = await api('/api/reset-all', {}); WORK = null; selection.clear(); localStorage.removeItem('workScript'); localStorage.removeItem('selectedScript'); await refresh(); loadWorkspace(false); renderQueue({items: [], status: 'idle'}); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다. 새로 시작할 수 있습니다.`); window.scrollTo({top: 0, behavior: 'smooth'}); }
+  catch (e) { toast(e.message, true); }
+}
 async function deleteCurrentWork() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
   const name = $('workFile').options[$('workFile').selectedIndex]?.textContent || WORK.script_file;
@@ -539,9 +546,9 @@ async function assetsOf(script) {
   return galAssets;
 }
 async function refreshGallery(force) {
-  if ((!galleryVisible || $('view-wizard').classList.contains('hidden')) && !force) return;
   const j = STATE && STATE.job; let dir = '', pr = '';
   const active = j && ['pipeline', 'queue_pipeline'].includes(j.kind) && j.status === 'running';
+  if ((!galleryVisible || $('view-wizard').classList.contains('hidden')) && !force && !active) return;
   if (active && (j.result || {}).images) { dir = j.result.images; pr = j.result.prompts || ''; }
   else if (active && (j.result || {}).script) { const a = await assetsOf(j.result.script); dir = a.images; pr = a.prompts; }
   if (active && (j.result || {}).script && [...$('galFile').options].some(o => o.value === j.result.script) && $('galFile').value !== j.result.script) $('galFile').value = j.result.script;
@@ -559,7 +566,7 @@ async function refreshGallery(force) {
   await updateGallery(dir, pr); await refreshKieFiles();
 }
 async function updateGallery(dir, pr) {
-  if (!dir) { $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>'; $('galStat').textContent = ''; return; }
+  if (!dir) { $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>'; $('galStat').textContent = ''; $('topImgsRow').classList.add('hidden'); return; }
   if (galBusy) return; galBusy = true;
   try {
     let [st, all] = await Promise.all([genStatus(), listImages(dir)]);
@@ -580,6 +587,11 @@ async function updateGallery(dir, pr) {
       out.push(`<div class="g${it ? ' done' : ''}${now ? ' now' : ''}${fail ? ' fail' : ''}"><div class="no">${pad3(i)}</div><div class="pic">${it ? `<img src="${src}" loading="lazy" onclick="showBig('${src}')">` : (fail ? '실패' : (now ? '…' : '대기'))}</div><div class="st">${stTxt}</div><div class="bt">${btns}</div></div>`);
     }
     $('advGal').innerHTML = out.join('') || '<div class="hint">아직 이미지 프롬프트가 없습니다.</div>';
+    // 상단 제작 현황에도 방금 받은 이미지 8장을 바로 보여 준다
+    const latest = Object.values(imgs).sort((a, b) => b.mtime - a.mtime).slice(0, 8).sort((a, b) => a.no - b.no);
+    $('topImgsRow').classList.toggle('hidden', !latest.length);
+    $('topImgsStat').textContent = `${Object.keys(imgs).length}/${total}장 받음${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}`;
+    $('topImgs').innerHTML = latest.map(it => { const src = imageUrl(it); return `<div class="g done"><div class="no">${pad3(it.no)}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; }).join('');
   } catch (e) { $('galStat').textContent = '이미지 목록을 읽지 못했습니다'; galKey = ''; } finally { galBusy = false; }
 }
 async function genBodyFromUI() {

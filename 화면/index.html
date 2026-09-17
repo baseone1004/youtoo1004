@@ -42,6 +42,7 @@
   <div class="row" style="margin-top:10px"><span class="tag-lbl">그림체</span><div class="quick-styles" id="quickStyles"></div><button class="mini ghost" onclick="$('styleBox').classList.toggle('hidden')">그림체 더 보기</button></div>
   <div id="styleBox" class="hidden"></div>
   <div class="qlist" id="queueList"></div>
+  <div class="row hidden" id="topImgsRow" style="align-items:flex-start"><span class="tag-lbl">이미지</span><span class="hint" id="topImgsStat"></span><div class="gal" id="topImgs" style="flex-basis:100%;margin-top:0"></div></div>
   <div class="row hidden" id="topThumbsRow" style="align-items:flex-start"><span class="tag-lbl">썸네일</span><div class="gal thumbs" id="topThumbs" style="flex:1;margin-top:0"></div></div>
   <div id="pgResult" class="result hidden"></div>
   <div id="pgErr" class="banner err hidden"></div>
@@ -156,7 +157,7 @@
 
 <!-- ═══ 파일 메뉴 ═══ -->
 <div class="panel" id="filePanel">
-  <div class="panel-head"><span class="num nf">📁</span><b>파일 메뉴</b><span class="spacer"></span><button class="mini" onclick="loadWorkspace(false)">새로고침</button><button class="mini danger" onclick="deleteCurrentWork()">이 작업 휴지통으로</button></div>
+  <div class="panel-head"><span class="num nf">📁</span><b>파일 메뉴</b><span class="spacer"></span><button class="mini" onclick="loadWorkspace(false)">새로고침</button><button class="mini danger" onclick="deleteCurrentWork()">이 작업 휴지통으로</button><button class="mini danger" onclick="resetEverything()">🗑 전체 초기화</button></div>
   <div class="inner"><div class="files" id="fileList"><div class="hint">작업을 고르면 만들어진 파일이 여기에 나옵니다.</div></div></div>
 </div>
 
