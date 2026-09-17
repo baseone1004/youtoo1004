@@ -64,17 +64,19 @@ QUEUE_THREAD = None
 
 
 def restart_program(server):
-    """같은 명령으로 새 프로세스를 띄우고 이 서버는 내린다 (코드를 고친 뒤 화면의 [다시 시작] 버튼)."""
+    """서버 소켓을 먼저 닫아 포트를 비운 뒤 같은 명령으로 새 프로세스를 띄우고 이 프로세스는 끝낸다 (화면의 [다시 시작] 버튼)."""
     time.sleep(0.5)
+    try:
+        server.shutdown()                       # serve_forever 종료 (응답은 이미 보냈다)
+        server.server_close()                   # 8766 포트 반환 — 새 프로세스가 같은 포트를 잡을 수 있게
+    except Exception:  # noqa: BLE001
+        pass
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
     log = open(os.path.join(BASE, "로그_대본선택.txt"), "a", encoding="utf-8")
     subprocess.Popen([sys.executable, os.path.abspath(__file__), "--no-browser", "--wait-port"], cwd=BASE, env=env,
-                     stdout=log, stderr=subprocess.STDOUT, creationflags=flags, close_fds=True)
-    try:
-        server.shutdown()
-    finally:
-        os._exit(0)
+                     stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, creationflags=flags, close_fds=True)
+    os._exit(0)
 
 
 def shutdown_program(server):
@@ -1840,12 +1842,15 @@ def auto_resume_queue():
 
 
 def main():
-    if "--wait-port" in sys.argv:                    # 이전 프로세스가 포트를 놓을 때까지 최대 10초
+    if "--wait-port" in sys.argv:                    # 이전 프로세스가 포트를 놓을 때까지 최대 10초 (접속이 되는 동안은 아직 살아 있는 것)
+        import socket
         for _ in range(40):
             try:
-                ThreadingHTTPServer(("127.0.0.1", PORT), H).server_close(); break
-            except OSError:
+                with socket.create_connection(("127.0.0.1", PORT), timeout=0.3):
+                    pass
                 time.sleep(0.25)
+            except OSError:
+                break
     cfg = load_json("설정.json", {})
     for ch in 채널_연동.CONFIG_KEY:
         채널_연동.fetch_in_background(cfg, ch)      # 내 채널 제목을 미리 받아 둔다 (없거나 오래됐을 때만)
