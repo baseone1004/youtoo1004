@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-사람의 이유 · 주제 뽑기
+심리해독소 · 주제 뽑기
 ──────────────────────
 실행.bat 을 더블클릭하면 됩니다.
   1) 비슷한 유튜브 채널을 찾아 "요즘 뭐가 터지는지" 봅니다.
@@ -207,7 +207,7 @@ def analyze_channel(ch):
     return ch
 
 # ─────────────────────────────────────────────────────────────
-# 주제 은행 (사람의 이유 채널 톤에 맞춘 검증된 유형)
+# 주제 은행 (심리해독소 채널 톤에 맞춘 검증된 유형)
 #   c=카테고리  t=제목  h=오프닝 한 줄  th=썸네일 문구  w=왜 잘 되나  b=기본 점수
 # ─────────────────────────────────────────────────────────────
 TOPIC_BANK = [
@@ -774,7 +774,7 @@ CAT_TAGS = {
 }
 CAT_SUFFIX = {
     "관계": "관계 심리", "심리": "심리학이 밝힌 사실", "나이": "50대 이후 필독",
-    "돈": "부자들의 심리", "인생": "인생 후반전 이야기", "세상": "우리가 몰랐던 이유", "벤치": "사람의 이유",
+    "돈": "부자들의 심리", "인생": "인생 후반전 이야기", "세상": "우리가 몰랐던 이유", "벤치": "심리해독소",
 }
 
 BAD_TAIL = re.compile(r"(수록|어드|아드|드|지|라|어|아|워|해|했|되|돼|겨|려|니|까|께|않|못|들)$")
@@ -788,11 +788,11 @@ def make_upload(c):
     """후보 하나로 유튜브 업로드용 제목·해시태그·설명글·태그를 만든다."""
     kws = (c.get("k") or tag_words(c["t"]) + tag_words(c["th"]))[:3]
     cat_tags = CAT_TAGS.get(c["c"], [])
-    title = f"{c['t']} ({CAT_SUFFIX.get(c['c'], '사람의 이유')})"
-    hashtags = ["#사람의이유", "#" + cat_tags[0]] + ["#" + k for k in kws[:1]]
+    title = f"{c['t']} ({CAT_SUFFIX.get(c['c'], '심리해독소')})"
+    hashtags = ["#심리해독소", "#" + cat_tags[0]] + ["#" + k for k in kws[:1]]
     points = c.get("p") or ["왜 그런 일이 벌어지는지 그 이유", "심리학과 연구가 설명하는 원인", "오늘부터 달라질 수 있는 한 가지"]
     sources = c.get("s") or []
-    desc_tags = " ".join(["#사람의이유"] + ["#" + t for t in cat_tags[:3]] + ["#" + k for k in kws[:2]])
+    desc_tags = " ".join(["#심리해독소"] + ["#" + t for t in cat_tags[:3]] + ["#" + k for k in kws[:2]])
     구분선 = "────────────────────"
     면책 = ("※ 본 영상은 사람과 관계, 심리 현상을 이해하기 위한 정보 제공을 목적으로 제작되었습니다. 특정 개인을 진단하거나 모든 경우에 동일하게 적용하기 위한 내용은 아닙니다.\n"
           "※ 본 영상의 대본·이미지·음성 제작에는 AI 기술이 사용되었습니다.")
@@ -810,7 +810,7 @@ def make_upload(c):
         + f"{면책}\n\n{구분선}\n\n"
         + desc_tags
     )
-    tags = ["사람의 이유", "심리", "이유"] + cat_tags + kws + ["인간관계", "심리학", "인생"]
+    tags = ["심리해독소", "심리", "이유"] + cat_tags + kws + ["인간관계", "심리학", "인생"]
     seen, tag_list = set(), []
     for t in tags:
         if t not in seen:
@@ -1021,7 +1021,7 @@ def render(mine, bench, top, rest, dups, trends, warnings):
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>사람의 이유 · 7일 업로드 계획</title>
+<title>심리해독소 · 7일 업로드 계획</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
 :root{{--bg:#F4F1F5;--surface:#FFFFFF;--ink:#241B27;--muted:#7A6E7E;--line:#E3DCE5;--accent:#6B2D5C;--accent-soft:#F1E4EE;--gold:#D9A33A;--thumb:#1C1420;--warn:#A85A1F;--warn-soft:#FBEBD9;--box:#FAF7FB;
@@ -1079,7 +1079,7 @@ details{{margin-top:12px}}summary{{cursor:pointer;color:var(--muted);font-size:1
 .howto ol{{margin:0;padding-left:20px}}code{{font-family:var(--mono);font-size:12.5px}}
 </style></head><body><div class="wrap">
 <header class="top">
-  <div class="eyebrow">사람의 이유 · {today.month}월 {today.day}일 ~ {end.month}월 {end.day}일</div>
+  <div class="eyebrow">심리해독소 · {today.month}월 {today.day}일 ~ {end.month}월 {end.day}일</div>
   <h1>앞으로 7일, 하루 두 편</h1>
   <p>비슷한 채널 {len(bench)}곳에서 요즘 터지는 영상을 보고, 내 채널에 이미 있는 주제는 뺀 뒤 {len(top)}편을 골라 날짜별로 나눴습니다. 카드마다 유튜브에 그대로 붙여 넣을 제목·설명글·태그가 들어 있습니다.</p>
   {warn_html}

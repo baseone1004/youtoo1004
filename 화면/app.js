@@ -261,11 +261,11 @@ function renderSelection() {
   $('selText').textContent = n ? `편 제작 예정 — 그림체를 확인하고 시작하세요` : '개 선택 — 위에서 주제를 체크하거나 적으세요';
   $('toStep2').disabled = !n && !$('customTitle').value.trim();
   $('orderCount').textContent = n ? `${n}편 · 위에서부터 순서대로` : '';
-  $('orderList').innerHTML = items.map(([key, x], i) => `<li><span class="n">${i + 1}</span><span class="t">${esc(x.title)}</span><span class="ch">${x.channel === 'mindam' ? '민담·야담' : '사람의 이유'}</span><button class="mini ghost" onclick="removeSel('${js(key)}')">빼기</button></li>`).join('') || '<li class="hint">선택한 주제가 없습니다. 1단계에서 체크하세요.</li>';
+  $('orderList').innerHTML = items.map(([key, x], i) => `<li><span class="n">${i + 1}</span><span class="t">${esc(x.title)}</span><span class="ch">${x.channel === 'mindam' ? '민담·야담' : '심리해독소'}</span><button class="mini ghost" onclick="removeSel('${js(key)}')">빼기</button></li>`).join('') || '<li class="hint">선택한 주제가 없습니다. 1단계에서 체크하세요.</li>';
   const hasP = items.some(([, x]) => x.channel === 'person'), hasM = items.some(([, x]) => x.channel === 'mindam');
   $('personLenRow').classList.toggle('hidden', !hasP); $('mindamLenRow').classList.toggle('hidden', !hasM);
   const est = [];
-  if (hasP) est.push(`사람의 이유 ${items.filter(([, x]) => x.channel === 'person').length}편 (편당 30~60분)`);
+  if (hasP) est.push(`심리해독소 ${items.filter(([, x]) => x.channel === 'person').length}편 (편당 30~60분)`);
   if (hasM) est.push(`민담 ${items.filter(([, x]) => x.channel === 'mindam').length}편 (편당 1~2시간)`);
   $('startHint').textContent = est.length ? est.join(' + ') + ' 정도 걸립니다. 이미지 생성 중에는 마우스·키보드를 쓰지 마세요.' : '';
   $('startBtn').disabled = !n && !$('customTitle').value.trim();
@@ -811,7 +811,7 @@ async function saveVoice(ch) {
   const body = ch === 'mindam' ? {인월드_목소리_민담: $('sVoiceM').value.trim(), 인월드_속도_민담: +$('sSpeedM').value}
     : {인월드_목소리_사람: $('sVoiceP').value.trim(), 인월드_속도_사람: +$('sSpeedP').value, 인월드_목소리: $('sVoiceP').value.trim(), 인월드_속도: +$('sSpeedP').value, 인월드_모델: $('sInworldModel').value};
   if (!(ch === 'mindam' ? body.인월드_목소리_민담 : body.인월드_목소리_사람)) return toast('목소리 ID를 입력하세요', true);
-  await api('/api/config', body); toast((ch === 'mindam' ? '민담·야담' : '사람의 이유') + ' 목소리 저장됨'); refresh();
+  await api('/api/config', body); toast((ch === 'mindam' ? '민담·야담' : '심리해독소') + ' 목소리 저장됨'); refresh();
 }
 async function saveCpm() { await api('/api/config', {분당_글자수: +$('sCpm').value, 인월드_모델: $('sInworldModel').value}); toast('저장됨'); refresh(); }
 async function saveTelegramToken() { const token = $('tgToken').value.trim(); if (!token) return toast('BotFather에서 받은 봇 토큰을 입력하세요.', true); await api('/api/config', {텔레그램_봇_토큰: token}); $('tgToken').value = ''; toast('토큰 저장. 이제 봇에게 메시지를 보내고 채팅 자동 찾기를 누르세요.'); refresh(); }

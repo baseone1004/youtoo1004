@@ -3,7 +3,7 @@
 대본선택.py — 주제를 고르면 DeepSeek(설정.json 의 AI)으로 대본을 뽑아 주는 로컬 웹 화면
 
   대본선택.bat  →  http://127.0.0.1:8766  이 열립니다.
-  · 사람의 이유: 주제_리포트(계획.json·후보.json)의 주제 또는 직접 입력 → 대본생성.py 의 9구간 대본
+  · 심리해독소: 주제_리포트(계획.json·후보.json)의 주제 또는 직접 입력 → 대본생성.py 의 9구간 대본
   · 민담·야담:   제목이나 장르 입력 → 민담_대본.py 의 기획→챕터→합본 대본
   · 이미지 프롬프트: 만든 대본을 문장별 이미지 프롬프트(===001=== 형식)로 변환
   지침은 지침/ 폴더의 txt 를 골라 쓰고, 화면에서 바로 고쳐 저장할 수 있습니다.
@@ -276,7 +276,7 @@ def topics():
         t["done"] = bool(t.get("대본파일") and os.path.exists(t["대본파일"]))
     # 이미 대본을 만들었거나 사용 기록에 들어간 제목은 다시 선택하지 않도록 목록에서 숨긴다.
     plan = [t for t in plan if not t.get("done") and t.get("제목", "").strip() not in used_person]
-    # 사람의 이유는 계획을 우선하고, 후보를 더해 화면 전체에서 최대 6개만 추천한다.
+    # 심리해독소는 계획을 우선하고, 후보를 더해 화면 전체에서 최대 6개만 추천한다.
     plan_titles = {t.get("제목", "").strip() for t in plan}
     cands = [t for t in cands if t.get("제목", "").strip() not in used_person
              and t.get("제목", "").strip() not in plan_titles]
@@ -371,7 +371,7 @@ def mark_used(title, path="사용한_주제.txt"):
             f.write(title + "\n")
 
 
-# ── 작업 1: 사람의 이유 대본 ───────────────────────────────────
+# ── 작업 1: 심리해독소 대본 ───────────────────────────────────
 def make_person_script(job, req):
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
@@ -762,7 +762,7 @@ def restyle_script_prompts_2d(script_file):
 
 # ── 작업 4: 나레이션 (인월드 TTS) ─────────────────────────────
 def assets_dir(script_file):
-    """대본 파일 → 자료 폴더 (민담은 대본 폴더 그대로, 사람의 이유는 옆에 '<이름>_자료')."""
+    """대본 파일 → 자료 폴더 (민담은 대본 폴더 그대로, 심리해독소는 옆에 '<이름>_자료')."""
     if os.path.basename(script_file) == "final.txt":
         return os.path.dirname(script_file)
     d = re.sub(r"\.txt$", "", script_file) + "_자료"
@@ -854,8 +854,8 @@ def make_tts(job, req):
     if req.get("speed"):
         speed = float(req["speed"])
     if not voice:
-        raise SystemExit(f"{'민담·야담' if channel == 'mindam' else '사람의 이유'} 채널 목소리 ID 가 없습니다. [설정] 탭의 인월드 목소리에 넣어주세요.")
-    job.add(f"   목소리: {'민담·야담' if channel == 'mindam' else '사람의 이유'} 채널 → {voice} · 속도 {speed}")
+        raise SystemExit(f"{'민담·야담' if channel == 'mindam' else '심리해독소'} 채널 목소리 ID 가 없습니다. [설정] 탭의 인월드 목소리에 넣어주세요.")
+    job.add(f"   목소리: {'민담·야담' if channel == 'mindam' else '심리해독소'} 채널 → {voice} · 속도 {speed}")
     job.stage = "나레이션 합성"
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
                          req.get("model") or cfg.get("인월드_모델", "inworld-tts-1.5-max"), speed,
@@ -1114,7 +1114,7 @@ def make_thumbnails(job, req):
               "감정이 선명한 현대 한국인 한 명을 화면 오른쪽에 크게, 문구가 들어갈 왼쪽 55%는 어둡고 단순하게")
     seo_context = thumbnail_seo_context(opt_text, script_text, is_mindam)
     user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n"
-            f"[채널] {'민담·야담' if is_mindam else '사람의 이유'}\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
+            f"[채널] {'민담·야담' if is_mindam else '심리해독소'}\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
             + "\n".join(f"{i}. 상단: {t} / 하단: {b}" + (f" / 이미지: {d}" if d else "") for i, (t, b, d) in enumerate(copies, 1))
             + f"\n\n[영상별 SEO 정보]\n{seo_context}"
             + (f"\n\n[브리프]\n{brief}" if brief else ""))
@@ -1142,7 +1142,7 @@ def make_thumbnails(job, req):
     job.stage = "썸네일 이미지 생성"
     raw_dir = os.path.join(tdir, "raw")
     run_image_generation(job, pf, raw_dir, "")
-    # 합성 (썸네일_합성.py: 사람의 이유 = 키워드 강조형/숫자 배지형, 민담 = 하단 띠형)
+    # 합성 (썸네일_합성.py: 심리해독소 = 키워드 강조형/숫자 배지형, 민담 = 하단 띠형)
     job.stage = "썸네일 문구 합성"
     if not raw_thumbnails(tdir):
         raise RuntimeError("썸네일 이미지가 한 장도 내려받히지 않았습니다.")
@@ -1165,7 +1165,7 @@ def make_upload_package(script_file, result):
     title = title.splitlines()[0].strip()
     description = saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글")
     tags = saved.get("tags") or _block(opt_text, "태그") or _block(script_text, "태그")
-    channel_dir = "민담" if is_mindam else "사람의 이유"
+    channel_dir = "민담" if is_mindam else "심리해독소"
     package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
     package.mkdir(parents=True, exist_ok=True)
     (package / "제목.txt").write_text(title, encoding="utf-8")

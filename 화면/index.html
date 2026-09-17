@@ -7,7 +7,7 @@
 </head><body>
 
 <header class="top"><div class="top-inner">
-  <div class="brand">🎬 유튜브 영상 자동 제작 <small>사람의 이유 · 민담·야담</small><span class="pill-live" id="liveDot"></span></div>
+  <div class="brand">🎬 유튜브 영상 자동 제작 <small>심리해독소 · 민담·야담</small><span class="pill-live" id="liveDot"></span></div>
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
     <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
@@ -56,7 +56,7 @@
     <h2>어떤 영상을 만들까요?</h2>
     <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
     <div class="row">
-      <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">사람의 이유</button><button data-ch="mindam" onclick="setChannel('mindam')">민담·야담·옛이야기</button></div>
+      <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">심리해독소</button><button data-ch="mindam" onclick="setChannel('mindam')">민담·야담·옛이야기</button></div>
       <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
       <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
     </div>
@@ -67,7 +67,7 @@
     <textarea id="customTitle" class="topic-input" rows="3" placeholder="예: 병원에 사주를 많이 보는 이유&#10;예: 비가 그친 골목에 남은 기억"></textarea>
     <div class="chips hidden" id="genreChips"><span class="hint" style="align-self:center">장르만 고를 수도 있어요:</span></div>
     <div class="row" style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
-    <div class="row" id="personLenRow" style="margin-top:10px"><label><b>사람의 이유</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
+    <div class="row" id="personLenRow" style="margin-top:10px"><label><b>심리해독소</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
     <div id="mindamLenRow" class="row hidden"><label><b>민담·야담</b> 영상 길이</label><select id="mindamLen"></select></div>
     <div class="row"><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상(KIE) <input type="number" id="optHook" value="7" min="0" max="30" style="width:70px"> 장면</label></div>
     <div class="row"><label>대본 지침 <select id="optGuide"></select></label><label>이미지 지침 <select id="optImgGuide"></select></label><label>프롬프트 한 번에 <input type="number" id="optChunk" value="30" min="5" max="60" style="width:70px"> 문장</label></div>
@@ -171,7 +171,7 @@
 <div class="panel" id="adv-tools">
   <div class="panel-head"><span class="tag-lbl">단계별 따로 실행</span><span class="hint">보통은 제작 시작 한 번이면 됩니다</span></div>
   <div class="inner">
-    <div class="row"><div class="seg"><button data-ch="person" class="on" onclick="setToolChannel('person')">사람의 이유</button><button data-ch="mindam" onclick="setToolChannel('mindam')">민담·야담</button></div><input type="text" id="toolTitle" placeholder="주제 또는 제목"><button class="primary" onclick="startScriptOnly()">대본만 만들기</button></div>
+    <div class="row"><div class="seg"><button data-ch="person" class="on" onclick="setToolChannel('person')">심리해독소</button><button data-ch="mindam" onclick="setToolChannel('mindam')">민담·야담</button></div><input type="text" id="toolTitle" placeholder="주제 또는 제목"><button class="primary" onclick="startScriptOnly()">대본만 만들기</button></div>
     <div id="toolMindam" class="hidden">
       <div class="row"><label>길이 <select id="toolLen"></select></label><label>지침 <select id="toolMGuide"></select></label><label>이어쓰기 폴더 <input type="text" id="toolResume" placeholder="비우면 새로 시작" style="min-width:240px"></label></div>
       <div class="row"><button onclick="startVariations()">제목 변형 A~D 만들기</button><span class="hint">골격은 살리고 주인공·반전을 바꾼 안 4개 중 고릅니다</span></div>
@@ -215,8 +215,8 @@
   <div class="card">
     <h2>2. 나레이션 목소리 (인월드)</h2>
     <div class="row"><label>모델 <select id="sInworldModel"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>
-    <div class="keyrow"><b>사람의 이유</b><span class="stat" id="vPerson"></span><input type="text" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
-    <div class="keyrow"><b>민담·야담</b><span class="stat" id="vMindam"></span><input type="text" id="sVoiceM" placeholder="비우면 사람의 이유 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>
+    <div class="keyrow"><b>심리해독소</b><span class="stat" id="vPerson"></span><input type="text" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
+    <div class="keyrow"><b>민담·야담</b><span class="stat" id="vMindam"></span><input type="text" id="sVoiceM" placeholder="비우면 심리해독소 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>
     <div class="keyrow"><b>분당 글자수</b><span class="stat ok" id="vCpm"></span><label>영상 길이 계산용 <input type="number" id="sCpm" value="270" min="150" max="400" step="10" style="width:90px"></label><button class="mini" onclick="saveCpm()">저장</button></div>
   </div>
 
@@ -235,7 +235,7 @@
   <div class="card" id="chanCard">
     <h2>4. 내 유튜브 채널 연동</h2>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>
-    <div class="keyrow"><b>사람의 이유</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
+    <div class="keyrow"><b>심리해독소</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px"></p>
     <div class="keyrow"><b>민담·야담</b><span class="stat" id="chStatM"></span><input type="text" id="chUrlM" placeholder="민담 채널 주소 (없으면 비워 두세요)"><button class="mini primary" onclick="saveChannel('mindam')">저장</button><button class="mini" onclick="refreshChannel('mindam')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoM" style="margin:-2px 0 0 120px"></p>
@@ -243,7 +243,7 @@
     <p class="hint">넣으면 조회수·좋아요·게시일까지 정확히 읽어 채널 분석에 씁니다 (없으면 제목만 읽음). 발급: console.cloud.google.com → 프로젝트 만들기 → <b>YouTube Data API v3</b> 사용 설정 → 사용자 인증 정보 → API 키 만들기. 무료입니다.</p>
     <div class="keyrow"><b>API 키</b><input type="password" id="ytKey" placeholder="AIza…"><button class="mini primary" onclick="saveYtKey()">저장</button><button class="mini" onclick="testYtKey()">연결 확인</button><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener" class="mini" style="font-size:13px">↗ 발급 페이지</a></div>
     <h3>내 채널 분석 <span class="hint">채널을 읽을 때마다 자동 갱신</span></h3>
-    <div class="row"><div class="seg"><button data-ach="person" class="on" onclick="loadAnalysis('person')">사람의 이유</button><button data-ach="mindam" onclick="loadAnalysis('mindam')">민담·야담</button></div><button class="mini" onclick="loadAnalysis()">다시 계산</button></div>
+    <div class="row"><div class="seg"><button data-ach="person" class="on" onclick="loadAnalysis('person')">심리해독소</button><button data-ach="mindam" onclick="loadAnalysis('mindam')">민담·야담</button></div><button class="mini" onclick="loadAnalysis()">다시 계산</button></div>
     <div id="chAnalysis" class="hint">채널을 연동하면 여기에 분석이 나옵니다.</div>
   </div>
 
