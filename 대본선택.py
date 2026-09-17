@@ -1051,6 +1051,10 @@ def thumb_copies_for(script, assets, is_mindam, log=None):
     opt_text = open(opt_path, encoding="utf-8").read() if os.path.exists(opt_path) else ""
     script_text = open(script, encoding="utf-8-sig").read()
     copies = parse_thumb_copies(opt_text)
+    blocks = 대본생성.blocks_of(script_text.split("[대본]", 1)[0])
+    up, down = blocks.get("상단 제목", "").strip(), blocks.get("하단 제목", "").strip()
+    if not is_mindam and (up or down):               # 대본이 정한 상단·하단 제목 두 줄을 첫 썸네일에 그대로 쓴다
+        copies = [(up, down, "")] + [c for c in copies if (c[0], c[1]) != (up, down)]
     if not copies:
         title = ""
         m = re.search(r"\[제목\]\s*\n(.+)", script_text)
@@ -1092,7 +1096,7 @@ def compose_thumbnails(script, log=None):
         layout = 썸네일_합성.compose(raws[i], out, top, bottom, "mindam" if is_mindam else "person")
         outs.append(out)
         if log:
-            log(f"   ✓ {out}  ({top} / {bottom}) · {dict(keyword='키워드 강조형', badge='숫자 배지형', band='하단 띠형')[layout]}")
+            log(f"   ✓ {out}  ({top} / {bottom}) · {dict(bottom='아래 두 줄형', keyword='키워드 강조형', badge='숫자 배지형', band='하단 띠형')[layout]}")
     return dict(thumbnails=outs, dir=tdir)
 
 
@@ -1140,7 +1144,7 @@ def make_thumbnails(job, req):
     position = "bottom" if is_mindam else "left"
     layout = ("조선 시대 인물 2~3명과 사건 장소가 함께 보이는 넓은 이야기 장면, 문구가 들어갈 화면 아래쪽은 어둡고 단순하게"
               if is_mindam else
-              "감정이 선명한 현대 한국인 한 명을 화면 오른쪽에 크게, 문구가 들어갈 왼쪽 55%는 어둡고 단순하게")
+              "감정이 선명한 현대 한국인 한 명의 얼굴을 화면 위쪽·가운데에 크게, 문구 두 줄이 들어갈 화면 아래쪽 35%는 어둡고 단순하게")
     seo_context = thumbnail_seo_context(opt_text, script_text, is_mindam)
     user = (f"[화풍] {style}\n[문구 위치] {'하단' if position == 'bottom' else ('상단' if position == 'top' else '좌측')}\n"
             f"[채널] {'민담·야담' if is_mindam else '심리해독소'}\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"

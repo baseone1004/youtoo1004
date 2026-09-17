@@ -20,12 +20,12 @@ class ThumbnailComposeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "썸네일_1.jpg"
             layout = T.compose(self._raw(Path(td)), str(out), "나이 들수록", "시간이 빨리 가는 진짜 이유", "person")
-            self.assertEqual(layout, "keyword")
+            self.assertEqual(layout, "bottom")
             self.assertEqual(Image.open(out).size, (1280, 720))
 
-    def test_number_in_copy_uses_badge_layout(self):
-        self.assertEqual(T.pick_layout("시간이 빨라진", "뇌의 비밀 3가지", "person"), ("badge", "3가지"))
-        self.assertEqual(T.pick_layout("", "60대가 후회하는 5 가지", "person"), ("badge", "5가지"))
+    def test_person_always_uses_bottom_two_lines(self):
+        self.assertEqual(T.pick_layout("시간이 빨라진", "뇌의 비밀 3가지", "person"), ("bottom", ""))
+        self.assertEqual(T.pick_layout("", "60대가 후회하는 5 가지", "person"), ("bottom", ""))
 
     def test_mindam_uses_band_layout(self):
         with tempfile.TemporaryDirectory() as td:

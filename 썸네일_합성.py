@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """썸네일 문구 합성 — 글자 없는 원본(raw) 위에 채널별 레이아웃으로 문구를 얹는다.
 
-  A 키워드 강조형 (심리해독소 기본): 흰 글씨 두 줄 → 마지막 핵심어만 크고 노랗게, 검정 테두리, 그림은 밝게 유지 (채널 기존 썸네일 스타일)
-  C 숫자 배지형   (문구에 "3가지" 같은 숫자가 있으면): 빨간 원 배지 + 문구
-  B 하단 띠형     (민담·야담): 아래쪽 어두운 띠 위에 큰 자막, 왼쪽 위 채널 태그
+  E 아래 두 줄형  (심리해독소 기본): 이미지 아래쪽에 상단 제목(흰색)·하단 제목(노란색) 두 줄을 가운데 정렬, 아래쪽만 어둡게, 굵은 검정 테두리
+  A 키워드 강조형 (예비): 흰 글씨 두 줄 → 마지막 핵심어만 크고 노랗게, 왼쪽 위
+  C 숫자 배지형   (예비): 빨간 원 배지 + 문구
+  B 하단 띠형     (민담·야담): 아래쪽 어두운 띠 위에 큰 붓글씨 자막, 왼쪽 위 채널 태그
 글꼴: 심리해독소는 Black Han Sans(굵은 고딕), 민담은 Nanum Brush Script(붓글씨) — 둘 다 assets/fonts/ 에 있다."""
 import os
 import re
@@ -51,7 +52,7 @@ def _outlined(draw, xy, text, font, fill, stroke=None):
 
 def _load(image, center):
     im = Image.open(image).convert("RGB")
-    return ImageOps.fit(im, (W, H), Image.LANCZOS, centering=(center, 0.45))
+    return ImageOps.fit(im, (W, H), Image.LANCZOS, centering=(center, 0.35))
 
 
 def _subject_on_left(im):
@@ -170,13 +171,29 @@ def layout_band(im, top, bottom, tag_text="옛이야기"):
     return im
 
 
+def layout_bottom_two(im, top, bottom):
+    """E — 이미지 아래 두 줄, 가운데 정렬. 1줄 상단 제목(흰색), 2줄 하단 제목(노란색·크게)."""
+    im = _shade_bottom(im, 0.50, 0.88)
+    draw = ImageDraw.Draw(im)
+    top, bottom = (top or "").strip(), (bottom or "").strip()
+    if not bottom:
+        top, bottom = "", top
+    f1 = _fit(draw, top, 92, W - 140, 56) if top else None
+    f2 = _fit(draw, bottom, 134, W - 140, 64)
+    y = H - 44 - int(f2.size * 1.08) - ((int(f1.size * 1.1) + 8) if f1 else 0)
+    for text, f, color in ((top, f1, WHITE), (bottom, f2, YELLOW)):
+        if not text:
+            continue
+        lw = draw.textlength(text, font=f)
+        _outlined(draw, ((W - lw) / 2, y), text, f, color, max(7, f.size // 10))
+        y += int(f.size * 1.1) + 8
+    return im
+
+
 def pick_layout(top, bottom, channel):
     if channel == "mindam":
         return "band", ""
-    m = NUMBER.search(top or "") or NUMBER.search(bottom or "")
-    if m:
-        return "badge", m.group(0).replace(" ", "")
-    return "keyword", ""
+    return "bottom", ""
 
 
 def compose(image, out, top, bottom, channel="person"):
@@ -184,6 +201,8 @@ def compose(image, out, top, bottom, channel="person"):
     layout, badge = pick_layout(top, bottom, channel)
     if layout == "band":
         im = layout_band(_load(image, 0.55), top, bottom)
+    elif layout == "bottom":
+        im = layout_bottom_two(_load(image, 0.5), top, bottom)      # 인물이 위쪽에 오도록 위를 살려 자른다
     else:
         if badge:
             strip = lambda s: re.sub(r"\s{2,}", " ", NUMBER.sub("", s or "", count=1)).strip()
