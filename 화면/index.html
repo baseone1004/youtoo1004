@@ -229,6 +229,9 @@
     <div class="keyrow"><b>생성하기 버튼</b><label>X <input type="number" id="s_generate_x" style="width:90px"></label><label>Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini primary" onclick="detectGenerateButton()">자동 찾기</button><button class="mini" onclick="captureEditorXY('generate')">6초 좌표 잡기</button></div>
     <div class="keyrow"><b>이미지 다운로드</b><label>X <input type="number" id="s_download_x" style="width:90px"></label><label>Y <input type="number" id="s_download_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('download')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('download')">위치 확인</button></div>
     <div class="row"><button onclick="saveEditorXY()">좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
+    <h3>레퍼런스 캐릭터 (마스코트 '해') <span class="stat" id="mascotStat"></span></h3>
+    <div class="row" style="align-items:flex-start"><img id="mascotImg" class="hidden" style="width:120px;height:120px;object-fit:contain;background:#fff;border-radius:12px" alt="">
+      <div class="hint">캐릭터 그림을 <code>assets/캐릭터/해.png</code> 로 저장해 두면 여기에 보입니다. 이미지는 드롭샷이 만들기 때문에, <b>드롭샷 References 패널에 이 그림을 올리고 Subject로 지정</b>해 두어야 장면·썸네일에서 같은 캐릭터가 나옵니다 (한 번만 하면 됨). 프롬프트에는 캐릭터 설명이 자동으로 들어갑니다.</div></div>
     <p class="hint" id="sXyStatus">저장된 좌표를 읽는 중…</p>
   </div>
 

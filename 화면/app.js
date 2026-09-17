@@ -819,7 +819,14 @@ async function findTelegramChats() { try { const r = await api('/api/telegram/ch
 async function saveTelegramChat() { const id = $('tgChats').value; if (!id) return toast('저장할 채팅을 선택하세요.', true); await api('/api/config', {텔레그램_채팅_ID: id}); toast('텔레그램 채팅 저장됨'); refresh(); }
 async function saveTelegramEnabled() { await api('/api/config', {텔레그램_알림: $('tgEnabled').checked}); toast($('tgEnabled').checked ? '텔레그램 알림 켬' : '텔레그램 알림 끔'); }
 async function testTelegram() { try { await api('/api/telegram/test', {}); toast('텔레그램으로 테스트 메시지를 보냈습니다.'); } catch (e) { toast(e.message, true); } }
+async function loadMascot() {
+  const path = 'assets\캐릭터\해.png';
+  try { const r = await fetch('/api/image?path=' + encodeURIComponent(path), {cache: 'no-store'}); if (!r.ok) throw 0;
+    $('mascotImg').src = '/api/image?path=' + encodeURIComponent(path) + '&t=' + Date.now(); $('mascotImg').classList.remove('hidden'); $('mascotStat').textContent = '저장됨'; $('mascotStat').className = 'stat ok'; }
+  catch (e) { $('mascotImg').classList.add('hidden'); $('mascotStat').textContent = '파일 없음'; $('mascotStat').className = 'stat'; }
+}
 async function loadEditorSettings() {
+  loadMascot();
   try {
     const info = await get8765('/api/info'); if (!info.config) throw new Error('편집프로그램 응답 없음');
     const ui = info.config.gen_ui || {}, xy = ui.XY || {};
