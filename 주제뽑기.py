@@ -146,8 +146,11 @@ def fetch_channel(url, limit):
         except Exception as e:  # noqa: BLE001
             print(f"   ! 유튜브 API 실패, yt-dlp로 대신 읽음: {e}")
     info = ydl_extract(url + "/videos", playlistend=limit)
-    if not info:
-        return None
+    if not info:                                     # 영상이 하나도 없는 새 채널은 /videos 탭이 없다 → 채널 자체만 확인
+        info = ydl_extract(url, playlistend=1)
+        if not info:
+            return None
+        info = dict(info, entries=[])
     entries = [e for e in (info.get("entries") or []) if e]
     vids = []
     for e in entries:

@@ -807,7 +807,10 @@ function renderChannels(ch) {
     if (!info.url) { st.textContent = '연동 안 됨'; st.className = 'stat'; inf.textContent = ''; }
     else if (info.error) { st.textContent = '읽기 실패'; st.className = 'stat bad'; inf.textContent = info.error; }
     else if (info.busy && !info.fetched) { st.textContent = '읽는 중…'; st.className = 'stat'; inf.textContent = '채널 제목을 가져오는 중입니다. 잠시 뒤 새로고침하세요.'; }
-    else if (info.fetched) { st.textContent = '연동됨'; st.className = 'stat ok'; inf.textContent = `${info.name} · 영상 ${info.count}편 · ${info.fetched} 확인${info.busy ? ' · 다시 읽는 중…' : ''}`; }
+    else if (info.fetched) {
+      st.textContent = info.warning ? '연동됨 (제목만)' : '연동됨'; st.className = 'stat ok';
+      inf.textContent = `${info.name} · 영상 ${info.count}편${info.count ? '' : ' (아직 올린 영상이 없어 뺄 주제도 없습니다)'} · ${info.fetched} 확인${info.busy ? ' · 다시 읽는 중…' : ''}${info.warning ? '\n⚠ ' + info.warning : ''}`;
+    }
     else { st.textContent = '대기'; st.className = 'stat'; inf.textContent = '아직 읽지 않았습니다. [제목 다시 읽기]를 누르세요.'; }
     if (document.activeElement !== $(urlId)) $(urlId).value = info.url || '';
   };

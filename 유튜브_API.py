@@ -11,6 +11,19 @@ import requests
 BASE = "https://www.googleapis.com/youtube/v3/"
 
 
+KEY_HELP = "유튜브 API 키는 'AIza' 로 시작하는 39자입니다 (console.cloud.google.com → API 및 서비스 → 사용자 인증 정보 → API 키). 제미나이(AI Studio) 키와는 다릅니다."
+
+
+def check_key_format(key):
+    """키 모양이 구글 클라우드 API 키가 아니면 이유 문자열, 맞으면 ''."""
+    key = (key or "").strip()
+    if not key:
+        return "유튜브 API 키가 비어 있습니다."
+    if not re.fullmatch(r"AIza[\w-]{35}", key):
+        return f"저장된 키({key[:4]}…{key[-3:]}, {len(key)}자)는 유튜브 API 키 모양이 아닙니다. " + KEY_HELP
+    return ""
+
+
 def _get(key, path, **params):
     params["key"] = key
     r = requests.get(BASE + path, params=params, timeout=30)
@@ -19,6 +32,12 @@ def _get(key, path, **params):
             msg = r.json()["error"]["message"]
         except Exception:  # noqa: BLE001
             msg = r.text[:200]
+        if r.status_code == 401 and "API keys are not supported" in msg:   # 제미나이 키 등 다른 종류의 키를 넣었을 때
+            msg = "이 키는 유튜브 API 키가 아닙니다. " + KEY_HELP
+        elif r.status_code == 400 and "API key not valid" in msg:
+            msg = "키가 올바르지 않습니다(오타이거나 삭제된 키). " + KEY_HELP
+        elif r.status_code == 403 and ("not been used" in msg or "disabled" in msg):
+            msg = "이 프로젝트에서 'YouTube Data API v3' 가 사용 설정되지 않았습니다. 구글 클라우드 콘솔에서 사용 설정하세요."
         raise RuntimeError(f"유튜브 API 오류 ({r.status_code}): {msg}")
     return r.json()
 
@@ -58,8 +77,17 @@ def fetch_channel(key, url_or_id, limit=300):
     c = items[0]
     uploads = c["contentDetails"]["relatedPlaylists"]["uploads"]
     ids, titles, published, token = [], {}, {}, None
+    if int((c.get("statistics") or {}).get("videoCount") or 0) == 0:     # 아직 영상이 없는 채널: 업로드 목록 조회가 오류를 내므로 건너뛴다
+        return dict(name=c["snippet"]["title"], id=c["id"], subs=int((c.get("statistics") or {}).get("subscriberCount") or 0), videos=[])
     while len(ids) < limit:
-        pl = _get(key, "playlistItems", part="snippet,contentDetails", playlistId=uploads, maxResults=50, **({"pageToken": token} if token else {}))
+        try:
+            pl = _get(key, "playlistItems", part="snippet,contentDetails", playlistId=uploads, maxResults=50, **({"pageToken": token} if token else {}))
+        except RuntimeError as exc:                     # 업로드 목록이 아직 없는 새 채널도 여기로 온다
+            if ids:
+                raise
+            if "404" in str(exc) or "401" in str(exc) or "playlistNotFound" in str(exc):
+                break
+            raise
         for it in pl.get("items") or []:
             vid = it["contentDetails"]["videoId"]
             ids.append(vid)

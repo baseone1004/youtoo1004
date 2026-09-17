@@ -240,9 +240,9 @@
     <h2>4. 내 유튜브 채널 연동</h2>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>
     <div class="keyrow"><b>심리해독소</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
-    <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px"></p>
+    <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px;white-space:pre-wrap"></p>
     <div class="keyrow"><b>민담·야담</b><span class="stat" id="chStatM"></span><input type="text" id="chUrlM" placeholder="민담 채널 주소 (없으면 비워 두세요)"><button class="mini primary" onclick="saveChannel('mindam')">저장</button><button class="mini" onclick="refreshChannel('mindam')">제목 다시 읽기</button></div>
-    <p class="hint" id="chInfoM" style="margin:-2px 0 0 120px"></p>
+    <p class="hint" id="chInfoM" style="margin:-2px 0 0 120px;white-space:pre-wrap"></p>
     <h3>벤치마킹할 심리 채널 <span class="hint">비워 두면 검색으로 자동 발견</span></h3>
     <p class="hint">꼭 참고하고 싶은 채널 주소를 한 줄에 하나씩. [📊 심리 채널 벤치마킹]을 누르면 이 채널들과 자동으로 찾은 채널에서 평소보다 몇 배 터진 영상을 모아, 새 주제 추천·제목·썸네일 문구에 참고합니다.</p>
     <textarea id="benchChannels" class="short" style="font-family:var(--sans)" placeholder="https://www.youtube.com/@채널이름&#10;https://www.youtube.com/channel/UC…"></textarea>

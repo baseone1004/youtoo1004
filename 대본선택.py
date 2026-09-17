@@ -1744,6 +1744,11 @@ class H(BaseHTTPRequestHandler):
                 key = str(cfg.get("유튜브_API_키", "") or "").strip()
                 if not key:
                     raise ValueError("유튜브 API 키가 저장돼 있지 않습니다.")
+                if key == str(cfg.get("API_키_gemini", "") or "").strip():
+                    raise ValueError("제미나이 키와 같은 키가 들어가 있습니다. 유튜브 API 키는 따로 발급해야 합니다. " + 유튜브_API.KEY_HELP)
+                bad = 유튜브_API.check_key_format(key)
+                if bad:
+                    raise ValueError(bad)
                 url = 채널_연동.channel_url(cfg, "person") or 채널_연동.channel_url(cfg, "mindam") or "UC_x5XG1OV2P6uZZ5FSM9Ttw"
                 info = 유튜브_API.fetch_channel(key, url, 5)
                 self._json(dict(ok=True, name=info["name"], subs=info["subs"], sample=len(info["videos"])))

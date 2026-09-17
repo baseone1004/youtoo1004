@@ -81,8 +81,8 @@ def fetch(cfg, channel):
                            published=v.get("published", ""), url=v.get("url", ""))
                       for v in info["videos"] if v.get("title")]
             data[channel] = dict(url=url, name=info.get("name") or url, titles=[v["title"] for v in videos], videos=videos,
-                                 subs=int(info.get("subs") or 0), fetched=now, source=source,
-                                 error=(f"유튜브 API 실패, yt-dlp로 대신 읽음: {error}" if error else ""))
+                                 subs=int(info.get("subs") or 0), fetched=now, source=source, error="",
+                                 warning=(f"유튜브 API 는 실패해 제목만 읽었습니다(조회수 없음): {error}" if error else ""))
         else:
             previous = data.get(channel) or {}
             data[channel] = dict(previous, url=url, fetched=previous.get("fetched", ""), error=error or f"채널을 읽지 못했습니다 ({now}). 주소를 확인하세요.")
@@ -119,6 +119,7 @@ def status(cfg):
         fresh = bool(url) and info.get("url") == url
         out[channel] = dict(url=url, name=info.get("name", "") if fresh else "", count=len(info.get("titles") or []) if fresh else 0,
                             fetched=info.get("fetched", "") if fresh else "", error=info.get("error", "") if fresh else "",
+                            warning=info.get("warning", "") if fresh else "",
                             source=info.get("source", "") if fresh else "", busy=channel in _busy)
     return out
 
