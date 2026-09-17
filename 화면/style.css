@@ -76,7 +76,7 @@ input[type=text],input[type=number],input[type=password],select,textarea{backgro
 input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(49,130,246,.15)}
 input[type=text]{flex:1;min-width:220px}
 select{max-width:100%}
-textarea{width:100%;min-height:220px;font-family:var(--mono);font-size:13.5px;line-height:1.55;resize:vertical}
+textarea{width:100%;min-height:220px;font-family:var(--sans);font-size:17px;line-height:1.75;resize:vertical;padding:14px 16px}
 textarea.short{min-height:84px}
 
 button{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);padding:9px 16px;border-radius:10px;cursor:pointer;font-weight:600;font-size:15px;transition:background .15s,border-color .15s,transform .1s}
@@ -173,7 +173,7 @@ details.box.soft{background:var(--bg)}
 .qitem.error{border-color:#5A2A2E;background:var(--red-soft)}
 .qitem .err{width:100%;font-size:13px;color:#FFB3B3}
 .qitem progress{width:110px;height:10px;accent-color:var(--blue)}
-.log{background:#0B0D11;color:#D5DCE6;border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.6;max-height:240px;min-height:90px;overflow:auto;white-space:pre-wrap}
+.log{background:#0B0D11;color:#D5DCE6;border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:14px;line-height:1.6;max-height:240px;min-height:90px;overflow:auto;white-space:pre-wrap}
 .result{margin-top:12px;padding:14px 16px;background:var(--green-soft);border:1px solid #1F5A3C;border-radius:12px;font-size:14.5px;line-height:1.7}
 .preview{white-space:pre-wrap;font-size:14.5px;line-height:1.75;max-height:420px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:10px}
 
@@ -199,8 +199,9 @@ details.box.soft{background:var(--bg)}
 .copyrow{display:flex;gap:8px;align-items:flex-start;margin:8px 0}
 .copyrow label{min-width:56px;padding-top:10px;font-weight:700}
 .copyrow input,.copyrow textarea{flex:1}
-.copyrow textarea{min-height:90px}
-.work-text{min-height:160px}
+.copyrow input{font-size:17px;padding:12px 14px}
+.copyrow textarea{min-height:110px}
+.work-text{min-height:220px}
 .stat{font-size:13px;font-weight:600;color:var(--muted);background:var(--bg);border-radius:999px;padding:3px 10px;white-space:nowrap}
 .stat.ok{color:var(--green);background:var(--green-soft)}
 .stat.bad{color:var(--red);background:var(--red-soft)}
@@ -281,7 +282,7 @@ button.primary{background:var(--blue)}button.primary:hover:not(:disabled){backgr
 .pill-live{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--line-strong);margin-left:4px}
 .pill-live.on{background:var(--green);box-shadow:0 0 0 4px rgba(61,214,140,.25);animation:blink 1.2s infinite alternate}
 @keyframes blink{to{opacity:.4}}
-.work-text{min-height:150px}
+.work-text{min-height:220px}
 .gal.thumbs{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
 .wrap{max-width:1060px}
 @media(max-width:720px){.panel .inner{padding:12px 14px 14px}.panel-head{padding:10px 14px}.panel>.pipe,.panel>.stage-now,.panel>.bar,.panel>.stepbar,.panel>.hint,.panel>.startrow,.panel>.row,.panel>.qlist,.panel>.result,.panel>.banner,.panel>.preview,.panel>#styleBox{margin-left:14px;margin-right:14px}}
