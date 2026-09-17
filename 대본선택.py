@@ -1210,7 +1210,8 @@ def make_thumbnails(job, req):
              "bright flat 2D chibi sticker illustration for a YouTube thumbnail, thick clean dark outlines, big expressive eyes, "
              "vivid high-contrast pastel colors, simple background, exaggerated emotion, 16:9 aspect ratio")
     position = "bottom"
-    layout = ("조선 시대 인물 2~3명과 사건 장소가 함께 보이는 넓은 이야기 장면, 문구가 들어갈 화면 아래쪽은 어둡고 단순하게"
+    layout = ("감정이 터지는 순간 한 컷 — 조선 시대 인물 얼굴 클로즈업, 두 인물의 시선 충돌, 또는 사건의 정점 중 하나. 인물 최대 2명, "
+              "밤이어도 등잔불로 얼굴이 밝게, 문구가 들어갈 화면 아래쪽은 단순하고 조금 어둡게"
               if is_mindam else
               "채널 마스코트 '해'(드롭샷 References의 안경 쓴 크림색 아기곰)를 화면 위쪽·가운데에 크게, 과장된 감정과 상징 하나, "
               "밝고 단순한 배경, 문구 두 줄이 들어갈 화면 아래쪽 35%는 단순하고 조금 어둡게")
