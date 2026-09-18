@@ -1,0 +1,13 @@
+# 배포판 내장 파이썬에 설치하는 패키지 (빌드.py 가 사용)
+yt-dlp>=2026.8
+openai>=3
+anthropic>=1
+ddgs>=9
+requests>=2.31
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2
+pillow>=10
+pyautogui>=0.9
+pyperclip>=1.8
+pywinauto>=0.6.9

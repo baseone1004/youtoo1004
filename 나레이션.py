@@ -15,8 +15,10 @@ BASE = os.path.dirname(os.path.abspath(__file__)); os.chdir(BASE)
 import requests
 
 INWORLD_URL = "https://api.inworld.ai/tts/v1/voice"
-FFMPEG_후보 = [r"C:\Users\baseo\Downloads\DINO_7.5_고객용\필수 프로그램 파일\ffmpeg.exe",
-            r"C:\Users\baseo\Downloads\편집프로그램\bin\ffmpeg.exe"]
+# 프로그램 폴더 안의 bin/ → 같이 배포되는 편집프로그램의 bin/ → (개발용) 다운로드 폴더의 편집프로그램 순으로 찾는다. PATH 에 있으면 그것을 먼저 쓴다.
+FFMPEG_후보 = [os.path.join(BASE, "bin", "ffmpeg.exe"),
+            os.path.join(BASE, "편집프로그램", "bin", "ffmpeg.exe"),
+            os.path.join(os.path.expanduser("~"), "Downloads", "편집프로그램", "bin", "ffmpeg.exe")]
 문장_간격 = 0.35          # 문장 사이 무음(초)
 동시_요청 = 3
 자막_최대_글자 = 18     # 화면에 한 번에 보여줄 자막 길이(공백 제외)

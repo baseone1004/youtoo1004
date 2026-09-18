@@ -27,3 +27,7 @@ server.err.log
 추천_추가.json
 벤치_히트.json
 채널_프로필.json
+
+# 배포판 빌드 결과와 내려받은 파일
+배포판/
+배포/_cache/
