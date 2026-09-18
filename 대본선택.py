@@ -1031,6 +1031,22 @@ def aip(path, body=None, method=None, timeout=90):
     return r.json()
 
 
+def kie_credit():
+    """KIE 남은 크레딧. 키는 편집프로그램의 config.json 에 있다 (화면에서 영상 변환 전에 보여 주고, 부족하면 미리 알린다)."""
+    import 시작
+    editor = 시작.find_editor()
+    if not editor:
+        raise ValueError("편집프로그램 폴더를 찾지 못했습니다.")
+    key = str(load_json(os.path.join(editor, "config.json"), {}).get("kie_api_key", "") or os.environ.get("KIE_API_KEY", "")).strip()
+    if not key:
+        return dict(ok=False, credit=None, detail="KIE 키가 없습니다.")
+    r = _rq.get("https://api.kie.ai/api/v1/chat/credit", headers={"Authorization": f"Bearer {key}"}, timeout=20)
+    j = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+    if r.status_code != 200 or j.get("code") not in (200, None):
+        return dict(ok=False, credit=None, detail=f"KIE 응답 {r.status_code}: {j.get('msg') or r.text[:120]}")
+    return dict(ok=True, credit=float(j.get("data") or 0))
+
+
 def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries_left=2):
     """편집프로그램의 좌표 자동화로 이미지를 전부 만들 때까지 기다린다. 좌표·다운로드 폴더는 편집프로그램에 저장된 값을 쓴다."""
     info = aip("/api/info")
@@ -1738,6 +1754,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(채널_연동.analysis(cfg, q.get("channel", ["person"])[0]))
             elif u.path == "/api/trash":
                 self._json(trash_status())
+            elif u.path == "/api/kie/credit":
+                self._json(kie_credit())
             elif u.path == "/api/channel":
                 cfg = load_json("설정.json", {})
                 for ch in ("person", "mindam"):

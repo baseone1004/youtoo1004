@@ -647,9 +647,16 @@ async function hookScene(no) {
     toast(pad3(no) + '번 영상 변환 시작');
   } catch (e) { toast(e.message, true); }
 }
+let kieCredit = null;                         // 마지막으로 읽은 KIE 남은 크레딧 (모르면 null)
 async function refreshKieStatus() {
-  try { const info = await get8765('/api/info'); const ok = !!info.kie_key_saved; $('kieStatus').textContent = $('sKieStat').textContent = ok ? 'KIE 키 저장됨' : 'KIE 키 없음'; $('sKieStat').className = 'stat ' + (ok ? 'ok' : 'bad'); return ok; }
+  let ok = false;
+  try { const info = await get8765('/api/info'); ok = !!info.kie_key_saved; $('kieStatus').textContent = $('sKieStat').textContent = ok ? 'KIE 키 저장됨' : 'KIE 키 없음'; $('sKieStat').className = 'stat ' + (ok ? 'ok' : 'bad'); }
   catch (e) { $('kieStatus').textContent = $('sKieStat').textContent = '편집프로그램 연결 확인'; $('sKieStat').className = 'stat bad'; return false; }
+  if (ok) {                                    // 남은 크레딧도 같이 보여 준다 (영상 한 장면에 수십 크레딧이 들어 부족하면 변환이 실패한다)
+    try { const c = await api('/api/kie/credit'); kieCredit = c.ok ? c.credit : null; const t = c.ok ? `KIE 키 저장됨 · 남은 크레딧 ${Math.round(c.credit)}` : `KIE 키 저장됨 · 크레딧 확인 실패 (${c.detail})`; $('kieStatus').textContent = $('sKieStat').textContent = t; if (c.ok && c.credit < 100) { $('sKieStat').className = 'stat bad'; } }
+    catch (e) { kieCredit = null; }
+  }
+  return ok;
 }
 async function saveKieKey() {
   const key = $('sKieKey').value.trim(); if (!key) return toast('KIE API 키를 입력하세요', true);
@@ -681,7 +688,10 @@ async function startFirstSevenVideos() {
     const ready = new Set((await listImages(galDir)).filter(x => !x.video).map(x => x.no));
     const missing = [1, 2, 3, 4, 5, 6, 7].filter(no => !ready.has(no));
     if (missing.length) return toast('앞 7장 이미지가 먼저 필요합니다. 없는 장면: ' + missing.map(pad3).join(', '), true);
-    if (!confirm('앞 7장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.')) return;
+    const low = kieCredit !== null && kieCredit < 100 ? `
+
+⚠ 남은 KIE 크레딧이 ${Math.round(kieCredit)}뿐입니다. 장면 하나에 수십 크레딧이 들어 부족하면 실패합니다. https://kie.ai 에서 충전하세요.` : '';
+    if (!confirm('앞 7장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.' + low)) return;
     const info = await get8765('/api/info'), ui = (info.config || {}).gen_ui || {};
     const j = await post8765('/api/hook/start', {api_key: '', images_dir: galDir, prompts_file: galPromptsPath, scenes: [1, 2, 3, 4, 5, 6, 7], model: ui.kie_model || 'veo-3-1', aspect_ratio: ui.kie_ratio || '16:9', duration: 0, motion_prompt: ui.motion_prompt || 'Subtle 2D motion, preserve characters and composition.', use_scene_prompt: true, output_dir: ''});
     kieJobId = j.job_id; sessionStorage.setItem('kieJobId', kieJobId); clearInterval(kieTimer); kieTimer = setInterval(pollKieJob, 2000); pollKieJob(); toast('앞 7장 영상 변환을 시작했습니다');
