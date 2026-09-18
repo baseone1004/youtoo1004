@@ -11,6 +11,7 @@
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
     <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
+    <button data-view="onboard" onclick="showView('onboard')">🧭 처음 설정</button>
     <button class="hidden" id="restartBtn" onclick="restartProgram()" style="color:var(--amber)">🔁 다시 시작</button>
     <button class="quit" onclick="exitProgram()">종료</button>
   </nav>
@@ -190,10 +191,19 @@
 
 
 <!-- ═══════════ 설정 ═══════════ -->
+<section id="view-onboard" class="hidden">
+  <div class="card ob-wrap">
+    <div class="ob-head"><h2>🧭 처음 한 번만 하는 설정</h2><p class="lead">아래 순서대로 하나씩 끝내면 바로 영상을 만들 수 있습니다. 이미 끝난 항목은 ✓ 로 표시됩니다. 언제든 위 메뉴의 [처음 설정]에서 다시 열 수 있습니다.</p></div>
+    <ol class="ob-steps" id="obSteps"></ol>
+    <div class="ob-body" id="obBody"></div>
+    <div class="row" style="margin-top:18px"><button id="obPrev" onclick="obGo(obStep - 1)">← 이전</button><span class="spacer"></span><button class="mini ghost" onclick="obSkip()">나중에 하기</button><button class="primary" id="obNext" onclick="obGo(obStep + 1)">다음 →</button></div>
+  </div>
+</section>
+
 <section id="view-settings" class="hidden">
   <div class="card">
     <h2>⚙ 처음 한 번만 설정하면 됩니다</h2>
-    <p class="lead">위에서부터 순서대로 저장하세요. 저장된 값은 그대로 남아 있으니 바꿀 때만 다시 넣으면 됩니다.</p>
+    <p class="lead">위에서부터 순서대로 저장하세요. 저장된 값은 그대로 남아 있으니 바꿀 때만 다시 넣으면 됩니다. 처음이라면 <button class="mini" onclick="showView('onboard')">🧭 처음 설정 안내</button>를 따라가면 빠릅니다.</p>
     <div class="ready-bar" id="setupReady" style="padding:0;margin:0"></div>
   </div>
 

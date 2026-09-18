@@ -1611,7 +1611,8 @@ class H(BaseHTTPRequestHandler):
                                             후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
                                             텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
-                                            텔레그램_알림=cfg.get("텔레그램_알림", True)),
+                                            텔레그램_알림=cfg.get("텔레그램_알림", True), 온보딩_완료=bool(cfg.get("온보딩_완료", False))),
+                                base_dir=BASE, extension_dir=os.path.join(BASE, "딥시크_확장"),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
@@ -1803,7 +1804,7 @@ class H(BaseHTTPRequestHandler):
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
-                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키"):
+                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널")):
                         cfg[k] = str(body[k]).strip() if isinstance(body[k], str) else body[k]
                 # 서비스별 키 ↔ 현재 AI 의 키 동기화 (AI 를 바꾸면 그 서비스에 저장된 키가 자동으로 쓰인다)

@@ -73,9 +73,10 @@ async function exitProgram() {
 let currentStep = 1;
 function showView(name) {
   if (name === 'advanced') name = 'wizard';
-  for (const v of ['wizard', 'settings']) $('view-' + v).classList.toggle('hidden', v !== name);
+  for (const v of ['wizard', 'settings', 'onboard']) $('view-' + v).classList.toggle('hidden', v !== name);
   document.querySelectorAll('.top-nav button[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === name));
   if (name === 'settings') { loadEditorSettings(); loadAnalysis(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+  if (name === 'onboard') { renderOnboard(); window.scrollTo({top: 0, behavior: 'smooth'}); }
 }
 // 한 페이지에 모두 펼쳐 두고, 단계 표시줄은 해당 위치로 스크롤한다.
 function goStep(n, instant) {
@@ -418,16 +419,30 @@ async function poll() {
       + ((r.issues || []).length ? `<div class="hint" style="margin-top:6px">확인: ${r.issues.map(esc).join(' · ')}</div>` : '')
       + `<div class="hint">${esc(r.cost || '')}</div>`;
     refresh();
-  } else if (j.status === 'error') { const e = $('pgErr'); e.classList.remove('hidden'); e.textContent = errorHelp(j.error); }
+  } else if (j.status === 'error') { const e = $('pgErr'); e.classList.remove('hidden'); e.className = 'errwrap'; e.innerHTML = explainError(j.error); }
 }
-function errorHelp(message) {
-  const s = String(message || '알 수 없는 오류');
-  if (/확장|chat\.deepseek|웹 대기/.test(s)) return '딥시크 연결을 확인하세요: 크롬에서 chat.deepseek.com에 로그인하고 [설정]의 확장 상태를 확인한 뒤 다시 실행하세요.\n상세: ' + s;
-  if (/8765|편집프로그램|연결할 수 없/.test(s)) return '편집프로그램이 연결되지 않았습니다. 시작 파일을 다시 실행하고 준비 상태를 확인하세요.\n상세: ' + s;
-  if (/API_키|api.key|인증|401|authentication/i.test(s)) return 'AI 또는 인월드 키를 확인하세요. [설정]에서 해당 키를 저장한 뒤 다시 실행하세요.\n상세: ' + s;
-  if (/목소리|voice/i.test(s)) return '목소리 설정을 확인하세요. [설정]에서 채널별 목소리 ID를 저장한 뒤 다시 실행하세요.\n상세: ' + s;
-  if (/좌표|prompt|download/.test(s)) return '이미지 생성 좌표를 확인하세요. [설정]에서 입력창·다운로드 좌표를 저장하세요.\n상세: ' + s;
-  return '작업이 중단됐습니다. 아래 로그의 마지막 단계와 상세 오류를 확인한 뒤 다시 실행하세요.\n상세: ' + s;
+// ── 친절한 오류 안내: 원인별 제목·설명·해결 버튼 ──
+function explainError(message, opts) {
+  const raw = String(message || '알 수 없는 오류'); opts = opts || {};
+  const retry = opts.retry !== false && STATE && STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status));
+  const R = retry ? [['▶ 다시 시도', "queueControl('resume')"]] : [];
+  const gemini = STATE && STATE.keys && STATE.keys.gemini;
+  let t;
+  if (/중단|취소|cancel/i.test(raw) && !/편집프로그램|이미지 생성/.test(raw)) t = {title: '사용자가 중단했습니다', why: '이어서 만들려면 다시 시도를 누르세요.', acts: R};
+  else if (/확장|chat\.deepseek|웹 대기|딥시크 웹|답변이 시작되지|deepseek-web/i.test(raw)) t = {title: '딥시크 창이 응답하지 않았어요', why: '크롬의 chat.deepseek.com 탭이 닫혔거나, 확장 연결이 끊겼거나, 딥시크가 느린 상태입니다. 탭이 열려 있고 로그인돼 있는지 확인한 뒤 다시 시도하세요.', acts: [['확장 상태 확인', "obOpen(2)"], ...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
+  else if (/8765|편집프로그램|연결할 수 없|Failed to fetch|ECONNREFUSED|WinError 10061/i.test(raw)) t = {title: '편집프로그램이 꺼져 있어요', why: '이미지·영상을 만드는 편집프로그램(8765)에 연결되지 않았습니다. 바탕화면의 시작 파일(유튜브_자동화_시작)을 다시 실행해 두 프로그램을 모두 켠 뒤 다시 시도하세요.', acts: [['연결 상태 확인', "obOpen(4)"], ...R]};
+  else if (/좌표|드롭샷|창을 찾|window|생성 버튼|다운로드 버튼|이미지 생성이 끝나지|실패 \d+장/i.test(raw)) t = {title: '드롭샷 창을 못 찾았거나 좌표가 안 맞아요', why: '드롭샷 창이 닫혔거나 위치·크기가 바뀌면 자동 클릭이 빗나갑니다. 드롭샷 창을 열고 좌표 세 개를 다시 잡은 뒤 [위치 확인]으로 점검하세요.', acts: [['좌표 다시 잡기', "obOpen(4)"], ...R]};
+  else if (/인월드|목소리|voice|tts/i.test(raw)) t = {title: '나레이션(인월드) 설정을 확인하세요', why: '인월드 키가 없거나 목소리 ID가 틀렸거나 사용량이 다 됐을 수 있습니다.', acts: [['나레이션 설정', "obOpen(3)"], ...R]};
+  else if (/KIE|kie/.test(raw)) t = {title: '움직이는 영상(KIE) 단계에서 멈췄어요', why: 'KIE 키가 없거나 잔액이 부족하면 이 단계만 건너뛰고 나머지는 계속 만들 수 있습니다.', acts: [['KIE 설정', "showView('settings')"], ...R]};
+  else if (/API_키|api key|401|403|429|quota|insufficient|한도|잔액|rate limit/i.test(raw)) t = {title: 'AI 키 또는 사용량 문제예요', why: '키가 틀렸거나, 무료 한도를 다 썼거나, 잔액이 부족합니다. 키를 확인하거나 다른 AI로 바꿔 보세요.', acts: [['AI 키 설정', "obOpen(2)"], ...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
+  else if (/형식|읽지 못했|파싱|블록/i.test(raw)) t = {title: 'AI 답변 형식이 어긋났어요', why: 'AI가 정해진 형식으로 답하지 않았습니다. 대개 다시 시도하면 해결됩니다. 반복되면 다른 AI로 바꿔 보세요.', acts: [...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
+  else t = {title: '작업이 멈췄어요', why: '아래 상세 내용과 로그의 마지막 줄을 확인하세요. 대개 다시 시도하면 이어서 진행됩니다.', acts: [...R, ['로그 보기', "$('pgLog').scrollIntoView({behavior:'smooth'})"]]};
+  return `<div class="errbox"><b>⚠ ${esc(t.title)}</b><div class="why">${esc(t.why)}</div><div class="acts">${t.acts.map(([l, fn]) => `<button class="mini" onclick="${fn.replace(/"/g, '&quot;')}">${esc(l)}</button>`).join('')}</div><details><summary>상세 오류</summary><pre>${esc(raw)}</pre></details></div>`;
+}
+function errorHelp(message) { return explainError(message); }
+async function switchAI(name) {
+  try { await api('/api/config', {AI: name}); toast(`대본 AI를 ${name} 로 바꿨습니다. 다시 시도합니다…`); await refresh(); if (STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status))) await queueControl('resume'); }
+  catch (e) { toast(e.message, true); }
 }
 async function cancelJob() { if (!confirm('지금 만들고 있는 작업을 중단할까요?')) return; try { await api('/api/cancel', {}); toast('중단을 요청했습니다.'); } catch (e) { toast(e.message, true); } }
 async function queueControl(action) {
@@ -440,7 +455,7 @@ function renderQueue(q) {
   if (!q) return; const items = q.items || [], done = items.filter(x => x.status === 'done').length, failed = items.filter(x => x.status === 'error').length;
   $('queueManage').classList.toggle('hidden', !items.length || !['running', 'paused'].includes(q.status));
   $('queueSummary').textContent = items.length ? `${q.status_text || ''} · 전체 ${items.length}편 · 완료 ${done}편${failed ? ` · 실패 ${failed}편` : ''}` : '대기열 없음';
-  $('queueList').innerHTML = items.map((x, i) => `<div class="qitem ${x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(x.status_text || '대기 중')}${x.stage ? ' · ' + esc(x.stage) : ''}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${x.error ? `<span class="err">${esc(x.error)}</span>` : ''}</div>`).join('');
+  $('queueList').innerHTML = items.map((x, i) => `<div class="qitem ${x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(x.status_text || '대기 중')}${x.stage ? ' · ' + esc(x.stage) : ''}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${x.error ? explainError(x.error, {retry: x.status === 'error'}) : ''}</div>`).join('');
 }
 async function refreshQueue() { try { const q = await api('/api/queue'); if (STATE) STATE.queue = q; renderQueue(q); renderStepBar(); } catch (e) {} }
 
@@ -881,14 +896,15 @@ async function saveEditorXY() {
   } catch (e) { $('sXyStatus').textContent = '좌표 저장 실패: ' + e.message; toast(e.message, true); return false; }
 }
 async function captureEditorXY(name) {
-  const label = {prompt: '프롬프트 입력창', generate: '생성 버튼', download: '다운로드 버튼'}[name]; const counter = $('xyCountdown');
-  $('sXyStatus').textContent = `마우스를 드롭샷의 ${label} 위에 올려 두세요`; counter.classList.add('active');
+  const label = {prompt: '프롬프트 입력창', generate: '생성 버튼', download: '다운로드 버튼'}[name]; const counters = [...document.querySelectorAll('.xy-countdown')];
+  const setC = (t, on) => counters.forEach(c => { c.textContent = t; c.classList.toggle('active', !!on); });
+  xyStatus(`마우스를 드롭샷의 ${label} 위에 올려 두세요`); setC('6', true);
   try {
     const capture = post8765('/api/gen/capture', {seconds: 6});
-    for (let s = 6; s >= 1; s--) { counter.textContent = String(s); await new Promise(r => setTimeout(r, 1000)); }
-    const j = await capture; $('s_' + name + '_x').value = j.x; $('s_' + name + '_y').value = j.y; await saveEditorXY();
-  } catch (e) { $('sXyStatus').textContent = '좌표 잡기 실패: ' + e.message; }
-  finally { counter.classList.remove('active'); counter.textContent = '6'; }
+    for (let s = 6; s >= 1; s--) { setC(String(s), true); await new Promise(r => setTimeout(r, 1000)); }
+    const j = await capture; $('s_' + name + '_x').value = j.x; $('s_' + name + '_y').value = j.y; await saveEditorXY(); xyStatus(`✓ ${label} 좌표 저장 (${j.x}, ${j.y})`);
+  } catch (e) { xyStatus('좌표 잡기 실패: ' + e.message); }
+  finally { setC('6', false); if (obStep === 4 && !$('view-onboard').classList.contains('hidden')) renderOnboard(); }
 }
 async function testEditorXY(name) { const x = $('s_' + name + '_x').value, y = $('s_' + name + '_y').value; if (x === '' || y === '') return toast('좌표를 먼저 입력하거나 잡으세요', true); try { await post8765('/api/gen/test', {x: Number(x), y: Number(y)}); toast('마우스를 해당 좌표로 옮겼습니다'); } catch (e) { toast('좌표 테스트 실패: ' + e.message, true); } }
 async function detectGenerateButton() {
@@ -903,6 +919,7 @@ async function detectGenerateButton() {
   try { await refresh(); } catch (e) { toast('서버 상태를 불러오지 못했습니다: ' + e.message, true); }
   const busy = STATE && ((STATE.job && STATE.job.status === 'running') || (STATE.queue && STATE.queue.status === 'running'));
   renderQuickStyles(); renderStageCards(); renderFiles();
+  if (STATE && !busy && !(STATE.config || {}).온보딩_완료 && !localStorage.getItem('ob_done') && !sessionStorage.getItem('ob_skipped')) showView('onboard');
   $('customTitle').addEventListener('input', renderSelection);
   for (const ch of ['person', 'mindam']) { const info = (STATE && STATE.channels || {})[ch] || {}; if (info.url && (info.busy || (!info.fetched && !info.error))) pollChannel(ch); }
   if (busy) startPolling(false);
@@ -947,3 +964,111 @@ async function saveProfile() {
   if (!data.이름.trim()) return toast('채널 이름을 넣으세요.', true);
   try { await api('/api/profile', {slot: profileSlot, data}); toast(`${data.이름} 프로필 저장됨 — 다음 제작부터 반영됩니다`); await refresh(); } catch (e) { toast(e.message, true); }
 }
+
+
+// ── 처음 설정(온보딩) ─────────────────────────────────
+let obStep = 1, obEditor = null, obTimer = null;
+const OB_STEPS = [[1, '채널'], [2, '대본 AI'], [3, '나레이션'], [4, '이미지(드롭샷)'], [5, '선택 사항'], [6, '완료']];
+function xyStatus(t) { if ($('sXyStatus')) $('sXyStatus').textContent = t; if ($('obXyStatus')) $('obXyStatus').textContent = t; }
+async function obProbeEditor() { try { const j = await get8765('/api/info'); obEditor = j && j.config ? j : null; } catch (e) { obEditor = null; } return obEditor; }
+function obStatus() {
+  const c = (STATE && STATE.config) || {}, P = (STATE && STATE.profiles) || {};
+  const xy = ((obEditor && obEditor.config && obEditor.config.gen_ui) || {}).XY || {};
+  return {
+    1: !!(P.person && P.person.이름) && localStorage.getItem('ob_profile_ok') === '1',
+    2: c.AI === 'deepseek-web' ? !!(STATE && STATE.web_alive) : !!c.키있음,
+    3: !!(c.인월드키있음 && (c.인월드_목소리_사람 || c.인월드_목소리)),
+    4: !!(obEditor && xy.prompt && xy.download),
+    5: true,
+  };
+}
+function obOpen(step) { showView('onboard'); obGo(step); }
+function obGo(step) { obStep = Math.max(1, Math.min(6, step)); renderOnboard(); }
+async function obSkip() { sessionStorage.setItem('ob_skipped', '1'); showView('wizard'); }
+async function obFinish() { try { await api('/api/config', {온보딩_완료: true}); } catch (e) {} localStorage.setItem('ob_done', '1'); toast('설정이 끝났습니다. 주제를 고르고 제작을 시작하세요!'); await refresh(); showView('wizard'); }
+async function obProfileOk(save) {
+  if (save) { const 이름 = $('ob_name').value.trim(), 설명 = $('ob_desc').value.trim(), 대상 = $('ob_aud').value.trim(); if (!이름) return toast('채널 이름을 넣으세요.', true);
+    try { await api('/api/profile', {slot: 'person', data: {이름, 설명, 대상_시청자: 대상, 해시태그: '#' + 이름.replace(/\s+/g, '')}}); await refresh(); } catch (e) { return toast(e.message, true); } }
+  localStorage.setItem('ob_profile_ok', '1'); toast('채널 정보 확인'); obGo(2);
+}
+async function obSaveAI() {
+  const mode = $('ob_aiMode').value;
+  try {
+    if (mode === 'deepseek-web') { await api('/api/config', {AI: 'deepseek-web'}); }
+    else { const key = $('ob_aiKey').value.trim(); const body = {AI: mode}; if (key) { body['API_키_' + mode] = key; body.API_키 = key; } await api('/api/config', body); $('ob_aiKey').value = ''; }
+    toast('대본 AI 저장'); await refresh(); renderOnboard();
+  } catch (e) { toast(e.message, true); }
+}
+async function obSaveVoice() {
+  const key = $('ob_inKey').value.trim(), voice = $('ob_voice').value.trim(); const body = {};
+  if (key) body.인월드_API_키 = key; if (voice) { body.인월드_목소리_사람 = voice; body.인월드_목소리 = voice; }
+  if (!Object.keys(body).length) return toast('키 또는 목소리 ID를 입력하세요.', true);
+  try { await api('/api/config', body); $('ob_inKey').value = ''; toast('나레이션 설정 저장'); await refresh(); renderOnboard(); } catch (e) { toast(e.message, true); }
+}
+async function renderOnboard() {
+  if (!STATE) return;
+  if (obStep === 4 || obStep === 6) await obProbeEditor(); else if (obEditor === null) obProbeEditor().then(() => { if (obStep === 6) renderOnboard(); });
+  const st = obStatus(), c = STATE.config || {}, P = STATE.profiles || {}, pf = P.person || {};
+  $('obSteps').innerHTML = OB_STEPS.map(([n, l]) => `<li class="${n === obStep ? 'on' : ''} ${st[n] ? 'done' : ''}" onclick="obGo(${n})"><span class="n">${st[n] ? '✓' : n}</span>${l}</li>`).join('');
+  $('obPrev').disabled = obStep === 1; $('obNext').classList.toggle('hidden', obStep === 6);
+  const S = (ok, okText, badText, wait) => `<div class="ob-status ${ok ? 'ok' : (wait ? 'wait' : 'bad')}">${ok ? '✓ ' + okText : (wait ? '… ' : '! ') + badText}</div>`;
+  let h = '';
+  if (obStep === 1) {
+    h = `<h3>1. 내 채널은 어떤 채널인가요?</h3><p class="why">여기 적은 이름과 소개가 대본·제목·설명·썸네일 프롬프트에 그대로 들어갑니다. 지금은 기본값(${esc(pf.이름 || '')})이 들어 있으니, 내 채널에 맞게 고치고 저장하세요. 마스코트·태그 같은 세부 항목은 나중에 [설정 → 채널 프로필]에서 바꿀 수 있습니다.</p>`
+      + S(st[1], '채널 정보를 확인했습니다', '아직 확인하지 않았습니다')
+      + `<div class="keyrow"><b>채널 이름</b><input type="text" id="ob_name" value="${esc(pf.이름 || '')}"></div>
+         <div class="keyrow"><b>시청자</b><input type="text" id="ob_aud" value="${esc(pf.대상_시청자 || '')}" placeholder="예: 관계·심리에 관심 있는 40~60대"></div>
+         <div class="keyrow"><b>채널 소개</b></div><textarea id="ob_desc" class="short" style="font-size:15px">${esc(pf.설명 || '')}</textarea>
+         <div class="row"><button class="primary" onclick="obProfileOk(true)">저장하고 다음</button><button onclick="obProfileOk(false)">이대로 쓰기</button></div>`;
+  } else if (obStep === 2) {
+    const isWeb = c.AI === 'deepseek-web', keys = STATE.keys || {};
+    h = `<h3>2. 대본을 쓰는 AI</h3><p class="why">두 가지 방법 중 하나만 있으면 됩니다. <b>딥시크 웹</b>은 무료지만 크롬 확장 설치가 필요하고, <b>API 키</b> 방식은 키만 넣으면 됩니다. 둘 다 넣어 두면 하나가 막힐 때 자동으로 다른 쪽으로 넘어갑니다.</p>`
+      + S(st[2], isWeb ? '딥시크 웹 연결됨 (chat.deepseek.com 탭 감지)' : `${c.AI} 키 저장됨`, isWeb ? '딥시크 확장이 아직 연결되지 않았습니다' : `${c.AI} 키가 없습니다`)
+      + `<div class="keyrow"><b>방법</b><select id="ob_aiMode" onchange="renderOnboardAI()"><option value="deepseek-web" ${isWeb ? 'selected' : ''}>딥시크 웹 (무료 · 크롬 확장)</option><option value="gemini" ${c.AI === 'gemini' ? 'selected' : ''}>제미나이 API 키 (무료 한도 있음)</option><option value="deepseek" ${c.AI === 'deepseek' ? 'selected' : ''}>딥시크 API 키</option><option value="claude" ${c.AI === 'claude' ? 'selected' : ''}>클로드 API 키</option></select></div>
+         <div id="ob_aiWeb" class="${isWeb ? '' : 'hidden'}"><ol class="ob-guide">
+           <li>크롬 주소창에 <code>chrome://extensions</code> 를 입력해 엽니다.</li>
+           <li>오른쪽 위 <b>개발자 모드</b>를 켭니다.</li>
+           <li><b>압축해제된 확장 프로그램을 로드</b> → 아래 [확장 폴더 열기]로 열리는 <code>딥시크_확장</code> 폴더를 고릅니다.</li>
+           <li>크롬에서 <a href="https://chat.deepseek.com" target="_blank" rel="noopener">chat.deepseek.com</a> 에 로그인한 탭을 하나 열어 둡니다 (창을 닫지 마세요).</li>
+           <li>위 상태가 <b>연결됨</b>으로 바뀌면 끝입니다 (몇 초마다 자동 확인).</li></ol>
+           <div class="row"><button onclick="openPath('${js(STATE.extension_dir || '딥시크_확장')}')">📁 확장 폴더 열기</button><button class="primary" onclick="obSaveAI()">딥시크 웹으로 저장</button></div></div>
+         <div id="ob_aiKeyBox" class="${isWeb ? 'hidden' : ''}"><div class="keyrow"><b>API 키</b><input type="password" id="ob_aiKey" placeholder="${keys[c.AI] ? '저장됨 ' + keys[c.AI] + ' (바꿀 때만 입력)' : '키를 붙여 넣으세요'}"><button class="primary mini" onclick="obSaveAI()">저장</button></div>
+           <p class="hint">제미나이 키: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> · 딥시크 키: <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> · 클로드 키: <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a></p></div>`;
+  } else if (obStep === 3) {
+    const keys = STATE.keys || {};
+    h = `<h3>3. 나레이션 목소리 (인월드)</h3><p class="why">대본을 읽어 주는 음성입니다. 인월드(inworld.ai)에서 API 키를 받고, 마음에 드는 목소리의 ID를 넣으세요.</p>`
+      + S(st[3], `인월드 키 · 목소리 ${c.인월드_목소리_사람 || c.인월드_목소리}`, c.인월드키있음 ? '목소리 ID가 없습니다' : '인월드 키가 없습니다')
+      + `<ol class="ob-guide"><li><a href="https://inworld.ai" target="_blank" rel="noopener">inworld.ai</a> 가입 → API Keys 에서 키 발급</li><li>Voices 목록에서 한국어 목소리를 골라 ID(예: Sarah)를 복사</li><li>아래에 넣고 저장</li></ol>
+         <div class="keyrow"><b>인월드 키</b><input type="password" id="ob_inKey" placeholder="${keys.inworld ? '저장됨 ' + keys.inworld + ' (바꿀 때만 입력)' : '키를 붙여 넣으세요'}"></div>
+         <div class="keyrow"><b>목소리 ID</b><input type="text" id="ob_voice" value="${esc(c.인월드_목소리_사람 || c.인월드_목소리 || '')}" placeholder="예: Sarah"></div>
+         <div class="row"><button class="primary" onclick="obSaveVoice()">저장</button><span class="hint">이야기형 채널의 목소리는 [설정]에서 따로 넣을 수 있습니다 (비우면 같은 목소리).</span></div>`;
+  } else if (obStep === 4) {
+    const xy = ((obEditor && obEditor.config && obEditor.config.gen_ui) || {}).XY || {};
+    const nm = {prompt: '프롬프트 입력창', generate: '생성하기 버튼', download: '이미지 다운로드'};
+    h = `<h3>4. 이미지 만들기 (편집프로그램 + 드롭샷 좌표)</h3><p class="why">이미지는 드롭샷 AI 화면을 자동으로 클릭해서 만듭니다. 편집프로그램이 켜져 있어야 하고, 드롭샷 창에서 세 곳의 위치를 한 번만 잡아 두면 됩니다. 창 크기나 모니터가 바뀌면 다시 잡으세요.</p>`
+      + S(!!obEditor, '편집프로그램 연결됨', '편집프로그램이 꺼져 있습니다 — 바탕화면의 유튜브_자동화_시작 파일을 다시 실행하세요')
+      + (obEditor ? S(st[4], '드롭샷 좌표 저장됨', '좌표가 아직 없습니다') : '')
+      + `<ol class="ob-guide"><li>[드롭샷 AI 열기]로 드롭샷을 열고 로그인합니다. 이미지 생성 화면(보드)이 보이게 둡니다.</li><li>항목마다 [6초 좌표 잡기]를 누른 뒤 <b>6초 안에 마우스를 그 위치에 올려 두세요</b>. 숫자가 1이 될 때까지 그대로.</li><li>생성 버튼은 [자동 찾기]를 먼저 시도해 보세요.</li><li>[위치 확인]을 누르면 마우스가 그 자리로 이동합니다. 맞으면 끝.</li></ol>
+         <div class="row"><button class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board','_blank','noopener')">↗ 드롭샷 AI 열기</button><span class="xy-countdown" >6</span><span class="hint" id="obXyStatus"></span></div>`
+      + ['prompt', 'generate', 'download'].map(n => `<div class="keyrow"><b>${nm[n]}</b><span class="stat ${xy[n] ? 'ok' : 'bad'}">${xy[n] ? `(${xy[n].join(', ')})` : '없음'}</span>${n === 'generate' ? `<button class="mini primary" onclick="detectGenerateButton().then(renderOnboard)">자동 찾기</button>` : ''}<button class="mini ${n === 'generate' ? '' : 'primary'}" onclick="captureEditorXY('${n}')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('${n}')">위치 확인</button></div>`).join('')
+      + `<div class="row"><button class="mini" onclick="renderOnboard()">상태 다시 확인</button></div>`;
+  } else if (obStep === 5) {
+    const ch = STATE.channels || {}, keys = STATE.keys || {};
+    h = `<h3>5. 있으면 좋은 것들 (건너뛰어도 됩니다)</h3><p class="why">지금 안 해도 영상은 만들어집니다. 나중에 [설정]에서 언제든 넣을 수 있습니다.</p>
+         <ul class="ob-guide">
+           <li><b>내 유튜브 채널 연동</b> — 이미 올린 제목과 겹치는 주제를 자동으로 뺍니다. ${ch.person && ch.person.url ? '✓ 연동됨' : '<button class="mini" onclick="showView(\'settings\');setTimeout(()=>$(\'chanCard\').scrollIntoView({behavior:\'smooth\'}),50)">설정에서 넣기</button>'}</li>
+           <li><b>유튜브 API 키</b> — 조회수·게시일까지 읽어 채널 분석에 씁니다. ${c.유튜브_API_키 ? '✓ 저장됨' : '(선택)'}</li>
+           <li><b>KIE 키</b> — 앞 7장을 움직이는 영상으로 만듭니다. 없으면 이 단계만 건너뜁니다.</li>
+           <li><b>텔레그램 알림</b> — 한 편이 끝날 때 휴대폰으로 알려 줍니다. ${c.텔레그램_토큰 ? '✓ 저장됨' : '(선택)'}</li>
+           <li><b>마스코트 그림</b> — 채널 캐릭터가 있으면 [설정 → 채널 프로필]에 넣고 드롭샷 References에 올려 두세요.</li>
+         </ul>`;
+  } else {
+    const all = [1, 2, 3, 4].every(n => st[n]);
+    h = `<div class="ob-done"><div class="big">${all ? '🎉' : '🧭'}</div><h3>${all ? '준비가 끝났습니다!' : '아직 남은 항목이 있어요'}</h3><p class="why">${all ? '이제 [만들기] 화면에서 주제를 고르고 제작 시작을 누르면 대본부터 최종 영상까지 자동으로 만듭니다.' : '위 단계 중 ✓ 가 없는 항목을 마저 끝내야 제작이 실패하지 않습니다. 지금 시작해도 되지만 그 단계에서 멈춥니다.'}</p>
+         <div class="row" style="justify-content:center"><button class="primary" onclick="obFinish()">${all ? '🚀 만들기 시작' : '그래도 시작하기'}</button>${all ? '' : `<button onclick="obGo(${[1, 2, 3, 4].find(n => !st[n]) || 1})">남은 항목으로</button>`}</div></div>`;
+  }
+  $('obBody').innerHTML = h;
+  clearTimeout(obTimer);
+  if (obStep === 2 && (c.AI === 'deepseek-web') && !st[2]) obTimer = setTimeout(async () => { if ($('view-onboard').classList.contains('hidden') || obStep !== 2) return; try { STATE = await api('/api/state'); } catch (e) {} renderOnboard(); }, 4000);
+}
+function renderOnboardAI() { const web = $('ob_aiMode').value === 'deepseek-web'; $('ob_aiWeb').classList.toggle('hidden', !web); $('ob_aiKeyBox').classList.toggle('hidden', web); }

@@ -286,3 +286,36 @@ button.primary{background:var(--blue)}button.primary:hover:not(:disabled){backgr
 .gal.thumbs{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
 .wrap{max-width:1060px}
 @media(max-width:720px){.panel .inner{padding:12px 14px 14px}.panel-head{padding:10px 14px}.panel>.pipe,.panel>.stage-now,.panel>.bar,.panel>.stepbar,.panel>.hint,.panel>.startrow,.panel>.row,.panel>.qlist,.panel>.result,.panel>.banner,.panel>.preview,.panel>#styleBox{margin-left:14px;margin-right:14px}}
+
+/* ── 처음 설정(온보딩) ── */
+.ob-wrap{max-width:900px;margin:0 auto}
+.ob-steps{list-style:none;padding:0;margin:14px 0 18px;display:flex;gap:6px;flex-wrap:wrap}
+.ob-steps li{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg);font-size:14px;font-weight:600;color:var(--muted);cursor:pointer}
+.ob-steps li .n{width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.ob-steps li.on{border-color:var(--blue);color:var(--blue-dark);background:var(--blue-soft)}
+.ob-steps li.on .n{background:var(--blue);color:#fff}
+.ob-steps li.done{color:var(--green)}
+.ob-steps li.done .n{background:var(--green);color:#fff}
+.ob-body{border:1px solid var(--line);border-radius:14px;padding:20px 22px;background:var(--bg)}
+.ob-body h3{margin:0 0 6px;font-size:19px}
+.ob-body .why{color:var(--muted);font-size:14px;margin:0 0 14px;line-height:1.6}
+.ob-status{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;font-weight:700;font-size:14px;margin:6px 0 12px}
+.ob-status.ok{background:var(--green-soft);color:var(--green);border:1px solid #1F5A3C}
+.ob-status.bad{background:var(--red-soft);color:var(--red);border:1px solid #5A2A2E}
+.ob-status.wait{background:var(--amber-soft);color:#F5D48A;border:1px solid #5A4A1A}
+.ob-guide{margin:10px 0 14px;padding:0 0 0 20px;line-height:1.75;font-size:15px}
+.ob-guide li{margin:4px 0}
+.ob-guide code{background:var(--surface);padding:2px 6px;border-radius:6px;font-size:13px}
+.ob-body .keyrow b{min-width:120px}
+.ob-done{text-align:center;padding:24px 0}
+.ob-done .big{font-size:44px;margin-bottom:10px}
+/* 친절한 오류 안내 */
+.errbox{background:var(--red-soft);border:1px solid #5A2A2E;border-radius:12px;padding:14px 16px;color:#FFD6D6;line-height:1.55;margin:0 0 14px}
+.errbox b{display:block;font-size:16px;color:#FFB3B3;margin-bottom:4px}
+.errbox .why{font-size:14px;margin:0 0 10px}
+.errbox .acts{display:flex;gap:8px;flex-wrap:wrap}
+.errbox .acts button{background:var(--surface);color:var(--ink)}
+.errbox details{margin-top:8px;font-size:12.5px;color:#D9A0A0}
+.errbox details pre{white-space:pre-wrap;margin:6px 0 0;font-size:12px}
+.qitem .errbox{width:100%;margin:8px 0 0;padding:10px 12px}
+.qitem .errbox b{font-size:14px}
