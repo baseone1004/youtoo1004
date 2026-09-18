@@ -1039,7 +1039,7 @@ async function renderOnboard() {
            <li><b>압축해제된 확장 프로그램을 로드</b> → 아래 [확장 폴더 열기]로 열리는 <code>딥시크_확장</code> 폴더를 고릅니다.</li>
            <li>크롬에서 <a href="https://chat.deepseek.com" target="_blank" rel="noopener">chat.deepseek.com</a> 에 로그인한 탭을 하나 열어 둡니다 (창을 닫지 마세요).</li>
            <li>위 상태가 <b>연결됨</b>으로 바뀌면 끝입니다 (몇 초마다 자동 확인).</li></ol>
-           <div class="row"><button onclick="openPath('${js(STATE.extension_dir || '딥시크_확장')}')">📁 확장 폴더 열기</button><button class="primary" onclick="obSaveAI()">딥시크 웹으로 저장</button></div></div>
+           <div class="row"><button onclick="openPath('${js(STATE.extension_dir || '딥시크_확장')}')">📁 확장 폴더 열기</button><button class="primary" onclick="obSaveAI()">딥시크 웹으로 저장</button><button onclick="testWeb()">🧪 딥시크 응답 테스트</button><span class="hint" id="webTestHint">연결됨이어도 딥시크가 답을 안 주면 제작이 멈춥니다. 여기서 실제로 답하는지 확인하세요.</span></div></div>
          <div id="ob_aiKeyBox" class="${isWeb ? 'hidden' : ''}"><div class="keyrow"><b>API 키</b><input type="password" id="ob_aiKey" placeholder="${keys[c.AI] ? '저장됨 ' + keys[c.AI] + ' (바꿀 때만 입력)' : '키를 붙여 넣으세요'}"><button class="primary mini" onclick="obSaveAI()">저장</button></div>
            <p class="hint">제미나이 키: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> · 딥시크 키: <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> · 클로드 키: <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a></p></div>`;
   } else if (obStep === 3) {
@@ -1089,4 +1089,10 @@ async function previewBrand() {
     $('brandPreview').innerHTML = (r.images || []).map(p => `<figure><img src="/api/image?path=${encodeURIComponent(p)}&t=${Date.now()}" onclick="showBig(this.src)"><figcaption>${esc(p.split(/[\\/]/).pop())}</figcaption></figure>`).join('');
     $('brandPreviewHint').textContent = '지금 저장된 브랜드·글자 배치로 만든 샘플입니다. 색을 바꿨으면 먼저 [프로필 저장]을 누르세요.';
   } catch (e) { $('brandPreviewHint').textContent = e.message; toast(e.message, true); }
+}
+
+async function testWeb() {
+  const h = $('webTestHint') || {}; h.textContent = '딥시크에 질문을 보냈습니다. 최대 2분 기다립니다… (크롬의 chat.deepseek.com 탭을 보면 진행이 보입니다)';
+  try { const r = await api('/api/web/test', {}); h.textContent = `✓ ${r.seconds}초 만에 답함: "${r.answer}" — 딥시크 웹 정상`; toast('딥시크 웹 정상'); }
+  catch (e) { h.textContent = '✗ ' + e.message + ' → 크롬에서 chat.deepseek.com 탭을 새로고침하고 로그인·"서버 사용량 많음" 안내가 없는지 확인하세요. 계속 실패하면 제미나이 키 방식으로 바꾸세요.'; toast(e.message, true); }
 }

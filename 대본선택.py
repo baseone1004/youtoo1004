@@ -1784,6 +1784,16 @@ class H(BaseHTTPRequestHandler):
                     raise ValueError("진행 중인 작업이 끝난 뒤 다시 시작하세요.")
                 self._json({"ok": True})
                 threading.Thread(target=restart_program, args=(self.server,), daemon=True).start()
+            elif u.path == "/api/web/test":                  # 딥시크 웹이 실제로 답하는지 짧은 질문으로 확인 (최대 2분)
+                if not 웹큐.extension_alive():
+                    raise ValueError("딥시크 확장이 연결되어 있지 않습니다. 크롬에서 chat.deepseek.com 탭을 열어 두세요.")
+                t0 = time.time()
+                jid = 웹큐.submit("아래 질문에 숫자 하나로만 답하세요. 다른 말은 쓰지 마세요.\n\n1 더하기 1은?", {"new_chat": True})
+                try:
+                    out = 웹큐.wait(jid, timeout=120)
+                except RuntimeError as exc:
+                    raise ValueError(f"딥시크 웹이 {int(time.time() - t0)}초 동안 답하지 않았습니다: {exc}")
+                self._json(dict(ok=True, seconds=round(time.time() - t0, 1), answer=out.strip()[:80]))
             elif u.path == "/api/profile/preview":            # 저장된 브랜드로 샘플 썸네일 (최근 raw 원본 또는 장면 이미지 사용)
                 slot = body.get("slot") or "person"
                 self._json(dict(ok=True, images=brand_preview(slot)))

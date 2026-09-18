@@ -250,6 +250,7 @@
       <li>크롬 주소창에 <code>chrome://extensions</code> → 오른쪽 위 <b>개발자 모드</b> 켜기 → <b>압축해제된 확장 프로그램을 로드</b> → 이 폴더의 <code>딥시크_확장</code> 선택</li>
       <li>크롬에서 <code>https://chat.deepseek.com</code> 을 열고 로그인 (탭을 닫지 말고 두세요 — 최소화는 괜찮음)</li>
       <li>위 AI를 <b>딥시크 웹</b>으로 저장. 아래 상태가 "확장 연결됨"이면 끝.</li></ol><div class="hint" id="sWeb"></div></div></details>
+    <div class="row"><button class="mini" onclick="testWeb()">🧪 딥시크 응답 테스트</button><span class="hint" id="webTestHint"></span></div>
     <h3>API 키</h3>
     <div class="keyrow"><b>딥시크</b><span class="stat" id="k_deepseek"></span><input type="password" id="key_deepseek" placeholder="sk-…  (platform.deepseek.com)"><button class="mini" onclick="saveKey('deepseek')">저장</button></div>
     <div class="keyrow"><b>제미나이</b><span class="stat" id="k_gemini"></span><input type="password" id="key_gemini" placeholder="AIza…  (aistudio.google.com/apikey)"><button class="mini" onclick="saveKey('gemini')">저장</button></div>

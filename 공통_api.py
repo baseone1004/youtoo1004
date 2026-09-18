@@ -90,6 +90,8 @@ class AI:
     def ask(self, system, user, max_tokens=None, retries=2):
         if self.fallback is not None:                 # 이미 예비로 넘어갔으면 계속 예비를 쓴다
             return self.fallback.ask(system, user, max_tokens)
+        if self.name == "deepseek-web" and retries > 1:
+            retries = 1                               # 웹은 한 번 실패에 몇 분씩 걸리므로 한 번만 더 해 보고 예비 AI 로 넘어간다
         max_tokens = min(max_tokens or self.p["max_out"], self.p["max_out"])
         for attempt in range(retries + 1):
             try:
