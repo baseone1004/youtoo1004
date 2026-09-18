@@ -10,10 +10,8 @@ let STATE = null, WORK = null, pollTimer = null;
 let channel = 'person';                       // 1단계 채널 탭
 const selection = new Map();                  // key "channel|title" → {channel,title,topic}
 const custom = {person: [], mindam: []};      // 직접 적은 주제
-let toolChannel = 'person', chosenVar = null, varRef = '', bench = null;
 let galDir = '', galPromptsPath = '', galKey = '', galBusy = false, galPrompts = {path: '', count: 0};
 let kieJobId = sessionStorage.getItem('kieJobId') || '', kieTimer = null;
-let guideEditing = '';
 
 // ── 공통 ─────────────────────────────────────────────
 async function api(p, body, method) {
@@ -106,13 +104,6 @@ function renderStepBar() {
     li.classList.toggle('busy', n === 3 && busy && currentStep !== 3);
   });
 }
-function goAdvanced(name) {
-  if (name === 'gallery') return goStep(3);
-  showView('wizard');
-  if (name === 'video') { videoLoaded = true; prepareVideoEditor(); }
-  if (name === 'gallery') refreshGallery(true);
-  setTimeout(() => $('adv-' + name).scrollIntoView({behavior: 'smooth', block: 'start'}), 30);
-}
 
 // ── 준비 상태 ─────────────────────────────────────────
 async function checkReady() {
@@ -136,34 +127,31 @@ async function checkReady() {
 // ── 상태 불러오기 ──────────────────────────────────────
 async function refresh() {
   STATE = await api('/api/state');
-  const c = STATE.config, g = STATE.guidelines;
+  const c = STATE.config;
   // 1단계
   renderTopics();
   // 2단계
   renderProfileNames();
-  fill($('optGuide'), g.script, (STATE.profiles.person.지침 || {}).대본 || '정보형_대본지침.txt');
-  fill($('optImgGuide'), g.image, (STATE.profiles[channel] && STATE.profiles[channel].지침 || {}).이미지 || '이미지지침_정보형.txt');
-  $('optChunk').value = c.프롬프트_묶음 || 30; $('optHook').value = c.후킹_장면수 ?? 7;
+  $('optHook').value = c.후킹_장면수 ?? 7;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
-  if (!$('mindamLen').options.length) { $('mindamLen').innerHTML = lenOpts; $('toolLen').innerHTML = lenOpts; }
+  if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
   renderStyles(STATE.styles, c.화풍 || '실사');
   renderLenButtons(c.분당_글자수 || 270, c.대본_글자수);
   const scriptOpts = STATE.scripts.map(s => `<option value="${esc(s.path)}">${esc(s.name)}</option>`).join('');
   const keep = (sel, html, empty) => { const old = sel.value; sel.innerHTML = html || `<option value="">${empty}</option>`; if (old && [...sel.options].some(o => o.value === old)) sel.value = old; };
-  keep($('contFile'), scriptOpts, '대본 없음'); keep($('toolFile'), scriptOpts, '대본 없음');
+  keep($('contFile'), scriptOpts, '대본 없음');
   // 4단계
   const prevWork = $('workFile').value || localStorage.getItem('workScript') || '';
+  const prevGal = $('galFile').value || localStorage.getItem('selectedScript') || $('workFile').value || '';
+  const gone = p => p && !STATE.scripts.some(s => s.path === p);
+  if (gone(prevWork) || gone(prevGal)) { WORK = null; clearGallery(); localStorage.removeItem('workScript'); localStorage.removeItem('selectedScript'); }
   $('workFile').innerHTML = scriptOpts || '<option value="">완성된 대본 없음</option>';
   if (STATE.scripts.some(s => s.path === prevWork)) $('workFile').value = prevWork;
   if ($('workFile').value && (!WORK || WORK.script_file !== $('workFile').value)) { $('galFile').value = $('workFile').value; loadWorkspace(false); }
   // 고급
-  const prevGal = $('galFile').value || localStorage.getItem('selectedScript') || $('workFile').value || '';
   $('galFile').innerHTML = scriptOpts || '<option value="">대본 없음</option>';
   if (STATE.scripts.some(s => s.path === prevGal)) $('galFile').value = prevGal;
-  keep($('resetFile'), (STATE.reset_items || []).map(x => `<option value="${esc(x.id)}">${esc(x.kind === 'mindam' ? '민담 · ' : '대본 · ')}${esc(x.label)}</option>`).join(''), '초기화할 작업 없음');
-  fill($('toolMGuide'), g.mindam, '01_기획_지침.txt');
-  const guides = [...g.script, ...g.image, ...g.mindam.map(x => '민담/' + x)];
-  keep($('guideSel'), guides.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join(''), '지침 없음');
+  if (gone(prevGal)) refreshGallery(true);
   // 설정
   $('sAI').value = c.AI; $('sModel').value = c.모델 || '';
   const isWeb = c.AI === 'deepseek-web';
@@ -305,7 +293,7 @@ function renderLenButtons(cpmValue, chars) {
 function markLen() { document.querySelectorAll('#personLen button').forEach(b => b.classList.toggle('on', Math.abs(targetChars - Math.round(+b.dataset.min * cpm)) < 50)); $('personLenHint').textContent = `약 ${targetChars.toLocaleString()}자`; }
 function setLen(min) { targetChars = Math.round(min * cpm); markLen(); api('/api/config', {대본_글자수: targetChars}).catch(() => {}); }
 function productionOptions() {
-  return {guideline: $('optGuide').value, target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: $('optImgGuide').value, style: styleValue, chunk: +$('optChunk').value, thumb_position: 'auto',
+  return {guideline: '', target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: '', style: styleValue, chunk: +((STATE && STATE.config || {}).프롬프트_묶음 || 30), thumb_position: 'auto',
     steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: +$('optHook').value, render: true, thumbnail: $('optThumb').checked}};
 }
 async function startProduction() {
@@ -329,8 +317,6 @@ async function continuePipeline() {
 }
 
 // ── 3단계: 진행 ─────────────────────────────────────────
-const PIPE_STEPS = ['① 대본', '② 이미지 프롬프트', '③ 나레이션', '④ 이미지 생성', '⑤ 움직이는 영상', "⑤' 썸네일", '⑥ 최종 영상', '완료'];
-const STEP_OUT = [['script', 'file'], ['prompts', 'file'], ['narration', 'folder'], ['images', 'folder'], ['hook', 'folder'], ['thumbnails', 'folder'], ['video', 'folder'], ['assets', 'folder']];
 const KIND_LABEL = {bench: '채널 벤치마킹', script: '대본 만들기', mindam: '이야기 대본 만들기', images: '이미지 프롬프트', variations: '제목 변형', optimize: '제목·설명·태그', tts: '나레이션', pipeline: '한 편 자동 제작', queue_pipeline: '연속 제작 중', thumbnail: '썸네일'};
 function startPolling(scroll) {
   clearInterval(pollTimer); $('pgResult').classList.add('hidden'); $('pgErr').classList.add('hidden'); $('pgPreview').classList.add('hidden');
@@ -344,25 +330,10 @@ function renderOverview(job) {
   const r = job.result || {}, done = {script: !!(r.script || r.file), prompt: !!r.prompts, image: !!r.images, motion: !!r.hook, audio: !!(r.narration || r.mp3), render: !!r.video};
   for (const x of steps) if (done[x.dataset.stage]) { x.classList.add('done'); x.querySelector('small').textContent = '완료'; }
   const s = String(job.stage || '');
-  const current = s.includes('최종') ? 'render' : s.includes('후킹') ? 'motion' : s.includes('이미지 자동') ? 'image' : s.includes('나레이션') ? 'audio' : s.includes('프롬프트') ? 'prompt' : s.includes('대본') ? 'script' : '';
+  const current = s.includes('최종') ? 'render' : s.includes('후킹') ? 'motion' : s.includes('이미지') ? 'image' : s.includes('나레이션') ? 'audio' : s.includes('프롬프트') ? 'prompt' : s.includes('대본') ? 'script' : '';
   if (job.status === 'done') steps.forEach(x => { x.classList.add('done'); x.classList.remove('now'); x.querySelector('small').textContent = '완료'; });
   else if (job.status === 'running' && current) { const x = steps.find(v => v.dataset.stage === current); if (x) { x.classList.add('now'); x.querySelector('small').textContent = '진행 중'; } }
 }
-function stageIndex(st) {
-  st = st || ''; const m = st.match(/^([①②③④⑤⑥]'?)/); if (m) return PIPE_STEPS.findIndex(s => s.startsWith(m[1]));
-  if (/최종 렌더|렌더링/.test(st)) return 6; if (/썸네일/.test(st)) return 5; if (/후킹/.test(st)) return 4; if (/이미지 생성/.test(st)) return 3;
-  if (/나레이션/.test(st)) return 2; if (/프롬프트|변환/.test(st)) return 1; if (/완료/.test(st)) return 7; return 0;
-}
-function renderSteps(j) {
-  const box = $('pgSteps'); if (!['pipeline', 'queue_pipeline'].includes(j.kind)) { box.innerHTML = ''; return; }
-  let idx = stageIndex(j.stage); if (j.status === 'done') idx = PIPE_STEPS.length - 1;
-  const fin = j.status === 'done', r = j.result || {};
-  const cnt = (j.stage || '').match(/이미지 생성\s*(\d+)\/(\d+)/); const extra = cnt ? ` ${cnt[1]}/${cnt[2]}` : '';
-  box.innerHTML = PIPE_STEPS.map((s, i) => { const [key, how] = STEP_OUT[i]; const v = r[key]; const path = Array.isArray(v) ? (v[0] || '') : (v || ''); s = s + (i === 3 ? extra : '');
-    const cls = ((i < idx || fin) ? 'done' : (i === idx ? 'now' : '')) + (path ? ' has' : '');
-    return `<span class="${cls}" ${path ? `onclick="openStep('${js(path)}','${how}')" title="클릭: ${how === 'file' ? '내용 보기' : '폴더 열기'}"` : ''}>${(i < idx || fin) ? '✓ ' : ''}${esc(s)}${path ? ' ↗' : ''}</span>`; }).join('');
-}
-function openStep(path, how) { if (how === 'file') showFile(path); else openPath(path); }
 function humanStage(j) {
   const s = j.stage || '';
   const map = [[/대본/, '대본을 쓰고 있습니다'], [/프롬프트/, '장면별 이미지 설명을 만들고 있습니다'], [/나레이션/, '나레이션 음성과 자막을 만들고 있습니다'], [/이미지 자동|이미지 생성/, '드롭샷에서 이미지를 만들고 있습니다 — 마우스·키보드를 쓰지 마세요'], [/후킹/, '앞부분 움직이는 영상을 만들고 있습니다'], [/썸네일/, '썸네일을 만들고 있습니다'], [/최종|렌더/, '최종 영상을 합치고 있습니다']];
@@ -391,7 +362,7 @@ async function poll() {
   if (j.status === 'error' && j.kind === 'thumbnail' && $('workFile').value && pollTimer === null) loadWorkspace(false);
   const cur = ((STATE && STATE.queue && STATE.queue.items) || []).find(x => x.status === 'working');
   $('pgSub').textContent = cur ? `지금 만드는 편: ${cur.title}` : (j.result && j.result.title ? `작업: ${j.result.title}` : '');
-  renderSteps(j); refreshGallery(false);
+  refreshGallery(false);
   if (j.status === 'running' && (j.result || {}).script) {
     const sc = j.result.script; const opt = [...$('workFile').options].find(o => o.value === sc || sc.endsWith(o.value));
     if (opt && $('workFile').value !== opt.value) { $('workFile').value = opt.value; onWorkChange(); }
@@ -407,7 +378,6 @@ async function poll() {
   if (j.progress) p = j.progress;
   if (j.status !== 'running') { clearInterval(pollTimer); pollTimer = null; p = 1; }
   $('pgBar').style.width = (p * 100) + '%';
-  if (j.status === 'done' && j.kind === 'variations') { if ($('varBox')._shown !== j.started) { $('varBox')._shown = j.started; renderVariations(j.result); } return; }
   if (j.status === 'done') {
     const r = j.result, box = $('pgResult'); box.classList.remove('hidden'); loadWorkspace(false);
     if (j.kind === 'thumbnail' && $('workFile').value) loadWorkspace(false);
@@ -475,7 +445,7 @@ async function loadWorkspace(showToast) {
   lastWorkLoad = Date.now();
   try {
     WORK = await api('/api/workspace?script=' + encodeURIComponent(file)); localStorage.setItem('workScript', file);
-    $('workScript').value = WORK.script || ''; $('workPrompts').value = WORK.prompts || ''; $('workSrt').value = WORK.srt || '';
+    $('workScript').value = WORK.script || ''; $('workSrt').value = WORK.srt || '';
     $('workTitle').value = WORK.title || ''; $('workDesc').value = WORK.description || '';
     renderThumbs();
     $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('작업을 불러왔습니다.');
@@ -496,7 +466,7 @@ function renderStageCards() {
     el.className = 'stat ' + (isNow ? 'now' : done[k] ? 'ok' : '');
     const bar = document.querySelector(`[data-stage-bar="${k}"]`); if (bar) bar.style.width = isNow ? (Math.max(8, (j.progress || 0.1) * 100)) + '%' : done[k] ? '100%' : '0%';
   }
-  const ib = document.querySelector('[data-stage-bar="image"]'); if (ib && !now.includes('image')) ib.style.width = galFilled ? galFilled + '%' : '0%';
+  const ib = document.querySelector('[data-stage-bar="image"]'); if (ib) ib.style.width = galFilled ? galFilled + '%' : (now === 'image' ? '8%' : '0%');
 }
 let galFilled = 0;
 function renderFiles() {
@@ -533,8 +503,8 @@ async function makeWorkspaceThumbnails() {
   try { await api('/api/thumbnail', {script_file: WORK.script_file, style: styleValue, position: 'auto', regenerate: true}); startPolling(true); toast('썸네일 3장을 다시 만듭니다.'); } catch (e) { toast(e.message, true); }
 }
 async function saveWorkspaceText(kind) {
-  if (!WORK) return toast('작업을 먼저 고르세요.', true); const ids = {script: 'workScript', prompts: 'workPrompts', srt: 'workSrt'};
-  try { await api('/api/workspace/save', {script_file: WORK.script_file, kind, text: $(ids[kind]).value}); toast({script: '대본', prompts: '이미지 프롬프트', srt: '자막'}[kind] + ' 저장 완료'); } catch (e) { toast(e.message, true); }
+  if (!WORK) return toast('작업을 먼저 고르세요.', true); const ids = {script: 'workScript', srt: 'workSrt'};
+  try { await api('/api/workspace/save', {script_file: WORK.script_file, kind, text: $(ids[kind]).value}); toast({script: '대본', srt: '자막'}[kind] + ' 저장 완료'); } catch (e) { toast(e.message, true); }
 }
 async function saveWorkspaceMeta() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
@@ -560,29 +530,42 @@ async function resetEverything() {
   if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업을 먼저 중단하세요.', true);
   if (!confirm('작업했던 것을 전부 지울까요?\n대본·이미지·나레이션·썸네일·최종 영상·업로드 폴더·대기열이 모두 휴지통(대본/_휴지통)으로 옮겨집니다.\n설정(API 키·목소리·좌표)은 남습니다.')) return;
   if (!confirm('정말 전체 초기화할까요? (되돌리려면 _휴지통 폴더에서 꺼내야 합니다)')) return;
-  try { const r = await api('/api/reset-all', {}); WORK = null; selection.clear(); localStorage.removeItem('workScript'); localStorage.removeItem('selectedScript'); await refresh(); loadWorkspace(false); renderQueue({items: [], status: 'idle'}); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다. 새로 시작할 수 있습니다.`); window.scrollTo({top: 0, behavior: 'smooth'}); }
+  try { const r = await api('/api/reset-all', {}); selection.clear(); await afterScriptsRemoved(); renderQueue({items: [], status: 'idle'}); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다. 새로 시작할 수 있습니다.`); window.scrollTo({top: 0, behavior: 'smooth'}); }
   catch (e) { toast(e.message, true); }
+}
+// 대본이 지워졌거나 아직 고르지 않았을 때: 이미지 갤러리·캐시·영상변환 표시를 모두 비운다
+function clearGallery() {
+  galDir = ''; galPromptsPath = ''; galKey = ''; galFilled = 0; galPrompts = {path: '', count: 0}; galAssets = {script: '', images: '', prompts: ''};
+  $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>';
+  $('galStat').textContent = '대기'; $('kieScenes').textContent = ''; if (!kieJobId) $('kieProgress').textContent = '';
+  renderStageCards();
+}
+// 대본을 휴지통으로 옮긴 뒤: 화면의 작업·이미지·저장된 선택을 모두 비우고 남은 대본으로 다시 그린다
+async function afterScriptsRemoved() {
+  WORK = null; clearGallery(); localStorage.removeItem('workScript'); localStorage.removeItem('selectedScript');
+  $('workFile').value = ''; $('galFile').value = '';
+  await refresh(); await loadWorkspace(false); await refreshGallery(true);
 }
 async function deleteCurrentWork() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
   const name = $('workFile').options[$('workFile').selectedIndex]?.textContent || WORK.script_file;
   if (!confirm(`「${name}」의 대본·이미지·영상·음성·자막을 모두 휴지통으로 옮길까요?`)) return;
-  try { const r = await api('/api/delete-script', {script_file: WORK.script_file}); WORK = null; localStorage.removeItem('workScript'); await refresh(); loadWorkspace(false); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다.`); } catch (e) { toast(e.message, true); }
+  try { const r = await api('/api/delete-script', {script_file: WORK.script_file}); await afterScriptsRemoved(); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다.`); } catch (e) { toast(e.message, true); }
 }
 
 // ── 고급: 이미지 갤러리 ─────────────────────────────────
 function onGalFileChange() { localStorage.setItem('selectedScript', $('galFile').value); refreshGallery(true); }
 let galAssets = {script: '', images: '', prompts: ''};
 async function assetsOf(script) {
-  if (galAssets.script !== script) { galAssets = {script, images: '', prompts: ''}; try { const a = await api('/api/assets?script=' + encodeURIComponent(script)); galAssets.images = a.images; galAssets.prompts = a.prompts; } catch (e) {} }
+  if (galAssets.script !== script || !galAssets.prompts) { galAssets = {script, images: '', prompts: ''}; try { const a = await api('/api/assets?script=' + encodeURIComponent(script)); galAssets.images = a.images; galAssets.prompts = a.prompts; } catch (e) {} }
   return galAssets;
 }
 async function refreshGallery(force) {
   const j = STATE && STATE.job; let dir = '', pr = '';
   const active = j && ['pipeline', 'queue_pipeline'].includes(j.kind) && j.status === 'running';
   if ((!galleryVisible || $('view-wizard').classList.contains('hidden')) && !force && !active) return;
-  if (active && (j.result || {}).images) { dir = j.result.images; pr = j.result.prompts || ''; }
-  else if (active && (j.result || {}).script) { const a = await assetsOf(j.result.script); dir = a.images; pr = a.prompts; }
+  if (active && (j.result || {}).script) { const a = await assetsOf(j.result.script); dir = a.images; pr = a.prompts; }
+  if (active && !dir && (j.result || {}).images) { dir = j.result.images; pr = j.result.prompts || ''; }
   if (active && (j.result || {}).script && [...$('galFile').options].some(o => o.value === j.result.script) && $('galFile').value !== j.result.script) $('galFile').value = j.result.script;
   if (!active) {                                   // 여기 작업이 없어도 편집프로그램이 만드는 중이면 그 폴더를 따라간다
     const st = await genStatus();
@@ -598,8 +581,9 @@ async function refreshGallery(force) {
   await updateGallery(dir, pr); await refreshKieFiles();
 }
 async function updateGallery(dir, pr) {
-  if (!dir) { $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>'; $('galStat').textContent = ''; $('topImgsRow').classList.add('hidden'); return; }
-  if (galBusy) return; galBusy = true;
+  if (!dir) { $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>'; $('galStat').textContent = ''; return; }
+  if (galBusy) { if (!galKey) setTimeout(() => refreshGallery(true), 500); return; }   // 강제 새로고침이 앞선 읽기와 겹치면 잠시 뒤 다시
+  galBusy = true;
   try {
     let [st, all] = await Promise.all([genStatus(), listImages(dir)]);
     if (norm(st.output_dir) !== norm(dir)) st = IDLE;      // 다른 폴더를 만드는 중이면 이 폴더는 '대기'로 표시
@@ -619,11 +603,6 @@ async function updateGallery(dir, pr) {
       out.push(`<div class="g${it ? ' done' : ''}${now ? ' now' : ''}${fail ? ' fail' : ''}"><div class="no">${pad3(i)}</div><div class="pic">${it ? `<img src="${src}" loading="lazy" onclick="showBig('${src}')">` : (fail ? '실패' : (now ? '…' : '대기'))}</div><div class="st">${stTxt}</div><div class="bt">${btns}</div></div>`);
     }
     $('advGal').innerHTML = out.join('') || '<div class="hint">아직 이미지 프롬프트가 없습니다.</div>';
-    // 상단 제작 현황에도 방금 받은 이미지 8장을 바로 보여 준다
-    const latest = Object.values(imgs).sort((a, b) => b.mtime - a.mtime).slice(0, 8).sort((a, b) => a.no - b.no);
-    $('topImgsRow').classList.toggle('hidden', !latest.length);
-    $('topImgsStat').textContent = `${Object.keys(imgs).length}/${total}장 받음${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}`;
-    $('topImgs').innerHTML = latest.map(it => { const src = imageUrl(it); return `<div class="g done"><div class="no">${pad3(it.no)}</div><div class="pic"><img src="${src}" loading="lazy" onclick="showBig('${src}')"></div></div>`; }).join('');
   } catch (e) { $('galStat').textContent = '이미지 목록을 읽지 못했습니다'; galKey = ''; } finally { galBusy = false; }
 }
 async function genBodyFromUI() {
@@ -721,45 +700,6 @@ async function prepareVideoEditor() {
   } catch (e) { status.textContent = '연결 실패: ' + e.message; toast(e.message, true); }
 }
 window.addEventListener('message', e => { if (e.data && e.data.aipHeight) { const f = $('frVideo'); if (f && f.contentWindow === e.source) f.style.height = (e.data.aipHeight + 40) + 'px'; } });
-
-// ── 고급: 단계별 따로 실행 ───────────────────────────────
-function setToolChannel(ch) { toolChannel = ch; document.querySelectorAll('#adv-tools .seg button').forEach(b => b.classList.toggle('on', b.dataset.ch === ch)); $('toolMindam').classList.toggle('hidden', ch !== 'mindam'); }
-function findTopic(ch, title) { return topicSource(ch).find(t => t.제목 === title && !t._custom) || null; }
-async function startScriptOnly() {
-  const title = $('toolTitle').value.trim(); if (!title) return toast('주제를 적어 주세요.', true);
-  try {
-    if (toolChannel === 'mindam') { const b = findTopic('mindam', title); await api('/api/mindam', {title: chosenVar ? chosenVar.title : title, reference: chosenVar ? varRef : '', variation: chosenVar ? chosenVar.text : '', length: $('toolLen').value, mark_used: true, resume_dir: $('toolResume').value, bench: b, optimize: true}); }
-    else await api('/api/script', {topic: findTopic('person', title), title, guideline: $('optGuide').value, target: targetChars, mark_used: true, optimize: true});
-    startPolling(true);
-  } catch (e) { toast(e.message, true); }
-}
-async function startVariations() { const title = $('toolTitle').value.trim(); if (!title) return toast('제목을 적어 주세요.', true); try { await api('/api/variations', {title, bench: findTopic('mindam', title)}); $('varBox')._shown = null; startPolling(true); } catch (e) { toast(e.message, true); } }
-function renderVariations(r) {
-  varRef = r.reference; chosenVar = null; const box = $('varBox'); box.classList.remove('hidden');
-  box.innerHTML = `<p class="hint">원본: ${esc(r.reference)} · AI 추천: ${esc(r.recommend || '')}</p>` + r.options.map(o => `<label class="row" style="align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer" onclick="chooseVar('${o.key}')"><input type="radio" name="var" value="${o.key}" style="margin-top:6px"><div><b>[${o.key}] ${esc(o.title)}</b><pre style="margin:4px 0 0;white-space:pre-wrap;font:13px/1.5 var(--sans);color:var(--muted)">${esc(o.text.replace(/^-\s*제목.*\n?/m, ''))}</pre></div></label>`).join('');
-  box._options = r.options; goAdvanced('tools'); setTimeout(() => box.scrollIntoView({behavior: 'smooth'}), 180);
-}
-function chooseVar(k) { const o = $('varBox')._options.find(x => x.key === k); chosenVar = o; document.querySelector(`input[name=var][value=${k}]`).checked = true; toast(`선택: [${k}] ${o.title} — 이제 [대본만 만들기]를 누르세요`); }
-function toolFile() { const f = $('toolFile').value; if (!f) { toast('대본 파일을 고르세요.', true); return null; } return f; }
-async function startImages() { const f = toolFile(); if (!f) return; try { await api('/api/images', {script_file: f, guideline: $('optImgGuide').value, style: styleValue, chunk: +$('optChunk').value}); startPolling(true); } catch (e) { toast(e.message, true); } }
-async function startTTS() { const f = toolFile(); if (!f) return; try { await api('/api/tts', {script_file: f}); startPolling(true); } catch (e) { toast(e.message, true); } }
-async function startOptimize() { const f = toolFile(); if (!f) return; try { await api('/api/optimize', {script_file: f}); startPolling(true); } catch (e) { toast(e.message, true); } }
-async function startThumb() { const f = toolFile(); if (!f) return; try { await api('/api/thumbnail', {script_file: f, style: styleValue, position: 'auto'}); startPolling(true); } catch (e) { toast(e.message, true); } }
-async function restyleTo2D() { const f = toolFile(); if (!f) return; if (!confirm('이 대본의 이미지 프롬프트를 2D·레퍼런스 지시로 바꿀까요? 기존 파일은 백업됩니다.')) return; try { const r = await api('/api/restyle-2d', {script_file: f}); pickStyle('2D 일러스트'); toast(`${r.count}개 장면을 2D로 바꿨습니다`); } catch (e) { toast(e.message, true); } }
-async function makeTimestamps() { try { const j = await api('/api/timestamps', {dir: $('tsDir').value, srt: $('tsSrt').value}); $('tsOut').textContent = j.text + '\n→ ' + j.file; } catch (e) { toast(e.message, true); } }
-
-// ── 고급: 지침 수정 / 초기화 ─────────────────────────────
-async function openGuide() {
-  const name = $('guideSel').value; if (!name) return;
-  try { const j = await api('/api/guideline?name=' + encodeURIComponent(name)); guideEditing = name; $('guideName').textContent = name; $('guideText').value = j.text; $('guideEditor').classList.remove('hidden'); } catch (e) { toast(e.message, true); }
-}
-async function saveGuide() { if (!guideEditing) return; try { await api('/api/guideline', {name: guideEditing, text: $('guideText').value}); toast('지침 저장됨: ' + guideEditing); } catch (e) { toast(e.message, true); } }
-async function resetSelected() {
-  const id = $('resetFile').value, item = (STATE.reset_items || []).find(x => x.id === id);
-  if (!item) return toast('초기화할 작업을 고르세요', true);
-  if (!confirm(`「${item.label}」의 대본과 생성 자료를 모두 휴지통으로 옮길까요?`)) return;
-  try { const r = await api('/api/reset', {id, scope: 'all'}); await refresh(); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다`); } catch (e) { toast(e.message, true); }
-}
 
 // ── 벤치마킹: 비슷한 심리 채널의 히트 영상 (제목·썸네일 참고) ──
 async function loadBench() {
@@ -941,7 +881,7 @@ function pname(slot) { const p = (STATE && STATE.profiles && STATE.profiles[slot
 function renderProfileNames() {
   const P = STATE.profiles || {}; if (!P.person) return;
   $('brandSub').textContent = `${pname('person')} · ${pname('mindam')}`;
-  document.querySelectorAll('#chSeg button, #adv-tools .seg button[data-ch], [data-ach]').forEach(b => { const k = b.dataset.ch || b.dataset.ach; b.textContent = pname(k); });
+  document.querySelectorAll('#chSeg button, [data-ach]').forEach(b => { const k = b.dataset.ch || b.dataset.ach; b.textContent = pname(k); });
   document.querySelectorAll('.pname-person').forEach(el => el.textContent = pname('person'));
   document.querySelectorAll('.pname-mindam').forEach(el => el.textContent = pname('mindam'));
   document.querySelectorAll('#profSeg button').forEach(b => { b.textContent = `${pname(b.dataset.slot)} (${(P[b.dataset.slot] || {}).유형 || ''})`; });
@@ -950,9 +890,6 @@ function renderProfileNames() {
 function setProfileSlot(slot) { profileSlot = slot; document.querySelectorAll('#profSeg button').forEach(b => b.classList.toggle('on', b.dataset.slot === slot)); renderProfileForm(); }
 function renderProfileForm() {
   const P = STATE.profiles || {}, p = P[profileSlot]; if (!p || !$('pf_이름')) return;
-  const g = STATE.guidelines || {script: [], image: []};
-  const opt = (list, cur) => `<option value="">(기본)</option>` + list.map(x => `<option value="${esc(x)}" ${x === cur ? 'selected' : ''}>${esc(x)}</option>`).join('');
-  $('pf_지침_대본').innerHTML = opt(g.script, (p.지침 || {}).대본 || ''); $('pf_지침_이미지').innerHTML = opt(g.image, (p.지침 || {}).이미지 || '');
   $('pf_썸네일_레이아웃').innerHTML = Object.entries(STATE.layouts || {}).map(([k, v]) => `<option value="${k}" ${(p.썸네일 || {}).레이아웃 === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
   for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더']) $('pf_' + k).value = p[k] || '';
   for (const k of ['검색어', '기본_태그']) $('pf_' + k).value = (p[k] || []).join(', ');
@@ -969,7 +906,6 @@ function renderProfileForm() {
 async function saveProfile() {
   const data = {};
   for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더', '검색어', '기본_태그']) data[k] = $('pf_' + k).value;
-  data.지침 = {대본: $('pf_지침_대본').value, 이미지: $('pf_지침_이미지').value};
   data.마스코트 = {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) data.마스코트[k] = $('pf_마스코트_' + k).value;
   data.썸네일 = {레이아웃: $('pf_썸네일_레이아웃').value}; for (const k of ['띠_문구', '화풍', '구도']) data.썸네일[k] = $('pf_썸네일_' + k).value;
   data.브랜드 = {배지: $('pf_브랜드_배지').value, 사진_톤: $('pf_브랜드_사진_톤').value}; for (const k of ['주색', '강조색', '바탕색', '보조색']) data.브랜드[k] = $('pf_브랜드_' + k).value;

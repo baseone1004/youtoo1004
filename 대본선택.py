@@ -1376,7 +1376,7 @@ def make_pipeline(job, req):
         job.stage = "② 이미지 프롬프트"
         ip = make_image_prompts(job, dict(script_file=script, guideline=req.get("img_guideline"), style=req.get("style", "실사"),
                                           chunk=req.get("chunk", 30)))
-        result["prompts"] = ip["file"]
+        result["prompts"] = os.path.abspath(ip["file"])      # 화면이 편집프로그램(다른 폴더에서 실행)에 그대로 넘기므로 절대 경로로
     else:
         cand = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
         result["prompts"] = cand if os.path.exists(cand) else ""
@@ -1403,7 +1403,7 @@ def make_pipeline(job, req):
             raise SystemExit("이미지 프롬프트 파일이 없어 이미지 생성을 할 수 없습니다.")
         job.stage = "④ 이미지 자동 생성"
         os.makedirs(images_dir, exist_ok=True)
-        result["images"] = images_dir
+        result["images"] = os.path.abspath(images_dir)
         selected_style = req.get("style", "실사")
         prefix = req.get("style_prefix") or image_style_lock(selected_style)
         run_image_generation(job, result["prompts"], images_dir, prefix)
