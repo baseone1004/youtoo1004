@@ -951,6 +951,10 @@ function renderProfileForm() {
   for (const k of ['검색어', '기본_태그']) $('pf_' + k).value = (p[k] || []).join(', ');
   const m = p.마스코트 || {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) $('pf_마스코트_' + k).value = m[k] || '';
   const t = p.썸네일 || {}; for (const k of ['띠_문구', '화풍', '구도']) $('pf_썸네일_' + k).value = t[k] || '';
+  const b = p.브랜드 || {}; for (const k of ['주색', '강조색', '바탕색', '보조색']) $('pf_브랜드_' + k).value = b[k] || '#000000';
+  $('pf_브랜드_배지').value = b.배지 || ''; $('pf_화풍_접미').value = p.화풍_접미 || '';
+  $('pf_브랜드_사진_톤').innerHTML = Object.entries(STATE.tones || {}).map(([k, v]) => `<option value="${k}" ${(b.사진_톤 || 'none') === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  $('brandPreview').innerHTML = '';
   $('profTypeHint').textContent = profileSlot === 'mindam' ? '이야기형: 기획 → 챕터로 창작 이야기를 씁니다 (야담·민담·전설 등)' : '정보형: 주제 하나를 9구간 나레이션으로 풀어 씁니다 (심리·건강·역사·상식 등)';
   $('profStat').textContent = p.이름 || '';
   profileSlot === 'person' ? loadMascot() : ($('mascotImg').classList.add('hidden'), $('mascotStat').textContent = '');
@@ -961,6 +965,8 @@ async function saveProfile() {
   data.지침 = {대본: $('pf_지침_대본').value, 이미지: $('pf_지침_이미지').value};
   data.마스코트 = {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) data.마스코트[k] = $('pf_마스코트_' + k).value;
   data.썸네일 = {레이아웃: $('pf_썸네일_레이아웃').value}; for (const k of ['띠_문구', '화풍', '구도']) data.썸네일[k] = $('pf_썸네일_' + k).value;
+  data.브랜드 = {배지: $('pf_브랜드_배지').value, 사진_톤: $('pf_브랜드_사진_톤').value}; for (const k of ['주색', '강조색', '바탕색', '보조색']) data.브랜드[k] = $('pf_브랜드_' + k).value;
+  data.화풍_접미 = $('pf_화풍_접미').value;
   if (!data.이름.trim()) return toast('채널 이름을 넣으세요.', true);
   try { await api('/api/profile', {slot: profileSlot, data}); toast(`${data.이름} 프로필 저장됨 — 다음 제작부터 반영됩니다`); await refresh(); } catch (e) { toast(e.message, true); }
 }
@@ -1075,3 +1081,12 @@ async function renderOnboard() {
   if (obStep === 2 && (c.AI === 'deepseek-web') && !st[2]) obTimer = setTimeout(async () => { if ($('view-onboard').classList.contains('hidden') || obStep !== 2) return; try { STATE = await api('/api/state'); } catch (e) {} renderOnboard(); }, 4000);
 }
 function renderOnboardAI() { const web = $('ob_aiMode').value === 'deepseek-web'; $('ob_aiWeb').classList.toggle('hidden', !web); $('ob_aiKeyBox').classList.toggle('hidden', web); }
+
+async function previewBrand() {
+  $('brandPreviewHint').textContent = '샘플을 만드는 중…';
+  try {
+    const r = await api('/api/profile/preview', {slot: profileSlot});
+    $('brandPreview').innerHTML = (r.images || []).map(p => `<figure><img src="/api/image?path=${encodeURIComponent(p)}&t=${Date.now()}" onclick="showBig(this.src)"><figcaption>${esc(p.split(/[\\/]/).pop())}</figcaption></figure>`).join('');
+    $('brandPreviewHint').textContent = '지금 저장된 브랜드·글자 배치로 만든 샘플입니다. 색을 바꿨으면 먼저 [프로필 저장]을 누르세요.';
+  } catch (e) { $('brandPreviewHint').textContent = e.message; toast(e.message, true); }
+}

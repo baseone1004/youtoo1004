@@ -229,8 +229,14 @@
         <div class="keyrow"><b>영어 문구</b><input type="text" id="pf_마스코트_프롬프트" placeholder="이미지 프롬프트에 그대로 들어갈 영어 캐릭터 문구"></div>
         <p class="hint">이미지는 드롭샷이 만들기 때문에 <b>드롭샷 References 패널에 이 그림을 올리고 Subject로 지정</b>해 두어야 장면·썸네일에서 같은 캐릭터가 나옵니다 (한 번만 하면 됨).</p>
       </div></div>
+    <h3>나만의 색깔 (브랜드) <span class="hint">썸네일·이미지에 매번 같은 색과 표식이 들어가 채널을 알아보게 합니다</span></h3>
+    <div class="keyrow"><b>주색</b><input type="color" id="pf_브랜드_주색" style="width:56px;min-width:56px;padding:2px"><b style="min-width:auto">강조색</b><input type="color" id="pf_브랜드_강조색" style="width:56px;min-width:56px;padding:2px"><b style="min-width:auto">바탕색</b><input type="color" id="pf_브랜드_바탕색" style="width:56px;min-width:56px;padding:2px"><b style="min-width:auto">보조색</b><input type="color" id="pf_브랜드_보조색" style="width:56px;min-width:56px;padding:2px"><span class="hint">주색=어두운 바탕·글자 테두리, 강조색=둘째 줄 글씨·선, 바탕색=카드·한지, 보조색=낙관·둘째 글씨</span></div>
+    <div class="keyrow"><b>배지·낙관 문구</b><input type="text" id="pf_브랜드_배지" placeholder="비우면 채널 이름 (낙관은 네 글자까지)" style="max-width:240px"><b style="min-width:auto">사진 톤</b><select id="pf_브랜드_사진_톤" style="max-width:220px"></select></div>
+    <div class="keyrow"><b>그림 색감 문구</b><input type="text" id="pf_화풍_접미" placeholder="모든 이미지·썸네일 프롬프트 끝에 붙는 영어 색감 문구 (비우면 없음)"></div>
+    <div class="row"><button class="mini" onclick="previewBrand()">🖼 썸네일 미리 보기</button><span class="hint" id="brandPreviewHint">저장한 브랜드로 샘플 썸네일 3장을 만들어 보여 줍니다 (AI 호출 없음)</span></div>
+    <div class="gal" id="brandPreview" style="margin-top:8px"></div>
     <h3>썸네일 방식</h3>
-    <div class="keyrow"><b>글자 배치</b><select id="pf_썸네일_레이아웃" style="max-width:320px"></select><b style="min-width:auto">띠 태그 문구</b><input type="text" id="pf_썸네일_띠_문구" placeholder="하단 띠형에서 왼쪽 위 빨간 태그 (예: 옛이야기)" style="max-width:220px"></div>
+    <div class="keyrow"><b>글자 배치</b><select id="pf_썸네일_레이아웃" style="max-width:360px"></select><b style="min-width:auto">띠 태그 문구</b><input type="text" id="pf_썸네일_띠_문구" placeholder="예전 띠형에서 왼쪽 위 빨간 태그 (예: 옛이야기)" style="max-width:220px"></div>
     <div class="keyrow"><b>썸네일 화풍</b><input type="text" id="pf_썸네일_화풍" placeholder="비우면 장면 화풍을 그대로 씀 (영어)"></div>
     <div class="keyrow"><b>구도 지시</b><input type="text" id="pf_썸네일_구도" placeholder="썸네일 프롬프트에 들어갈 구도 설명 (한글)"></div>
     <div class="row"><button class="primary" onclick="saveProfile()">프로필 저장</button><span class="hint">지침 파일 안의 {{채널명}} {{채널_설명}} {{대상_시청자}} {{마스코트_이름}} {{마스코트_설명}} {{마스코트_프롬프트}} {{해시태그}} 자리에 이 값이 들어갑니다.</span></div>

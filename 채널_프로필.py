@@ -43,8 +43,10 @@ _lock = threading.Lock()
                      "rosy cheeks, a light-blue ribbon collar with a round badge, holding a heart-shaped key next to a small heart padlock, "
                      "same face, same design, consistent character design"),
         },
+        "브랜드": {"주색": "#0F1B3D", "강조색": "#4BE3C4", "바탕색": "#FFF4DC", "보조색": "#E6543C", "배지": "심리해독소", "사진_톤": "warm"},
+        "화풍_접미": "warm soft watercolor-like tones with gentle cream highlights, calm cozy lighting, consistent channel look",
         "썸네일": {
-            "레이아웃": "bottom_two",
+            "레이아웃": "navy_mint",
             "화풍": ("bright flat 2D chibi sticker illustration for a YouTube thumbnail, thick clean dark outlines, big expressive eyes, "
                    "vivid high-contrast pastel colors, simple background, exaggerated emotion, 16:9 aspect ratio"),
             "구도": ("채널 마스코트를 화면 위쪽·가운데에 크게, 과장된 감정과 상징 하나, 밝고 단순한 배경, "
@@ -67,8 +69,10 @@ _lock = threading.Lock()
         "자료_검색_접미": [],
         "면책": "※ 본 영상은 옛이야기를 바탕으로 한 창작 이야기입니다.",
         "마스코트": {"이름": "", "이미지": "", "설명": "", "프롬프트": ""},
+        "브랜드": {"주색": "#1C120A", "강조색": "#FFD54A", "바탕색": "#F3E9D2", "보조색": "#B3261E", "배지": "옛날서재", "사진_톤": "sepia"},
+        "화풍_접미": "aged sepia ink-wash tone, hanji paper texture feel, muted earthy palette, consistent channel look",
         "썸네일": {
-            "레이아웃": "band",
+            "레이아웃": "hanji_seal",
             "화풍": "",
             "구도": ("감정이 터지는 순간 한 컷 — 조선 시대 인물 얼굴 클로즈업, 두 인물의 시선 충돌, 또는 사건의 정점 중 하나. "
                    "인물 최대 2명, 밤이어도 등잔불로 얼굴이 밝게, 문구가 들어갈 화면 아래쪽은 단순하고 조금 어둡게"),
@@ -80,7 +84,9 @@ _lock = threading.Lock()
     },
 }
 
-레이아웃_이름 = {"bottom_two": "아래 두 줄 (흰색 + 노란색, 검정 테두리)", "band": "하단 띠 + 붓글씨"}
+import 썸네일_합성
+레이아웃_이름 = 썸네일_합성.레이아웃_이름
+사진_톤_이름 = {"warm": "따뜻하게 (정보형)", "sepia": "세피아 옛 사진 (이야기형)", "none": "원본 그대로"}
 
 _cache = None
 
@@ -107,6 +113,9 @@ def load(force=False):
                 saved = json.load(f) or {}
         except (OSError, ValueError):
             saved = {}
+        for slot, old in list(saved.items()):                  # 브랜드 항목이 생기기 전에 저장된 파일: 예전 글자 배치를 새 기본으로
+            if isinstance(old, dict) and "브랜드" not in old and (old.get("썸네일") or {}).get("레이아웃") in ("bottom_two", "band"):
+                old.setdefault("썸네일", {})["레이아웃"] = 기본_프로필.get(slot, 기본_프로필["person"])["썸네일"]["레이아웃"]
         data = {slot: _merge(기본_프로필[slot], saved.get(slot)) for slot in SLOTS}
         for slot in SLOTS:
             data[slot]["유형"] = 기본_프로필[slot]["유형"]      # 자리의 제작 방식은 바꿀 수 없다
@@ -183,6 +192,20 @@ def mascot_reference_note(slot):
         return ""
     return (f"[레퍼런스] 드롭샷 References 패널에 채널 마스코트 '{m['이름']}'({m.get('설명', '')[:40]}) 이미지가 올라가 있다. "
             "마스코트가 나오는 장면(C형)에는 지침의 레퍼런스 일관성 문구를 그대로 넣고, 사람 장면(D형)과 대상 장면(A형)에는 마스코트를 넣지 않는다.\n")
+
+
+def brand(slot):
+    """썸네일 합성에 넘길 브랜드 값 (배지가 비어 있으면 채널 이름)."""
+    p = get(slot)
+    b = dict(p.get("브랜드") or {})
+    if not (b.get("배지") or "").strip():
+        b["배지"] = p["이름"]
+    return b
+
+
+def style_tail(slot):
+    """이미지·썸네일 프롬프트 끝에 붙는 채널 고유 색감 문구."""
+    return (get(slot).get("화풍_접미") or "").strip()
 
 
 def summary():

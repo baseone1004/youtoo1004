@@ -22,7 +22,7 @@ class ChannelProfileTest(unittest.TestCase):
         data = P.load(force=True)
         self.assertEqual(data["person"]["이름"], "심리해독소")
         self.assertEqual(data["mindam"]["유형"], "이야기형")
-        self.assertEqual(data["mindam"]["썸네일"]["레이아웃"], "band")
+        self.assertEqual(data["mindam"]["썸네일"]["레이아웃"], "hanji_seal")
 
     def test_save_merges_and_keeps_type(self):
         saved = P.save("mindam", {"이름": "새 채널", "유형": "정보형", "검색어": "전설, 설화 ,", "마스코트": {"이름": "복이"}})

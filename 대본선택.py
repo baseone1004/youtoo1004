@@ -714,12 +714,13 @@ def make_variations(job, req):
 화풍_그룹 = {"공통": ["실사", "애니", "2D 일러스트", "파스텔", "수묵"],
           "야담·민담·옛이야기": ["사극 웹툰", "사극 실사", "민화", "풍속화", "수묵담채", "한지 동화", "목판화", "괴담 극화"]}
 
-def image_style_lock(style):
-    """선택한 화풍이 뒤의 장면 설명과 충돌해도 사진풍으로 바뀌지 않게 고정한다."""
+def image_style_lock(style, channel=None):
+    """선택한 화풍이 뒤의 장면 설명과 충돌해도 사진풍으로 바뀌지 않게 고정한다. 채널을 주면 그 채널의 색감 문구(화풍_접미)를 덧붙인다."""
     base = 화풍.get(style, 화풍["2D 일러스트"])
+    tail = (" " + 채널_프로필.style_tail(channel) + ".") if channel and 채널_프로필.style_tail(channel) else ""
     if style in ("실사", "사극 실사"):
-        return base
-    return (f"STRICT STYLE LOCK: every image must be {style} style. {base} "
+        return base + tail
+    return (f"STRICT STYLE LOCK: every image must be {style} style. {base}{tail} "
             "Keep the same linework, character design, proportions and color palette as the uploaded Dropshot reference image. "
             "If a later scene description conflicts, this style lock takes priority. "
             "Never generate a photo, photorealistic face, live-action still, realistic skin texture, 3D render or mixed-media image.")
@@ -760,7 +761,7 @@ def make_image_prompts(job, req):
     guideline = image_guideline_for(path, req.get("guideline"))
     system = read_guideline(guideline, channel_of(path))
     job.add(f"   이미지 지침: {guideline}")
-    style = image_style_lock(req.get("style", "2D 일러스트"))
+    style = image_style_lock(req.get("style", "2D 일러스트"), channel_of(path))
     chunk = int(req.get("chunk") or 25)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 · {chunk}문장씩 · 화풍 {req.get('style', '실사')}")
     outs = []
@@ -1112,6 +1113,30 @@ def thumbnail_seo_context(opt_text, script_text, is_mindam):
             f"[대상 시청자] {채널_프로필.get('mindam' if is_mindam else 'person')['대상_시청자']}")
 
 
+def brand_preview(slot):
+    """프로필의 브랜드·레이아웃으로 샘플 썸네일 3장을 만든다. 원본은 최근 썸네일 raw → 최근 장면 이미지 순으로 찾는다."""
+    pats = ([os.path.join(대본_폴더, "민담", "*", "썸네일", "raw", "*.jpg"), os.path.join(대본_폴더, "민담", "*", "images", "*.png")] if slot == "mindam" else [])
+    pats += [os.path.join(대본_폴더, "*_자료", "썸네일", "raw", "*.jpg"), os.path.join(대본_폴더, "*_자료", "images", "*.png"),
+             os.path.join(대본_폴더, "민담", "*", "썸네일", "raw", "*.jpg"), os.path.join(대본_폴더, "민담", "*", "images", "*.png")]
+    srcs = []
+    for pat in pats:
+        srcs += sorted(glob.glob(pat), key=os.path.getmtime, reverse=True)
+        if len(srcs) >= 3:
+            break
+    if not srcs:
+        raise ValueError("샘플에 쓸 그림이 아직 없습니다. 영상을 한 편 만든 뒤 다시 눌러 주세요.")
+    copies = ([("글 모르는 머슴이", "양반 셋을 이긴 방법"), ("첫날밤 사라진", "신랑의 행방"), ("쌀 한 바가지가", "만 냥이 된 사연")] if slot == "mindam"
+              else [("당첨 뒤 조용해진 집", "돈이 바꾼 가족의 이유"), ("좋은 사람인데", "만나면 지치는 이유"), ("나이 들수록", "친구가 줄어드는 이유")])
+    out_dir = os.path.join(BASE, "대본", "_상태", "브랜드_미리보기"); os.makedirs(out_dir, exist_ok=True)
+    tp = 채널_프로필.get(slot).get("썸네일") or {}
+    outs = []
+    for i, (src, (top, bottom)) in enumerate(zip(srcs[:3], copies), 1):
+        out = os.path.join(out_dir, f"{slot}_{i}.jpg")
+        썸네일_합성.compose(src, out, top, bottom, slot, layout=tp.get("레이아웃") or None, tag_text=tp.get("띠_문구") or None, brand=채널_프로필.brand(slot))
+        outs.append(out)
+    return outs
+
+
 def thumb_copies_for(script, assets, is_mindam, log=None):
     """유튜브_최적화.txt 의 썸네일 문구 3세트, 없으면 제목으로 만든다."""
     opt_path = os.path.join(assets, "유튜브_최적화.txt") if is_mindam else re.sub(r"\.txt$", "", script) + "_유튜브최적화.txt"
@@ -1162,7 +1187,8 @@ def compose_thumbnails(script, log=None):
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
         tp = 채널_프로필.get("mindam" if is_mindam else "person").get("썸네일") or {}
         layout = 썸네일_합성.compose(raws[i], out, top, bottom, "mindam" if is_mindam else "person",
-                                 layout=tp.get("레이아웃") or None, tag_text=tp.get("띠_문구") or None)
+                                 layout=tp.get("레이아웃") or None, tag_text=tp.get("띠_문구") or None,
+                                 brand=채널_프로필.brand("mindam" if is_mindam else "person"))
         outs.append(out)
         if log:
             log(f"   ✓ {out}  ({top} / {bottom}) · {dict(bottom='아래 두 줄형', band='하단 띠형')[layout]}")
@@ -1213,6 +1239,8 @@ def make_thumbnails(job, req):
     profile = 채널_프로필.get("mindam" if is_mindam else "person")
     tp = profile.get("썸네일") or {}
     style = (tp.get("화풍") or "").strip() or 화풍.get(req.get("style", "실사"), 화풍["실사"])
+    if 채널_프로필.style_tail("mindam" if is_mindam else "person"):
+        style = style.rstrip(". ") + ", " + 채널_프로필.style_tail("mindam" if is_mindam else "person")
     position = "bottom"
     layout = (tp.get("구도") or "").strip() or "핵심 인물 한 명의 감정이 즉시 읽히는 단순한 장면, 문구가 들어갈 화면 아래쪽은 단순하고 조금 어둡게"
     seo_context = thumbnail_seo_context(opt_text, script_text, is_mindam)
@@ -1620,7 +1648,7 @@ class H(BaseHTTPRequestHandler):
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
                                 job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items(),
-                                channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), layouts=채널_프로필.레이아웃_이름))
+                                channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), layouts=채널_프로필.레이아웃_이름, tones=채널_프로필.사진_톤_이름))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
             elif u.path == "/api/version":
@@ -1756,6 +1784,9 @@ class H(BaseHTTPRequestHandler):
                     raise ValueError("진행 중인 작업이 끝난 뒤 다시 시작하세요.")
                 self._json({"ok": True})
                 threading.Thread(target=restart_program, args=(self.server,), daemon=True).start()
+            elif u.path == "/api/profile/preview":            # 저장된 브랜드로 샘플 썸네일 (최근 raw 원본 또는 장면 이미지 사용)
+                slot = body.get("slot") or "person"
+                self._json(dict(ok=True, images=brand_preview(slot)))
             elif u.path == "/api/profile":
                 slot = body.get("slot") or "person"
                 saved = 채널_프로필.save(slot, body.get("data") or {})

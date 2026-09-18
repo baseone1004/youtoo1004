@@ -20,14 +20,24 @@ class ThumbnailComposeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "썸네일_1.jpg"
             layout = T.compose(self._raw(Path(td)), str(out), "나이 들수록", "시간이 빨리 가는 진짜 이유", "person")
-            self.assertEqual(layout, "bottom")
+            self.assertEqual(layout, "navy_mint")
             self.assertEqual(Image.open(out).size, (1280, 720))
 
     def test_mindam_uses_band_layout(self):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "썸네일_1.jpg"
-            self.assertEqual(T.compose(self._raw(Path(td)), str(out), "기억은 줄고", "시간은 달린다", "mindam"), "band")
+            self.assertEqual(T.compose(self._raw(Path(td)), str(out), "기억은 줄고", "시간은 달린다", "mindam"), "hanji_seal")
             self.assertTrue(out.is_file())
+
+    def test_every_layout_renders_with_custom_brand(self):
+        brand = {"주색": "#112233", "강조색": "#33CCAA", "바탕색": "#FFF8E8", "보조색": "#CC3322", "배지": "내채널", "사진_톤": "sepia"}
+        with tempfile.TemporaryDirectory() as td:
+            raw = self._raw(Path(td))
+            for name in T.레이아웃_이름:
+                out = Path(td) / f"{name}.jpg"
+                got = T.compose(raw, str(out), "짧은 윗줄", "조금 더 긴 아랫줄 문구입니다", "person", layout=name, brand=brand)
+                self.assertEqual(got, "bottom" if name == "bottom_two" else name)
+                self.assertEqual(Image.open(out).size, (1280, 720))
 
 
 
