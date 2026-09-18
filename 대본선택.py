@@ -738,10 +738,15 @@ def script_body(text):
 def image_guideline_for(script_file, requested=""):
     """채널 프로필에 정한 이미지 지침. 화면에서 고른 지침이 다른 채널의 기본 지침이면 이 채널의 것으로 바꾼다."""
     channel = channel_of(script_file)
-    defaults = {slot: (채널_프로필.get(slot)["지침"].get("이미지") or "") for slot in 채널_프로필.SLOTS}
-    own = defaults.get(channel) or ("이미지지침_이야기형.txt" if channel == "mindam" else "이미지지침_정보형.txt")
+    builtin = {"person": "이미지지침_정보형.txt", "mindam": "이미지지침_이야기형.txt"}
+    exists = lambda n: bool(n) and os.path.isfile(os.path.join(지침_폴더, n))
+    own = 채널_프로필.get(channel)["지침"].get("이미지") or ""
+    if not exists(own):
+        own = builtin[channel]
     requested = (requested or "").strip()
-    if not requested or requested in defaults.values():
+    # 화면에서 고른 것이 채널 기본 지침들(정보형/이야기형 또는 각 프로필의 기본) 중 하나면 이 채널의 것으로 바꾼다
+    channel_defaults = set(builtin.values()) | {(채널_프로필.get(slot)["지침"].get("이미지") or "") for slot in 채널_프로필.SLOTS}
+    if not requested or requested in channel_defaults or not exists(requested):
         return own
     return requested                          # 사용자가 따로 만든 지침 파일이면 그대로
 

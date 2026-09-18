@@ -113,6 +113,10 @@ def load(force=False):
                 saved = json.load(f) or {}
         except (OSError, ValueError):
             saved = {}
+        옛_지침 = {"사람의이유_대본지침.txt": "정보형_대본지침.txt", "이미지지침_심리해독소.txt": "이미지지침_정보형.txt", "이미지지침_민담.txt": "이미지지침_이야기형.txt"}
+        for slot, old in list(saved.items()):                  # 예전 지침 파일 이름이 저장돼 있으면 새 이름으로
+            for k, v in list((old.get("지침") or {}).items()) if isinstance(old, dict) else []:
+                old["지침"][k] = 옛_지침.get(v, v)
         for slot, old in list(saved.items()):                  # 브랜드 항목이 생기기 전에 저장된 파일: 예전 글자 배치를 새 기본으로
             if isinstance(old, dict) and "브랜드" not in old and (old.get("썸네일") or {}).get("레이아웃") in ("bottom_two", "band"):
                 old.setdefault("썸네일", {})["레이아웃"] = 기본_프로필.get(slot, 기본_프로필["person"])["썸네일"]["레이아웃"]
