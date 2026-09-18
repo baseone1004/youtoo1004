@@ -1191,7 +1191,7 @@ def compose_thumbnails(script, log=None):
                                  brand=채널_프로필.brand("mindam" if is_mindam else "person"))
         outs.append(out)
         if log:
-            log(f"   ✓ {out}  ({top} / {bottom}) · {dict(bottom='아래 두 줄형', band='하단 띠형')[layout]}")
+            log(f"   ✓ {out}  ({top} / {bottom}) · {썸네일_합성.레이아웃_이름.get(layout, layout)}")
     return dict(thumbnails=outs, dir=tdir)
 
 

@@ -382,6 +382,13 @@ async function poll() {
   if (log.textContent !== txt) { log.textContent = txt; if ($('pgFollow').checked) log.scrollTop = log.scrollHeight; }
   $('pgLines').textContent = `(${j.log.length}줄)`;
   $('pgStage').textContent = j.status === 'running' ? humanStage(j) : j.status === 'done' ? '✅ 완료' : '❌ 중단됨';
+  // 썸네일 단계에서는 원본이 내려받아지는 대로, 문구가 얹히는 대로 바로 보이게 3초마다 작업 폴더를 다시 읽는다
+  if (j.status === 'running' && (j.kind === 'thumbnail' || /썸네일/.test(String(j.stage || '')))) {
+    const sf = (j.result || {}).script || (j.result || {}).file;      // 연속 제작 중이면 지금 만드는 대본을 '보고 있는 작업'으로 맞춘다
+    if (sf && $('workFile').value !== sf && [...$('workFile').options].some(o => o.value === sf)) { $('workFile').value = sf; WORK = null; }
+    if ($('workFile').value && Date.now() - lastWorkLoad > 3000) loadWorkspace(false);
+  }
+  if (j.status === 'error' && j.kind === 'thumbnail' && $('workFile').value && pollTimer === null) loadWorkspace(false);
   const cur = ((STATE && STATE.queue && STATE.queue.items) || []).find(x => x.status === 'working');
   $('pgSub').textContent = cur ? `지금 만드는 편: ${cur.title}` : (j.result && j.result.title ? `작업: ${j.result.title}` : '');
   renderSteps(j); refreshGallery(false);
