@@ -177,7 +177,7 @@ async function refresh() {
   $('sVoiceP').value = c.인월드_목소리_사람 || ''; $('sSpeedP').value = c.인월드_속도_사람 || 1.0;
   $('sVoiceM').value = c.인월드_목소리_민담 || ''; $('sSpeedM').value = c.인월드_속도_민담 || 1.0; $('sCpm').value = c.분당_글자수 || 270;
   $('vPerson').textContent = c.인월드_목소리_사람 ? '저장됨' : '없음'; $('vPerson').className = 'stat ' + (c.인월드_목소리_사람 ? 'ok' : 'bad');
-  $('vMindam').textContent = c.인월드_목소리_민담 ? '저장됨' : '없음 → 공용 목소리'; $('vMindam').className = 'stat ' + (c.인월드_목소리_민담 ? 'ok' : '');
+  $('vMindam').textContent = c.인월드_목소리_민담 ? '저장됨 (따로 씀)' : '없음 → ' + pname('person') + ' 목소리 사용'; $('vMindam').className = 'stat ' + (c.인월드_목소리_민담 ? 'ok' : '');
   $('vCpm').textContent = (c.분당_글자수 || 270) + '자/분';
   $('tgTokenStat').textContent = c.텔레그램_토큰 ? '저장됨 ' + c.텔레그램_토큰 : '없음'; $('tgTokenStat').className = 'stat ' + (c.텔레그램_토큰 ? 'ok' : '');
   $('tgChatStat').textContent = c.텔레그램_채팅_ID ? '연결된 채팅: ' + c.텔레그램_채팅_ID : '연결된 채팅 없음';
@@ -859,8 +859,8 @@ async function saveKey(k) {
 async function saveVoice(ch) {
   const body = ch === 'mindam' ? {인월드_목소리_민담: $('sVoiceM').value.trim(), 인월드_속도_민담: +$('sSpeedM').value}
     : {인월드_목소리_사람: $('sVoiceP').value.trim(), 인월드_속도_사람: +$('sSpeedP').value, 인월드_목소리: $('sVoiceP').value.trim(), 인월드_속도: +$('sSpeedP').value, 인월드_모델: $('sInworldModel').value};
-  if (!(ch === 'mindam' ? body.인월드_목소리_민담 : body.인월드_목소리_사람)) return toast('목소리 ID를 입력하세요', true);
-  await api('/api/config', body); toast(pname(ch) + ' 목소리 저장됨'); refresh();
+  if (ch !== 'mindam' && !body.인월드_목소리_사람) return toast('목소리 ID를 입력하세요', true);
+  await api('/api/config', body); toast(pname(ch) + (ch === 'mindam' && !body.인월드_목소리_민담 ? ' 목소리 비움 → ' + pname('person') + ' 목소리를 같이 씁니다' : ' 목소리 저장됨')); refresh();
 }
 async function saveCpm() { await api('/api/config', {분당_글자수: +$('sCpm').value, 인월드_모델: $('sInworldModel').value}); toast('저장됨'); refresh(); }
 async function saveTelegramToken() { const token = $('tgToken').value.trim(); if (!token) return toast('BotFather에서 받은 봇 토큰을 입력하세요.', true); await api('/api/config', {텔레그램_봇_토큰: token}); $('tgToken').value = ''; toast('토큰 저장. 이제 봇에게 메시지를 보내고 채팅 자동 찾기를 누르세요.'); refresh(); }
@@ -1000,9 +1000,11 @@ async function obSaveAI() {
   } catch (e) { toast(e.message, true); }
 }
 async function obSaveVoice() {
-  const key = $('ob_inKey').value.trim(), voice = $('ob_voice').value.trim(); const body = {};
-  if (key) body.인월드_API_키 = key; if (voice) { body.인월드_목소리_사람 = voice; body.인월드_목소리 = voice; }
-  if (!Object.keys(body).length) return toast('키 또는 목소리 ID를 입력하세요.', true);
+  const key = $('ob_inKey').value.trim(), voice = $('ob_voice').value.trim(), voiceM = $('ob_voiceM').value.trim();
+  const body = {인월드_목소리_민담: voiceM, 인월드_속도_민담: +$('ob_speedM').value || 1.0, 인월드_속도_사람: +$('ob_speedP').value || 1.0};
+  if (key) body.인월드_API_키 = key;
+  if (voice) { body.인월드_목소리_사람 = voice; body.인월드_목소리 = voice; body.인월드_속도 = body.인월드_속도_사람; }
+  if (!key && !voice && !voiceM) return toast('키 또는 목소리 ID를 입력하세요.', true);
   try { await api('/api/config', body); $('ob_inKey').value = ''; toast('나레이션 설정 저장'); await refresh(); renderOnboard(); } catch (e) { toast(e.message, true); }
 }
 async function renderOnboard() {
@@ -1036,12 +1038,13 @@ async function renderOnboard() {
            <p class="hint">제미나이 키: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> · 딥시크 키: <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> · 클로드 키: <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a></p></div>`;
   } else if (obStep === 3) {
     const keys = STATE.keys || {};
-    h = `<h3>3. 나레이션 목소리 (인월드)</h3><p class="why">대본을 읽어 주는 음성입니다. 인월드(inworld.ai)에서 API 키를 받고, 마음에 드는 목소리의 ID를 넣으세요.</p>`
-      + S(st[3], `인월드 키 · 목소리 ${c.인월드_목소리_사람 || c.인월드_목소리}`, c.인월드키있음 ? '목소리 ID가 없습니다' : '인월드 키가 없습니다')
-      + `<ol class="ob-guide"><li><a href="https://inworld.ai" target="_blank" rel="noopener">inworld.ai</a> 가입 → API Keys 에서 키 발급</li><li>Voices 목록에서 한국어 목소리를 골라 ID(예: Sarah)를 복사</li><li>아래에 넣고 저장</li></ol>
+    h = `<h3>3. 나레이션 목소리 (인월드)</h3><p class="why">대본을 읽어 주는 음성입니다. 인월드(inworld.ai)에서 API 키를 받고, 채널마다 어울리는 목소리의 ID를 넣으세요. 두 채널은 목소리를 따로 씁니다 (이야기형을 비우면 정보형 목소리를 같이 씁니다).</p>`
+      + S(st[3], `인월드 키 · ${pname('person')} ${c.인월드_목소리_사람 || c.인월드_목소리}${c.인월드_목소리_민담 ? ` · ${pname('mindam')} ${c.인월드_목소리_민담}` : ''}`, c.인월드키있음 ? '정보형 채널 목소리 ID가 없습니다' : '인월드 키가 없습니다')
+      + `<ol class="ob-guide"><li><a href="https://inworld.ai" target="_blank" rel="noopener">inworld.ai</a> 가입 → API Keys 에서 키 발급</li><li>Voices 목록에서 한국어 목소리를 골라 ID(예: Sarah)를 복사. 정보형은 차분한 목소리, 이야기형은 구수한 이야기꾼 목소리가 어울립니다.</li><li>아래에 넣고 저장</li></ol>
          <div class="keyrow"><b>인월드 키</b><input type="password" id="ob_inKey" placeholder="${keys.inworld ? '저장됨 ' + keys.inworld + ' (바꿀 때만 입력)' : '키를 붙여 넣으세요'}"></div>
-         <div class="keyrow"><b>목소리 ID</b><input type="text" id="ob_voice" value="${esc(c.인월드_목소리_사람 || c.인월드_목소리 || '')}" placeholder="예: Sarah"></div>
-         <div class="row"><button class="primary" onclick="obSaveVoice()">저장</button><span class="hint">이야기형 채널의 목소리는 [설정]에서 따로 넣을 수 있습니다 (비우면 같은 목소리).</span></div>`;
+         <div class="keyrow"><b>${esc(pname('person'))}</b><input type="text" id="ob_voice" value="${esc(c.인월드_목소리_사람 || c.인월드_목소리 || '')}" placeholder="목소리 ID (예: Sarah)" style="max-width:220px"><label>속도 <input type="number" id="ob_speedP" value="${c.인월드_속도_사람 || c.인월드_속도 || 1.0}" step="0.05" min="0.5" max="1.5" style="width:80px"></label></div>
+         <div class="keyrow"><b>${esc(pname('mindam'))}</b><input type="text" id="ob_voiceM" value="${esc(c.인월드_목소리_민담 || '')}" placeholder="비우면 ${esc(pname('person'))} 목소리 사용" style="max-width:220px"><label>속도 <input type="number" id="ob_speedM" value="${c.인월드_속도_민담 || c.인월드_속도 || 1.0}" step="0.05" min="0.5" max="1.5" style="width:80px"></label></div>
+         <div class="row"><button class="primary" onclick="obSaveVoice()">저장</button><span class="hint">속도 1.0이 보통, 0.9는 조금 느리게 (시니어 시청자는 0.9~1.0 권장).</span></div>`;
   } else if (obStep === 4) {
     const xy = ((obEditor && obEditor.config && obEditor.config.gen_ui) || {}).XY || {};
     const nm = {prompt: '프롬프트 입력창', generate: '생성하기 버튼', download: '이미지 다운로드'};
