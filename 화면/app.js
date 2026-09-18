@@ -441,7 +441,7 @@ function explainError(message, opts) {
 }
 function errorHelp(message) { return explainError(message); }
 async function switchAI(name) {
-  try { await api('/api/config', {AI: name}); toast(`대본 AI를 ${name} 로 바꿨습니다. 다시 시도합니다…`); await refresh(); if (STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status))) await queueControl('resume'); }
+  try { await api('/api/config', {AI: name, 모델: ''}); toast(`대본 AI를 ${name} 로 바꿨습니다. 다시 시도합니다…`); await refresh(); if (STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status))) await queueControl('resume'); }
   catch (e) { toast(e.message, true); }
 }
 async function cancelJob() { if (!confirm('지금 만들고 있는 작업을 중단할까요?')) return; try { await api('/api/cancel', {}); toast('중단을 요청했습니다.'); } catch (e) { toast(e.message, true); } }

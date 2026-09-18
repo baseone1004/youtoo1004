@@ -1845,12 +1845,16 @@ class H(BaseHTTPRequestHandler):
                 write_guideline(body["name"], body["text"]); self._json({"ok": True})
             elif u.path == "/api/config":
                 cfg = load_json("설정.json", {})
+                prev_ai = (cfg.get("AI") or "").strip().lower()
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
-                    if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감
+                    if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감
                         cfg[k] = str(body[k]).strip() if isinstance(body[k], str) else body[k]
+                # AI 를 바꾸면 이전 AI 의 모델 이름이 남지 않게 (예: gemini 인데 deepseek-chat) — 새 AI 의 기본 모델을 쓴다
+                if "AI" in body and body["AI"] != prev_ai and "모델" not in body:
+                    cfg["모델"] = ""
                 # 서비스별 키 ↔ 현재 AI 의 키 동기화 (AI 를 바꾸면 그 서비스에 저장된 키가 자동으로 쓰인다)
                 ai = (cfg.get("AI") or "deepseek").strip().lower()
                 if ai == "deepseek-web":
