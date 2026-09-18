@@ -589,17 +589,18 @@ async function updateGallery(dir, pr) {
     const imgs = {}; all.forEach(i => { if (!i.video) imgs[i.no] = i; });
     if (pr && galPrompts.path !== pr) { try { const pj = await post8765('/api/gen/prompts', {path: pr}); galPrompts = {path: pr, count: pj.count || 0}; } catch (e) { galPrompts = {path: pr, count: 0}; } }
     const total = Math.max(st.total || 0, galPrompts.count || 0, ...Object.keys(imgs).map(Number), 0);
-    const key = JSON.stringify([st.status, st.current, Object.values(imgs).map(i => i.mtime)]);
+    const queued = new Set(st.queued || []);
+    const key = JSON.stringify([st.status, st.current, [...queued], Object.values(imgs).map(i => i.mtime)]);
     galFilled = total ? Math.round(Object.keys(imgs).length / total * 100) : 0; renderStageCards();
     $('galStat').textContent = `${Object.keys(imgs).length}/${total} · ${({running: '생성 중', paused: '잠시 멈춤', done: '완료', stopped: '중단', error: '오류', idle: '대기'})[st.status] || st.status}${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}${st.failed && st.failed.length ? ' · 실패 ' + st.failed.join(',') : ''}`;
     if (key === galKey) return; galKey = key;
     const busy = st.status === 'running' || st.status === 'paused', failed = new Set(st.failed || []); const out = [];
     for (let i = 1; i <= total; i++) {
-      const it = imgs[i], now = busy && st.current === i, fail = !it && failed.has(i);
+      const it = imgs[i], now = busy && st.current === i, fail = !it && failed.has(i), wait = queued.has(i) && !now;
       const src = it ? imageUrl(it) : '';
-      const stTxt = it ? '완료' : (now ? '만드는 중' : (fail ? '실패' : '대기'));
-      const btns = it ? `<button class="re" onclick="regenScene(${i})">다시 만들기</button><button class="vi" onclick="hookScene(${i})">움직이기</button>` : `<button class="re" onclick="regenScene(${i})">${fail ? '다시 시도' : '만들기'}</button>`;
-      out.push(`<div class="g${it ? ' done' : ''}${now ? ' now' : ''}${fail ? ' fail' : ''}"><div class="no">${pad3(i)}</div><div class="pic">${it ? `<img src="${src}" loading="lazy" onclick="showBig('${src}')">` : (fail ? '실패' : (now ? '…' : '대기'))}</div><div class="st">${stTxt}</div><div class="bt">${btns}</div></div>`);
+      const stTxt = wait ? '다시 만들기 예약' : it ? '완료' : (now ? '만드는 중' : (fail ? '실패' : '대기'));
+      const btns = wait ? '<button class="re" disabled>예약됨</button>' : it ? `<button class="re" onclick="regenScene(${i})">다시 만들기</button><button class="vi" onclick="hookScene(${i})">움직이기</button>` : `<button class="re" onclick="regenScene(${i})">${fail ? '다시 시도' : '만들기'}</button>`;
+      out.push(`<div class="g${it ? ' done' : ''}${now ? ' now' : ''}${fail ? ' fail' : ''}${wait ? ' queued' : ''}"><div class="no">${pad3(i)}</div><div class="pic">${it ? `<img src="${src}" loading="lazy" onclick="showBig('${src}')">` : (fail ? '실패' : (now ? '…' : '대기'))}</div><div class="st">${stTxt}</div><div class="bt">${btns}</div></div>`);
     }
     $('advGal').innerHTML = out.join('') || '<div class="hint">아직 이미지 프롬프트가 없습니다.</div>';
   } catch (e) { $('galStat').textContent = '이미지 목록을 읽지 못했습니다'; galKey = ''; } finally { galBusy = false; }
@@ -621,11 +622,12 @@ async function galStart(fromScratch) {
 }
 async function galCtl(what) { try { await post8765('/api/gen/' + what, {}); toast({pause: '잠시 멈춤', resume: '계속', stop: '중단 요청'}[what]); galKey = ''; } catch (e) { toast(e.message, true); } }
 async function regenScene(no) {
-  try { const st = await get8765('/api/gen/status'); if (st.status === 'running' || st.status === 'paused') return toast('지금 이미지 생성이 돌아가는 중입니다. [■ 중단] 뒤에 다시 누르거나 끝날 때까지 기다리세요.', true); } catch (e) {}
-  if (!confirm(pad3(no) + '번 장면을 다시 만들까요? (드롭샷 창을 가리지 마세요)')) return;
+  let busy = false; try { const st = await get8765('/api/gen/status'); busy = st.status === 'running' || st.status === 'paused'; } catch (e) {}
+  // 생성 중이면 편집프로그램이 예약해 두었다가 남은 장면을 다 만든 뒤 이 장면을 새로 만든다
+  if (!confirm(busy ? `지금 이미지를 만드는 중입니다. 남은 장면을 다 만든 뒤 ${pad3(no)}번을 다시 만들까요?` : pad3(no) + '번 장면을 다시 만들까요? (드롭샷 창을 가리지 마세요)')) return;
   try {
     const body = await genBodyFromUI(); Object.assign(body, {scene: no, start_no: no, end_no: no, skip_existing: false}); delete body.auto_generate;
-    await post8765('/api/gen/regen', body); toast(pad3(no) + '번 다시 만들기 시작'); galKey = '';
+    const r = await post8765('/api/gen/regen', body); toast(pad3(no) + (r.queued ? '번 다시 만들기 예약됨 — 남은 장면 뒤에 만듭니다' : '번 다시 만들기 시작')); galKey = '';
   } catch (e) { toast(e.message, true); }
 }
 async function hookScene(no) {

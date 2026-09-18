@@ -186,6 +186,7 @@ details.box.soft{background:var(--bg)}
 .gal .g .pic img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 .gal .g.done{border-color:#1F5A3C}.gal .g.done .st{color:var(--green)}
 .gal .g.now{border-color:var(--amber);box-shadow:0 0 0 2px var(--amber-soft)}.gal .g.now .st{color:var(--amber);font-weight:700}
+.gal .g.queued{border-style:dashed;border-color:var(--amber)}.gal .g.queued .st{color:var(--amber)}
 .gal .g.fail{border-color:#5A2A2E}.gal .g.fail .pic{background:var(--red-soft);color:var(--red);font-weight:700}
 .gal .g .bt{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
 .gal .g .bt button{font-size:11.5px;padding:3px 8px;border-radius:6px}
