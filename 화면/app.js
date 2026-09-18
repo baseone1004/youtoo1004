@@ -405,6 +405,7 @@ function explainError(message, opts) {
   const gemini = STATE && STATE.keys && STATE.keys.gemini;
   let t;
   if (/중단|취소|cancel/i.test(raw) && !/편집프로그램|이미지 생성/.test(raw)) t = {title: '사용자가 중단했습니다', why: '이어서 만들려면 다시 시도를 누르세요.', acts: R};
+  else if (/이미지 생성이 끝나지 않음: stopped/.test(raw)) t = {title: '이미지 생성이 중단되었습니다', why: '이미지 칸의 [■ 중단]을 눌렀거나 마우스가 화면 모서리로 가서 멈췄습니다. 다시 시도하면 빠진 장면부터 이어서 만듭니다.', acts: R};
   else if (/확장|chat\.deepseek|웹 대기|딥시크 웹|답변이 시작되지|deepseek-web/i.test(raw)) t = {title: '딥시크 창이 응답하지 않았어요', why: '크롬의 chat.deepseek.com 탭이 닫혔거나, 확장 연결이 끊겼거나, 딥시크가 느린 상태입니다. 탭이 열려 있고 로그인돼 있는지 확인한 뒤 다시 시도하세요.', acts: [['확장 상태 확인', "showView('settings')"], ...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
   else if (/8765|편집프로그램|연결할 수 없|Failed to fetch|ECONNREFUSED|WinError 10061/i.test(raw)) t = {title: '편집프로그램이 꺼져 있어요', why: '이미지·영상을 만드는 편집프로그램(8765)에 연결되지 않았습니다. 바탕화면의 시작 파일(유튜브_자동화_시작)을 다시 실행해 두 프로그램을 모두 켠 뒤 다시 시도하세요.', acts: [['연결 상태 확인', "showView('settings')"], ...R]};
   else if (/좌표|드롭샷|창을 찾|window|생성 버튼|다운로드 버튼|이미지 생성이 끝나지|실패 \d+장/i.test(raw)) t = {title: '드롭샷 창을 못 찾았거나 좌표가 안 맞아요', why: '드롭샷 창이 닫혔거나 위치·크기가 바뀌면 자동 클릭이 빗나갑니다. 드롭샷 창을 열고 좌표 세 개를 다시 잡은 뒤 [위치 확인]으로 점검하세요.', acts: [['좌표 다시 잡기', "showView('settings')"], ...R]};
@@ -613,14 +614,21 @@ async function genBodyFromUI() {
     wait_generate: +(ui.wait_generate || 60), wait_download: +(ui.wait_download || 120), wait_next: 0.5, start_no: 1, end_no: 0, skip_existing: true,
     style_prefix: (STATE.style_prefixes || {})[styleValue] || ui.style_prefix || '', retries: 1, window_keyword: ui.window_keyword || '드롭샷', auto_generate: ui.auto_generate !== false};
 }
-async function galStart(fromScratch) {
+async function galStart() {
   try {
     const body = await genBodyFromUI();
-    if (fromScratch) { if (!confirm('지금 있는 그림을 전부 이전/ 폴더로 옮기고 1번부터 다시 만들까요?')) return; const r = await post8765('/api/gen/reset', {output_dir: galDir}); body.skip_existing = false; toast(`그림 ${r.moved}장을 이전/ 으로 옮겼습니다`); }
-    await post8765('/api/gen/start', body); galKey = ''; toast((fromScratch ? '1번부터 다시 만듭니다' : '빠진 장면부터 이어서 만듭니다') + ' — 드롭샷 창을 가리지 마세요');
+    const st = await genStatus();
+    if (['running', 'paused'].includes(st.status)) return toast('지금 이미지를 만드는 중입니다. 끝나면 빠진 장면만 다시 누르세요.', true);
+    const have = new Set((await listImages(galDir)).filter(x => !x.video).map(x => x.no));
+    const missing = []; for (let i = 1; i <= (galPrompts.count || 0); i++) if (!have.has(i)) missing.push(i);
+    if (galPrompts.count && !missing.length) return toast('빠진 장면이 없습니다. 특정 장면을 바꾸려면 그 그림의 [다시 만들기]를 누르세요.');
+    await post8765('/api/gen/start', body); galKey = '';
+    toast((missing.length ? `빠진 장면 ${missing.length}장(${pad3(missing[0])}번부터)을 이어서 만듭니다` : '빠진 장면부터 이어서 만듭니다') + ' — 드롭샷 창을 가리지 마세요');
   } catch (e) { toast(e.message, true); }
 }
-async function galCtl(what) { try { await post8765('/api/gen/' + what, {}); toast({pause: '잠시 멈춤', resume: '계속', stop: '중단 요청'}[what]); galKey = ''; } catch (e) { toast(e.message, true); } }
+async function galStop() {
+  try { const st = await genStatus(); if (!['running', 'paused'].includes(st.status)) return toast('지금 만드는 중인 이미지가 없습니다.'); await post8765('/api/gen/stop', {}); toast('중단 요청 — 지금 장면까지만 끝내고 멈춥니다'); galKey = ''; } catch (e) { toast(e.message, true); }
+}
 async function regenScene(no) {
   let busy = false; try { const st = await get8765('/api/gen/status'); busy = st.status === 'running' || st.status === 'paused'; } catch (e) {}
   // 생성 중이면 편집프로그램이 예약해 두었다가 남은 장면을 다 만든 뒤 이 장면을 새로 만든다
@@ -774,7 +782,7 @@ function renderChannels(ch) {
     else if (info.busy && !info.fetched) { st.textContent = '읽는 중…'; st.className = 'stat'; inf.textContent = '채널 제목을 가져오는 중입니다. 잠시 뒤 새로고침하세요.'; }
     else if (info.fetched) {
       st.textContent = info.warning ? '연동됨 (제목만)' : '연동됨'; st.className = 'stat ok';
-      inf.textContent = `${info.name} · 영상 ${info.count}편${info.count ? '' : ' (아직 올린 영상이 없어 뺄 주제도 없습니다)'} · ${info.fetched} 확인${info.busy ? ' · 다시 읽는 중…' : ''}${info.warning ? '\n⚠ ' + info.warning : ''}`;
+      inf.textContent = `${info.name} · 영상 ${info.count}편${info.count ? '' : ' (공개된 영상이 없어 뺄 주제도 없습니다 — 비공개·일부공개 영상은 읽지 못합니다)'} · ${info.fetched} 확인${info.busy ? ' · 다시 읽는 중…' : ''}${info.warning ? '\n⚠ ' + info.warning : ''}`;
     }
     else { st.textContent = '대기'; st.className = 'stat'; inf.textContent = '아직 읽지 않았습니다. [제목 다시 읽기]를 누르세요.'; }
     if (document.activeElement !== $(urlId)) $(urlId).value = info.url || '';

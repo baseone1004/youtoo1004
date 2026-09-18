@@ -16,7 +16,7 @@ import 유튜브_API
 
 CACHE = os.path.join("대본", "_상태", "채널_제목.json")
 CONFIG_KEY = {"person": "내_채널", "mindam": "민담_채널"}
-REFRESH_AFTER = datetime.timedelta(hours=6)
+REFRESH_AFTER = datetime.timedelta(hours=1)          # 새로 올린 영상이 추천에서 빨리 빠지도록 자주 확인한다
 _lock = threading.Lock()
 _busy = set()
 
@@ -91,6 +91,25 @@ def fetch(cfg, channel):
     finally:
         with _lock:
             _busy.discard(channel)
+
+
+def age_minutes(channel):
+    """저장본을 받은 지 몇 분 지났는지 (없으면 아주 큰 값)."""
+    info = cached(channel)
+    try:
+        return (datetime.datetime.now() - datetime.datetime.strptime(info["fetched"], "%Y-%m-%d %H:%M")).total_seconds() / 60
+    except (KeyError, ValueError, TypeError):
+        return 10 ** 9
+
+
+def fetch_if_stale(cfg, channel, minutes=10):
+    """저장본이 minutes 보다 오래됐으면 지금 바로(동기) 다시 받는다. 주제를 추천하기 직전에 써서 방금 올린 영상도 걸러 낸다."""
+    url = channel_url(cfg, channel)
+    if not url or (T is None and not str(cfg.get("유튜브_API_키", "") or "").strip()):
+        return cached(channel)
+    if cached(channel).get("url") == url and age_minutes(channel) < minutes:
+        return cached(channel)
+    return fetch(cfg, channel)
 
 
 def fetch_in_background(cfg, channel, force=False):

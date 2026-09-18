@@ -102,7 +102,7 @@
   <div class="mini-bar"><i data-stage-bar="image"></i></div>
   <div class="inner" id="galleryBlock">
     <select id="galFile" class="hidden" onchange="onGalFileChange()"></select>
-    <div class="row"><button class="primary" onclick="galStart(false)">▶ 빠진 장면 이어서 만들기</button><button onclick="galCtl('pause')">❚❚ 잠시 멈춤</button><button onclick="galCtl('resume')">▶ 계속</button><button onclick="galCtl('stop')">■ 중단</button><button class="danger" onclick="galStart(true)">🔄 처음부터 다시</button></div>
+    <div class="row"><button class="primary" onclick="galStart()">▶ 빠진 장면 이어서 만들기</button><button onclick="galStop()">■ 중단</button></div>
     <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
     <div class="gal" id="advGal"></div>
   </div>

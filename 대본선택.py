@@ -333,8 +333,10 @@ def topics():
     cands = [t for t in extra["person"] if t.get("제목", "").strip() not in used_person and t.get("제목", "").strip() not in seen_titles] + cands
     seen_m = {t.get("제목", "").strip() for t in mindam}
     mindam = [t for t in extra["mindam"] if t.get("제목", "").strip() not in used_mindam and t.get("제목", "").strip() not in seen_m] + mindam
-    # 내 유튜브 채널에 이미 올라간 제목과 겹치는 주제는 뺀다 (설정의 내_채널 · 민담_채널).
+    # 내 유튜브 채널에 이미 올라간 제목과 겹치는 주제는 뺀다 (설정의 내_채널 · 민담_채널). 저장본이 오래됐으면 뒤에서 다시 받는다.
     cfg = load_json("설정.json", {})
+    for ch in ("person", "mindam"):
+        채널_연동.fetch_in_background(cfg, ch)
     plan = 채널_연동.filter_topics(cfg, "person", plan)
     cands = 채널_연동.filter_topics(cfg, "person", cands)
     mindam = 채널_연동.filter_topics(cfg, "mindam", mindam)
@@ -379,6 +381,7 @@ def refresh_topics(channel, shown):
     channel = "mindam" if channel == "mindam" else "person"
     SEEN_TOPICS[channel].update(str(t).strip() for t in (shown or []) if str(t).strip())
     cfg = load_json("설정.json", {})
+    채널_연동.fetch_if_stale(cfg, channel, 10)         # 방금 올린 영상 제목도 걸러지도록 추천 직전에 내 채널을 다시 읽는다
     current = topics()
     have = current["mindam"] if channel == "mindam" else current["plan"] + current["candidates"]
     have = [t for t in have if t.get("제목", "").strip() not in SEEN_TOPICS[channel]]
