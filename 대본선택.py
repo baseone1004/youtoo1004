@@ -688,37 +688,25 @@ def make_variations(job, req):
     "파스텔": "hand-drawn 2D pastel illustration, soft colored-pencil and watercolor textures, clean illustrated faces and outlines, warm muted palette, 16:9 aspect ratio",
     "수묵": "traditional Korean ink wash painting style with subtle color, hanji paper texture, 16:9 aspect ratio",
     # ── 야담·민담·옛이야기용 (조선 배경 고정, 아동풍 금지)
-    "사극 웹툰": "Korean historical manhwa webtoon illustration, Joseon dynasty setting, adults in period-accurate hanbok and gat, "
-              "clear bold line art, flat cel-shaded coloring, refined detailed eyes, dramatic composition, no childish or cute style, 16:9 aspect ratio",
-    "사극 실사": "photorealistic cinematic still from a Korean Joseon-era period drama film, adults in authentic hanbok, hanok and old village sets, "
-              "warm oil-lamp and daylight lighting, shallow depth of field, film grain, 16:9 aspect ratio",
     "민화": "Korean minhwa folk painting style, flat vivid mineral pigments, bold outlines, decorative flattened perspective, "
            "tigers magpies peonies motifs where fitting, Joseon-era figures in hanbok, hanji paper texture, 16:9 aspect ratio",
-    "풍속화": "Korean genre painting style in the manner of Joseon-era pungsokdo, fine ink brush lines with light color washes, "
-            "everyday village and market life, expressive posture, aged hanji paper, 16:9 aspect ratio",
-    "수묵담채": "Korean sumukdamchae ink and light-color wash painting, expressive brushwork, misty mountains and hanok, "
-             "Joseon-era figures, generous negative space, hanji texture, 16:9 aspect ratio",
     "한지 동화": "warm storybook illustration for adults printed on textured hanji paper, soft gouache colors, gentle rounded shapes, "
               "Joseon-era village and hanbok, cozy oil-lamp glow at night, refined faces not childish, 16:9 aspect ratio",
-    "목판화": "Korean woodblock print style, thick carved black lines, limited earthy color palette, rough paper texture, "
-            "Joseon-era scene, strong contrast and silhouette, 16:9 aspect ratio",
     "괴담 극화": "dark dramatic Korean gekiga-style illustration for ghost and folklore tales, heavy ink shadows, cold moonlight with a single warm lantern, "
               "Joseon-era hanok and forest, eerie but non-graphic, faces clearly visible, 16:9 aspect ratio",
 }
 화풍_설명 = {
     "실사": "사진 같은 시네마틱", "애니": "웹툰·셀 채색", "2D 일러스트": "선명한 성인용 2D·레퍼런스 유지", "파스텔": "부드러운 수채", "수묵": "한지·먹 느낌",
-    "사극 웹툰": "조선 배경 웹툰 극화 (인트로 지침 스타일)", "사극 실사": "조선 사극 영화 스틸", "민화": "호랑이·까치 민화풍 평면 채색",
-    "풍속화": "김홍도·신윤복 풍속화 붓선", "수묵담채": "먹 + 옅은 채색, 여백", "한지 동화": "따뜻한 한지 그림책 (어른용)",
-    "목판화": "굵은 목판 선, 흙빛 팔레트", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
+    "한지 동화": "따뜻한 한지 그림책 (어른용)", "민화": "호랑이·까치 민화풍 평면 채색", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
 }
 화풍_그룹 = {"공통": ["실사", "애니", "2D 일러스트", "파스텔", "수묵"],
-          "야담·민담·옛이야기": ["사극 웹툰", "사극 실사", "민화", "풍속화", "수묵담채", "한지 동화", "목판화", "괴담 극화"]}
+          "야담·민담·옛이야기": ["한지 동화", "민화", "괴담 극화"]}
 
 def image_style_lock(style, channel=None):
     """선택한 화풍이 뒤의 장면 설명과 충돌해도 사진풍으로 바뀌지 않게 고정한다. 채널을 주면 그 채널의 색감 문구(화풍_접미)를 덧붙인다."""
     base = 화풍.get(style, 화풍["2D 일러스트"])
     tail = (" " + 채널_프로필.style_tail(channel) + ".") if channel and 채널_프로필.style_tail(channel) else ""
-    if style in ("실사", "사극 실사"):
+    if style == "실사":
         return base + tail
     return (f"STRICT STYLE LOCK: every image must be {style} style. {base}{tail} "
             "Keep the same linework, character design, proportions and color palette as the uploaded Dropshot reference image. "
