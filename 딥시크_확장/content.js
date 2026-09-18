@@ -46,6 +46,8 @@
   /* ───────── DOM 헬퍼 (DeepSeek 화면) ───────── */
   const visible = el => { if (!el || !el.isConnected) return false; const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 6 && r.height > 6 && s.display !== 'none' && s.visibility !== 'hidden'; };
 
+  let sentText = '';                                   // 지금 보낸 메시지 앞부분 — 내 메시지를 답변으로 잘못 읽지 않도록
+  const isEcho = t => sentText.length > 60 && norm(t).includes(sentText);
   function assistantNodes() {
     // 실측(2026-09): 답변 본문은 div.ds-markdown.ds-assistant-message-main-content 하나. 문단(.ds-markdown-paragraph)은 잡지 않는다.
     const sel = ['[data-role=assistant]', '[data-message-author-role=assistant]', '.ds-markdown'];
@@ -58,6 +60,7 @@
     // 서로 포함 관계면 안쪽(작은) 것만
     nodes = nodes.filter(n => !nodes.some(o => o !== n && n.contains(o) && norm(o.innerText).length >= norm(n.innerText).length * 0.7));
     nodes = nodes.filter(n => { const r = n.closest('[data-role],[data-message-author-role]'); const who = r && (r.getAttribute('data-role') || r.getAttribute('data-message-author-role') || ''); return !/user/i.test(who); });
+    nodes = nodes.filter(n => !isEcho(n.innerText || ''));   // 보낸 메시지(지침+요청)가 그대로 보이는 칸은 내 메시지다
     return nodes;
   }
   const lastAssistantText = () => { const n = assistantNodes(); return n.length ? String(n[n.length - 1].innerText || '').trim() : ''; };
@@ -138,6 +141,7 @@
 
   /* ───────── 작업 실행 ───────── */
   async function runJob(job) {
+    sentText = norm(job.text).slice(0, 200);
     setBadge('새 대화 준비 중…');
     sessionStorage.setItem(PENDING_KEY, JSON.stringify(job));
     if (!(await ensureFreshChat(job))) return;                      // 새로고침 → 다시 이어받음

@@ -739,6 +739,33 @@ def image_guideline_for(script_file, requested=""):
     return requested                          # 사용자가 따로 만든 지침 파일이면 그대로
 
 
+ECHO_MARKS = ("[이번 범위 원문]", "[프로그램과 맞추는 규칙", "[출력 형식 — 그대로]", "[내보내기 전 점검")
+
+
+def prompt_blocks(text):
+    """===NNN=== 장면 블록 가운데 '프롬프트:' 줄이 있는 것만 번호 → 블록 본문으로 돌려준다.
+    지침·요청문이 답변 대신 섞여 들어온 경우(딥시크 웹이 보낸 질문을 그대로 돌려준 경우)의 예시 블록은 버린다."""
+    out = {}
+    parts = re.split(r"^===\s*(\d{3,4})\s*===\s*$", text or "", flags=re.M)
+    for i in range(1, len(parts) - 1, 2):
+        no, body = int(parts[i]), parts[i + 1]
+        body = re.split(r"^={10,}\s*$|^\[(?:요청|좋은 예|나쁜 예|프로그램과 맞추는 규칙|출력 형식)|^[^\n]*\|\s*이미지 프롬프트 지침\s*$", body, flags=re.M)[0].rstrip()
+        if re.search(r"^\s*(?:프롬프트|prompt)\s*[:：]\s*\S", body, flags=re.M | re.I) and "[화풍 문구]" not in body and no not in out:
+            out[no] = body.strip()
+    return out
+
+
+def prompts_complete(path, script_file):
+    """이미지 프롬프트 파일이 대본의 모든 문장을 덮는지 (없거나 모자라면 False → 모자란 범위만 다시 만든다)."""
+    if not os.path.isfile(path):
+        return False
+    with open(script_file, encoding="utf-8-sig") as f:
+        n = len(split_sentences(fix_script_sentences(script_body(f.read()))))
+    with open(path, encoding="utf-8-sig") as f:
+        have = prompt_blocks(f.read())
+    return n > 0 and all(i in have for i in range(1, n + 1))
+
+
 def make_image_prompts(job, req):
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
@@ -757,9 +784,23 @@ def make_image_prompts(job, req):
     style = image_style_lock(req.get("style", "2D 일러스트"), channel_of(path))
     chunk = int(req.get("chunk") or 25)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 · {chunk}문장씩 · 화풍 {req.get('style', '실사')}")
-    outs = []
+    if path.endswith("final.txt"):
+        out_path = os.path.join(os.path.dirname(path), "이미지프롬프트.txt")
+    else:
+        out_path = re.sub(r"\.txt$", "", path) + "_이미지프롬프트.txt"
+    have = {}
+    if os.path.isfile(out_path):                     # 지난번에 만들다 만 파일이 있으면 올바른 장면은 그대로 쓰고 모자란 묶음만 묻는다
+        with open(out_path, encoding="utf-8-sig") as f:
+            have = {k: v for k, v in prompt_blocks(f.read()).items() if 1 <= k <= len(sents)}
+        if have:
+            job.add(f"   이미 만든 장면 {len(have)}개 재사용 · 모자란 범위만 다시 만듭니다")
+    def save():
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("\n\n".join(f"==={k:03d}===\n{have[k]}" for k in sorted(have)) + "\n")
     for s in range(0, len(sents), chunk):
         e = min(s + chunk, len(sents))
+        if all(i in have for i in range(s + 1, e + 1)):
+            continue
         lines = "\n".join(f"{i+1:03d}. {sents[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
                 + 채널_프로필.mascot_reference_note(channel_of(path))
@@ -772,18 +813,29 @@ def make_image_prompts(job, req):
                 f"[이번 범위] {s+1:03d} ~ {e:03d} (총 {e-s}개 장면)\n\n[이번 범위 원문]\n{lines}\n\n"
                 f"위 {e-s}개 문장 각각에 대해 ===NNN=== 장면 블록을 {s+1:03d}부터 {e:03d}까지 순서대로 출력한다.")
         job.add(f"   {s+1:03d}~{e:03d} 변환 ")
-        out = ai.ask(system, user).replace("```", "").strip()
-        got = re.findall(r"===(\d{3})===", out)
-        if len(got) != e - s:
-            job.add(f"   ! 장면 수 {len(got)}개 (기대 {e-s}개) — 그대로 저장하되 확인 필요")
-        outs.append(out)
-    text = "\n\n".join(outs) + "\n"
-    if path.endswith("final.txt"):
-        out_path = os.path.join(os.path.dirname(path), "이미지프롬프트.txt")
-    else:
-        out_path = re.sub(r"\.txt$", "", path) + "_이미지프롬프트.txt"
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(text)
+        best = {}
+        for attempt in range(3):
+            out = ai.ask(system, user).replace("```", "").strip()
+            if any(m in out for m in ECHO_MARKS):    # 딥시크 웹이 보낸 질문(지침)을 답변으로 돌려준 경우
+                job.add(f"   ! 답변 대신 보낸 질문이 돌아옴 → 다시 요청 ({attempt + 1}/3)")
+                continue
+            got = {k: v for k, v in prompt_blocks(out).items() if s + 1 <= k <= e}
+            if len(got) > len(best):
+                best = got
+            if len(best) >= e - s:
+                break
+            job.add(f"   ! 장면 수 {len(got)}개 (기대 {e-s}개) → 다시 요청 ({attempt + 1}/3)")
+        if not best:
+            raise SystemExit(f"{s+1:03d}~{e:03d} 범위의 이미지 프롬프트를 받지 못했습니다. AI 연결(딥시크 웹 탭)을 확인하고 다시 시도하세요.")
+        if len(best) < e - s:
+            job.add(f"   ! {s+1:03d}~{e:03d} 장면 {len(best)}/{e-s}개만 받음 — 빠진 장면은 다음 실행에서 다시 요청합니다")
+        have.update(best)
+        save()                                        # 묶음마다 저장 → 중간에 끊겨도 받은 만큼은 남는다
+    missing = [i for i in range(1, len(sents) + 1) if i not in have]
+    if missing:
+        raise SystemExit("이미지 프롬프트가 모자랍니다 (빠진 장면 " + ", ".join(f"{i:03d}" for i in missing[:10]) + (" …" if len(missing) > 10 else "")
+                         + "). 받은 만큼은 저장했으니 [이어서 만들기]를 다시 누르면 빠진 범위만 다시 요청합니다.")
+    save()
     # 플로우 txt (Auto-Image Placer 용: N번 이미지 = N번 문장)
     flow_path = re.sub(r"\.txt$", "", out_path) + "_플로우.txt"
     with open(flow_path, "w", encoding="utf-8") as f:
@@ -1357,7 +1409,7 @@ def make_pipeline(job, req):
     assets = assets_dir(script)
     # 2) 이미지 프롬프트
     existing_prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
-    if steps.get("prompts", True) and req.get("reuse_prompts") and os.path.exists(existing_prompts):
+    if steps.get("prompts", True) and req.get("reuse_prompts") and prompts_complete(existing_prompts, script):
         job.add(f"   이미지 프롬프트가 이미 있어 재사용: {existing_prompts}")
         steps = dict(steps, prompts=False)
     if steps.get("prompts", True):

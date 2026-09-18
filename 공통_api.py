@@ -40,6 +40,13 @@ def fallback_candidates(cfg, current):
     return out
 
 
+def is_echo(answer, sent):
+    """답변이 보낸 메시지(지침+요청)를 그대로 되풀이한 것인지. 지침 머리·요청 꼬리·요청 구분선 중 하나라도 들어 있으면 되풀이로 본다."""
+    a = " ".join((answer or "").split())
+    head = " ".join((sent or "")[:200].split())
+    return bool(a) and (("=" * 30 + " [요청]") in a or "(위 지침을 그대로 따른다." in a or (len(head) > 60 and head in a))
+
+
 class AI:
     def __init__(self, cfg, _is_fallback=False):
         name = (cfg.get("AI") or "deepseek").strip().lower()
@@ -121,6 +128,8 @@ class AI:
         out = 웹큐.wait(jid, cancel_check=self.cancel_check)
         self.usage["in"] += len(text) // 2; self.usage["out"] += len(out) // 2
         print()
+        if is_echo(out, text):                        # 확장이 답변 대신 내가 보낸 메시지를 읽어 온 경우 → 실패로 보고 다시 시도
+            raise RuntimeError("딥시크 웹이 답변 대신 보낸 질문을 돌려줌 (답을 안 했거나 화면을 잘못 읽음)")
         return out
 
     def _progress(self, n):
