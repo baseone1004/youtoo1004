@@ -95,10 +95,8 @@
     <div class="copyrow"><label>제목</label><input type="text" id="workTitle"><button onclick="copyField('workTitle')">복사</button></div>
     <textarea id="workScript" class="work-text" placeholder="대본이 만들어지면 여기에 보입니다."></textarea>
     <div class="row"><button class="primary" onclick="saveWorkspaceText('script')">대본 저장</button><button onclick="copyField('workScript')">복사</button><button onclick="rerunTTS()">🎙 고친 대본으로 나레이션 다시</button></div>
-    <div class="copyrow"><label>설명</label><textarea id="workDesc"></textarea><button onclick="copyField('workDesc')">복사</button></div>
-    <div class="copyrow"><label>출처</label><textarea id="workSources" class="short"></textarea><button onclick="copyField('workSources')">복사</button></div>
-    <div class="copyrow"><label>태그</label><textarea id="workTags" class="short"></textarea><button onclick="copyField('workTags')">복사</button></div>
-    <div class="row"><button class="primary" onclick="saveWorkspaceMeta()">제목·설명·태그 저장</button><span class="hint">유튜브에 붙여 넣을 내용. 고친 뒤 저장을 누르세요.</span></div>
+    <div class="copyrow"><label>설명<br><small class="hint">출처·태그 포함</small></label><textarea id="workDesc" placeholder="유튜브 설명란에 그대로 붙여 넣을 내용 (참고 자료 이름, 안내문, 해시태그까지 한 덩어리)"></textarea><button onclick="copyField('workDesc')">복사</button></div>
+    <div class="row"><button class="primary" onclick="saveWorkspaceMeta()">제목·설명 저장</button><span class="hint">[복사] 한 번이면 유튜브 설명란에 다 들어갑니다. 고친 뒤 저장을 누르세요.</span></div>
   </div>
 </div>
 

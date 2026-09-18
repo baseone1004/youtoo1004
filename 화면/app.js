@@ -476,7 +476,7 @@ async function loadWorkspace(showToast) {
   try {
     WORK = await api('/api/workspace?script=' + encodeURIComponent(file)); localStorage.setItem('workScript', file);
     $('workScript').value = WORK.script || ''; $('workPrompts').value = WORK.prompts || ''; $('workSrt').value = WORK.srt || '';
-    $('workTitle').value = WORK.title || ''; $('workDesc').value = WORK.description || ''; $('workSources').value = WORK.sources || ''; $('workTags').value = WORK.tags || '';
+    $('workTitle').value = WORK.title || ''; $('workDesc').value = WORK.description || '';
     renderThumbs();
     $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('작업을 불러왔습니다.');
     try { WORK.files = await api('/api/assets?script=' + encodeURIComponent(file)); } catch (e) { WORK.files = {}; }
@@ -538,7 +538,7 @@ async function saveWorkspaceText(kind) {
 }
 async function saveWorkspaceMeta() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
-  try { await api('/api/workspace/save', {script_file: WORK.script_file, kind: 'metadata', title: $('workTitle').value, description: $('workDesc').value, sources: $('workSources').value, tags: $('workTags').value}); toast('제목·설명·태그 저장 완료'); } catch (e) { toast(e.message, true); }
+  try { await api('/api/workspace/save', {script_file: WORK.script_file, kind: 'metadata', title: $('workTitle').value, description: $('workDesc').value, sources: WORK.sources || '', tags: WORK.tags || ''}); toast('제목·설명 저장 완료'); } catch (e) { toast(e.message, true); }
 }
 async function copyField(id) {
   const el = $(id), text = el.value || ''; if (!text) return toast('복사할 내용이 없습니다.', true);

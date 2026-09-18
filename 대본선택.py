@@ -870,6 +870,17 @@ def _block(text, name):
     match = re.search(rf"\[{re.escape(name)}\]\s*(.*?)(?=\n\[[^\n]+\]|\Z)", text or "", re.S)
     return match.group(1).strip() if match else ""
 
+def upload_description(description, tags=""):
+    """유튜브 설명란에 한 번에 붙여 넣을 덩어리: 링크 주소는 빼고, 해시태그가 없으면 태그를 끝에 붙인다."""
+    text = (description or "").strip()
+    text = re.sub(r"\s*/?\s*https?://\S+", "", text)                          # 출처 줄의 주소 제거 (자료 이름만 남김)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if "#" not in text and (tags or "").strip():
+        words = [t.strip().lstrip("#") for t in re.split(r"[,\s]+", tags) if t.strip()]
+        text += "\n\n" + " ".join("#" + re.sub(r"\s+", "", w) for w in words[:10])
+    return text
+
+
 def workspace_data(script_file):
     """선택 대본의 편집 가능한 제작 결과와 업로드 정보를 모은다."""
     if script_file not in {item["path"] for item in script_files()}:
@@ -894,7 +905,8 @@ def workspace_data(script_file):
                 srt_file=os.path.abspath(srt), narration=os.path.abspath(os.path.join(assets, "나레이션.mp3")),
                 images=os.path.abspath(os.path.join(assets, "images")), thumbnails=thumbnails, thumbnail_raw=thumbnail_raw,
                 thumbnail_dir=os.path.abspath(thumb_dir), title=title,
-                description=saved.get("description") or _block(script_text, "설명글") or _block(opt_text, "설명글"),
+                description=upload_description(saved.get("description") or _block(script_text, "설명글") or _block(opt_text, "설명글"),
+                                               saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그")),
                 sources=saved.get("sources") or _block(script_text, "출처"),
                 tags=saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그"))
 
@@ -1294,8 +1306,8 @@ def make_upload_package(script_file, result):
     title = (saved.get("title") or _block(opt_text, "최종 추천") or
              _block(script_text, "제목") or result.get("title") or Path(script_file).stem)
     title = title.splitlines()[0].strip()
-    description = saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글")
     tags = saved.get("tags") or _block(opt_text, "태그") or _block(script_text, "태그")
+    description = upload_description(saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글"), tags)
     channel_dir = 대본생성.safe_name(채널_프로필.get("mindam" if is_mindam else "person").get("업로드_폴더") or ("민담" if is_mindam else "심리해독소"))
     package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
     package.mkdir(parents=True, exist_ok=True)
