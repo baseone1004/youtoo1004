@@ -53,6 +53,20 @@ EDITOR_FILES = ["app.py", "README.md", "requirements.txt"]
 }
 
 
+구매자_프로필 = {
+    "person": {
+        "이름": "내 채널", "설명": "시청자의 궁금증을 하나씩 풀어 주는 정보형 롱폼 채널. (채널 소개를 여기에 적으세요)",
+        "대상_시청자": "40~60대", "카테고리": "", "검색어": [], "기본_태그": [], "해시태그": "#내채널", "면책": "",
+        "마스코트": {"이름": "", "이미지": "", "설명": "", "프롬프트": ""},
+        "썸네일": {"레이아웃": "bottom_two", "화풍": "", "구도": "핵심 인물 한 명의 감정이 즉시 읽히는 단순한 장면, 문구가 들어갈 화면 아래쪽은 단순하고 조금 어둡게", "띠_문구": ""},
+        "업로드_폴더": "정보형", "영상_길이": "20~30분",
+    },
+    "mindam": {
+        "이름": "옛이야기 채널", "해시태그": "#야담", "업로드_폴더": "이야기형",
+    },
+}
+
+
 def log(msg):
     print(msg, flush=True)
 
@@ -103,6 +117,8 @@ def build_app(out_app, editor):
     (out_app / "설정.json").write_text(json.dumps(기본_설정, ensure_ascii=False, indent=2), encoding="utf-8")
     for d in ("대본", "업로드", "대본/민담", "대본/_상태"):
         (out_app / d).mkdir(parents=True, exist_ok=True)
+    # 구매자용 채널 프로필: 내 채널(심리해독소·옛날서재)의 이름·마스코트가 남지 않도록 일반 값으로
+    (out_app / "채널_프로필.json").write_text(json.dumps(구매자_프로필, ensure_ascii=False, indent=2), encoding="utf-8")
     log(f"2) 편집프로그램 복사: {editor}")
     out_ed = out_app / "편집프로그램"
     out_ed.mkdir()

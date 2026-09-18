@@ -578,7 +578,10 @@ def make_timestamps(req):
     d = req.get("dir", ""); srt = req.get("srt", "")
     if not os.path.isdir(d) or not os.path.isfile(srt):
         raise SystemExit("대본 폴더와 SRT 파일을 고르세요.")
-    sys.path.insert(0, r"C:\Users\baseo\Downloads\편집프로그램")
+    for cand in (os.path.join(BASE, "편집프로그램"), os.path.join(os.path.dirname(BASE), "편집프로그램"),
+                 os.path.join(os.path.expanduser("~"), "Downloads", "편집프로그램")):   # 같이 배포된 편집프로그램 → 개발용 위치
+        if os.path.isdir(cand):
+            sys.path.insert(0, cand); break
     try:
         from core.srt_parser import parse_srt
         cues = parse_srt(srt)
