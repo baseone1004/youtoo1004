@@ -5,7 +5,7 @@
   대본만들기.bat  → 계획.json 에서 오늘 날짜까지의 주제 중 아직 대본이 없는 것을 하루 2편까지 생성
   python 대본생성.py --전부   → 계획에 있는 14편 전부
 
-결과: 대본/YYYY-MM-DD_N편_제목.txt  (DINO 7.5 형식 그대로: [제목]…[대본] ===sum===)
+결과: 대본/YYYY-MM-DD_N편_제목.txt  ([제목]…[대본] ===sum=== 형식)
 설정: 설정.json 의 AI / API_키 / 대본_글자수 / 하루_대본_편수
 """
 import sys, os, re, json, datetime
@@ -13,7 +13,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BASE = os.path.dirname(os.path.abspath(__file__)); os.chdir(BASE)
 from 공통_api import AI, web_search, format_sources, fix_script_sentences, find_issues, strip_next_teaser
 
-지침_파일 = os.path.join("지침", "사람의이유_대본지침.txt")
+지침_파일 = os.path.join("지침", "정보형_대본지침.txt")
 구간_이름 = ["질문", "공감", "첫 번째 이유", "두 번째 이유", "세 번째 이유 또는 반전", "사례 확장", "이해의 순간", "오늘 할 수 있는 한 가지", "여운"]
 
 def load_cfg():

@@ -140,8 +140,8 @@ async function refresh() {
   renderTopics();
   // 2단계
   renderProfileNames();
-  fill($('optGuide'), g.script, (STATE.profiles.person.지침 || {}).대본 || '사람의이유_대본지침.txt');
-  fill($('optImgGuide'), g.image, (STATE.profiles[channel] && STATE.profiles[channel].지침 || {}).이미지 || '이미지지침_심리해독소.txt');
+  fill($('optGuide'), g.script, (STATE.profiles.person.지침 || {}).대본 || '정보형_대본지침.txt');
+  fill($('optImgGuide'), g.image, (STATE.profiles[channel] && STATE.profiles[channel].지침 || {}).이미지 || '이미지지침_정보형.txt');
   $('optChunk').value = c.프롬프트_묶음 || 30; $('optHook').value = c.후킹_장면수 ?? 7;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) { $('mindamLen').innerHTML = lenOpts; $('toolLen').innerHTML = lenOpts; }

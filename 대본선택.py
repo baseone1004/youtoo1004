@@ -144,7 +144,7 @@ def load_json(name, default):
 
 def guideline_files():
     files = sorted(glob.glob(os.path.join(지침_폴더, "*.txt")))
-    script = [os.path.basename(f) for f in files if "이미지" not in os.path.basename(f)]
+    script = [os.path.basename(f) for f in files if "대본지침" in os.path.basename(f)]     # 대본 지침만 (썸네일·최적화 지침은 자동으로 쓰인다)
     image = [os.path.basename(f) for f in files if "이미지" in os.path.basename(f) and "참고" not in os.path.basename(f)]
     mindam = [os.path.basename(f) for f in sorted(glob.glob(os.path.join(지침_폴더, "민담", "*.txt")))
               if not os.path.basename(f).startswith("원본") and "최근_사용" not in f]
@@ -449,7 +449,7 @@ def make_person_script(job, req):
          "다룰내용": topic.get("다룰내용", []), "출처후보": topic.get("출처후보", []), "태그": topic.get("태그", [])}
     if not t["제목"]:
         raise SystemExit("주제(제목)를 입력하거나 목록에서 고르세요.")
-    guideline = req.get("guideline") or 채널_프로필.get("person")["지침"].get("대본") or "사람의이유_대본지침.txt"
+    guideline = req.get("guideline") or 채널_프로필.get("person")["지침"].get("대본") or "정보형_대본지침.txt"
     system = read_guideline(guideline, "person")
     cpm = int(cfg.get("분당_글자수", 270) or 270)
     requested = int(req.get("target") or cfg["대본_글자수"])
@@ -638,7 +638,7 @@ def make_timestamps(req):
 
 
 def make_variations(job, req):
-    """검증된 제목 → 베리에이션 A~D (v11.3 1-B). 슬롯 분해 후 알맹이를 바꾼 4개."""
+    """검증된 제목 → 제목 변형 A~D. 제목을 부품으로 나눠 알맹이를 바꾼 4개."""
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
     ref = (req.get("title") or "").strip()
@@ -735,7 +735,7 @@ def image_guideline_for(script_file, requested=""):
     """채널 프로필에 정한 이미지 지침. 화면에서 고른 지침이 다른 채널의 기본 지침이면 이 채널의 것으로 바꾼다."""
     channel = channel_of(script_file)
     defaults = {slot: (채널_프로필.get(slot)["지침"].get("이미지") or "") for slot in 채널_프로필.SLOTS}
-    own = defaults.get(channel) or ("이미지지침_민담.txt" if channel == "mindam" else "이미지지침_심리해독소.txt")
+    own = defaults.get(channel) or ("이미지지침_이야기형.txt" if channel == "mindam" else "이미지지침_정보형.txt")
     requested = (requested or "").strip()
     if not requested or requested in defaults.values():
         return own

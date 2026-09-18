@@ -2,7 +2,7 @@
 """
 나레이션.py — 인월드(Inworld) TTS 로 대본을 문장 단위로 읽고, 합친 mp3 + 문장별 SRT + 플로우 txt 를 만든다.
 
-  문장 1개 = 자막 1개 = 이미지 1장 (DINO 방식). 문장마다 따로 합성하므로 자막 시간이 정확하다.
+  문장 1개 = 자막 1개 = 이미지 1장. 문장마다 따로 합성하므로 자막 시간이 정확하다.
   설정.json: "인월드_API_키", "인월드_목소리", "인월드_모델"(기본 inworld-tts-1.5), "인월드_속도"(기본 1.0)
   API: POST https://api.inworld.ai/tts/v1/voice  (Authorization: Basic <API_KEY>)
 
