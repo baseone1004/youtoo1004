@@ -64,14 +64,22 @@ QUEUE = QueueStore(os.path.join(대본_폴더, "_상태", "제작대기열.json"
 QUEUE_THREAD = None
 
 
+RESTART = {"requested": False}
+
+
 def restart_program(server):
-    """서버 소켓을 먼저 닫아 포트를 비운 뒤 같은 명령으로 새 프로세스를 띄우고 이 프로세스는 끝낸다 (화면의 [다시 시작] 버튼)."""
+    """서버를 멈추게만 하고, 새 프로세스는 main() 이 serve_forever 를 빠져나온 뒤 주 스레드에서 띄운다 (화면의 [다시 시작] 버튼).
+    (요청 스레드는 데몬이라 serve_forever 가 끝나는 순간 인터프리터가 정리되면서 죽을 수 있어 여기서 Popen 을 하면 새 프로세스가 안 뜬다.)"""
     time.sleep(0.5)
+    RESTART["requested"] = True
     try:
-        server.shutdown()                       # serve_forever 종료 (응답은 이미 보냈다)
-        server.server_close()                   # 8766 포트 반환 — 새 프로세스가 같은 포트를 잡을 수 있게
+        server.shutdown()                       # serve_forever 종료 (응답은 이미 보냈다) → main() 이 spawn_restart() 를 부른다
     except Exception:  # noqa: BLE001
         pass
+
+
+def spawn_restart():
+    """같은 명령으로 새 프로세스를 띄우고 이 프로세스는 끝낸다. 서버 소켓은 이미 닫힌 뒤에 부른다."""
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
     log = open(os.path.join(BASE, "로그_대본선택.txt"), "a", encoding="utf-8")
@@ -2083,7 +2091,9 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        srv.server_close()
+        srv.server_close()                      # 8766 포트 반환 — 새 프로세스가 같은 포트를 잡을 수 있게
+    if RESTART["requested"]:
+        spawn_restart()
 
 if __name__ == "__main__":
     main()
