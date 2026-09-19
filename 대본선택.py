@@ -460,34 +460,23 @@ def make_person_script(job, req):
          "다룰내용": topic.get("다룰내용", []), "출처후보": topic.get("출처후보", []), "태그": topic.get("태그", [])}
     if not t["제목"]:
         raise SystemExit("주제(제목)를 입력하거나 목록에서 고르세요.")
-    shorts = req.get("format") == "shorts"
+    guideline = req.get("guideline") or 채널_프로필.get("person")["지침"].get("대본") or "정보형_대본지침.txt"
+    system = read_guideline(guideline, "person")
     cpm = int(cfg.get("분당_글자수", 270) or 270)
-    if shorts:                                     # 쇼츠: 세로 짧은 영상 (초 단위 목표), 지침도 따로
-        guideline = "정보형_쇼츠_대본지침.txt"
-        system = read_guideline(guideline, "person")
-        seconds = max(30, min(180, int(req.get("shorts_seconds") or 60)))
-        target = int(seconds * cpm / 60)
-        job.add(f"AI: {ai.name} ({ai.model}) · 쇼츠 목표 {target:,}자 ({seconds}초) · 지침 {guideline}")
-        job.add(f"▶ {t['제목']}")
-        full, body = 대본생성.generate_short(ai, system, t, target)
-        stem = f"[쇼츠]_{대본생성.safe_name(t['제목'])}"
-    else:
-        guideline = req.get("guideline") or 채널_프로필.get("person")["지침"].get("대본") or "정보형_대본지침.txt"
-        system = read_guideline(guideline, "person")
-        requested = int(req.get("target") or cfg["대본_글자수"])
-        minutes = max(25, min((25, 30, 35, 40), key=lambda m: abs(requested - m * cpm)))     # 롱폼만: 25분 미만은 만들지 않는다
-        target = minutes * cpm
-        n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
-        job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {guideline}")
-        job.add(f"▶ {t['제목']}")
-        full, body = 대본생성.generate(ai, system, t, target, n_parts)
-        stem = 대본생성.safe_name(t['제목'])
+    requested = int(req.get("target") or cfg["대본_글자수"])
+    minutes = max(25, min((25, 30, 35, 40), key=lambda m: abs(requested - m * cpm)))     # 롱폼만: 25분 미만은 만들지 않는다
+    target = minutes * cpm
+    n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
+    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {guideline}")
+    job.add(f"▶ {t['제목']}")
+    full, body = 대본생성.generate(ai, system, t, target, n_parts)
     os.makedirs(대본_폴더, exist_ok=True)
     today = datetime.date.today().isoformat()
-    path = os.path.join(대본_폴더, f"{today}_{stem}.txt")
+    name = f"{today}_{대본생성.safe_name(t['제목'])}.txt"
+    path = os.path.join(대본_폴더, name)
     n = 2
     while os.path.exists(path):
-        path = os.path.join(대본_폴더, f"{today}_{stem}({n}).txt"); n += 1
+        path = os.path.join(대본_폴더, f"{today}_{대본생성.safe_name(t['제목'])}({n}).txt"); n += 1
     with open(path, "w", encoding="utf-8") as f:
         f.write(full)
     # 계획.json 에 기록
@@ -504,7 +493,7 @@ def make_person_script(job, req):
     for m in issues:
         job.add(f"· 확인: {m}")
     opt = ""
-    if req.get("optimize", True) and not shorts:      # 쇼츠는 제목·설명·태그를 대본과 함께 받으므로 따로 최적화하지 않는다
+    if req.get("optimize", True):
         try:
             text, _ = 최적화.optimize(ai, "person", body, extra=full.split("[대본]", 1)[0][:1500], log=job.add)
             text = 대본생성.strip_english(text)
@@ -807,10 +796,6 @@ def make_image_prompts(job, req):
     system = read_guideline(guideline, channel_of(path))
     job.add(f"   이미지 지침: {guideline}")
     style = image_style_lock(req.get("style", "2D 일러스트"), channel_of(path))
-    if is_shorts(path):                            # 쇼츠: 세로 9:16 — 지침·화풍 문구의 화면 비율을 바꿔 보낸다
-        system = system.replace("16:9", "9:16 세로") + "\n\n[쇼츠] 이 영상은 세로 9:16 쇼츠다. 모든 프롬프트는 vertical portrait 9:16 구도로 쓰고, 마지막 문장을 '9:16 vertical aspect ratio' 로 끝낸다."
-        style = style.replace("16:9 aspect ratio", "9:16 vertical portrait aspect ratio").replace("16:9 landscape", "9:16 vertical portrait")
-        job.add("   쇼츠: 세로 9:16 프롬프트")
     chunk = int(req.get("chunk") or 25)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 · {chunk}문장씩 · 화풍 {req.get('style', '실사')}")
     if path.endswith("final.txt"):
@@ -933,11 +918,6 @@ def assets_dir(script_file):
     d = re.sub(r"\.txt$", "", script_file) + "_자료"
     os.makedirs(d, exist_ok=True)
     return d
-
-
-def is_shorts(script_file):
-    """쇼츠 대본인지: 파일 이름에 [쇼츠] 가 들어 있다 (세로 9:16, 썸네일·후킹 영상 없음)."""
-    return "[쇼츠]" in os.path.basename(script_file or "")
 
 
 def channel_of(script_file):
@@ -1244,7 +1224,7 @@ def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
         time.sleep(5)
 
 
-def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True, width=1920, height=1080):
+def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     # 편집프로그램 화면에서 마지막으로 쓴 자막 글꼴·색·위치·화면 설정을 그대로 가져와 쓴다
     ui = ((aip("/api/info").get("config") or {}).get("ui") or {})
     keep = {k: ui[k] for k in ("width", "height", "fps", "fit", "ken_burns", "kb_zoom", "transition", "transition_duration", "crf", "preset",
@@ -1256,9 +1236,6 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True, wi
                 fit="cover", ken_burns=ken_burns, kb_zoom=0.12, transition="none", transition_duration=0.5, burn_srt=True,
                 srt_font="Malgun Gothic", srt_font_size=22, srt_bold=True, srt_outline=3.5, crf=18, preset="medium")
     body.update(keep); body["burn_srt"] = True
-    body["width"], body["height"] = width, height  # 화면 크기는 편(롱폼 16:9 / 쇼츠 9:16)이 정한다
-    if height > width:                             # 세로면 자막을 조금 크게, 아래 여백은 넉넉히
-        body["srt_font_size"] = max(int(body.get("srt_font_size") or 22), 34); body["srt_margin_v"] = max(int(body.get("srt_margin_v") or 40), 260)
     j = aip("/api/render", body, timeout=120)
     while True:
         if job.cancel_requested:
@@ -1554,10 +1531,6 @@ def make_pipeline(job, req):
     result.update(script=script, title=r.get("title"), opt=r.get("opt"), meta=r.get("meta"))
     check_cancelled()
     assets = assets_dir(script)
-    if is_shorts(script):                          # 쇼츠: 후킹 영상·썸네일은 없고 세로로 렌더한다
-        steps["hook"] = 0; steps["thumbnail"] = False
-        result["shorts"] = True
-        job.add("   쇼츠 편: 세로 9:16 · 썸네일·움직이는 영상 없음")
     # 2) 이미지 프롬프트
     existing_prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
     if steps.get("prompts", True) and req.get("reuse_prompts") and prompts_complete(existing_prompts, script):
@@ -1655,8 +1628,7 @@ def make_pipeline(job, req):
         job.stage = "⑥ 최종 렌더"
         out = os.path.join(assets, "최종.mp4")
         try:
-            run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out,
-                       width=1080 if is_shorts(script) else 1920, height=1920 if is_shorts(script) else 1080)
+            run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out)
             result["video"] = out
         except Exception as e:  # noqa: BLE001
             render_error = e
