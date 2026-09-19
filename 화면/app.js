@@ -363,7 +363,11 @@ async function poll() {
   $('pgSub').textContent = cur ? `지금 만드는 편: ${cur.title}` : (j.result && j.result.title ? `작업: ${j.result.title}` : '');
   refreshGallery(false);
   if (j.status === 'running' && (j.result || {}).script) {
-    const sc = j.result.script; const opt = [...$('workFile').options].find(o => o.value === sc || sc.endsWith(o.value));
+    const sc = j.result.script; const find = () => [...$('workFile').options].find(o => o.value && (o.value === sc || sc.endsWith(o.value)));   // 빈 항목('대본 없음')은 제외
+    let opt = find();
+    if (!opt && Date.now() - lastListRefresh > 10000) {      // 제작 중에 새로 생긴 대본은 목록에 없다 → 목록을 다시 받아 작업 화면(이미지 칸 포함)을 연다
+      lastListRefresh = Date.now(); try { await refresh(); } catch (e) {} opt = find();
+    }
     if (opt && $('workFile').value !== opt.value) { $('workFile').value = opt.value; onWorkChange(); }
     else if (Date.now() - lastWorkLoad > 15000) loadWorkspace(false);
   }
@@ -438,7 +442,7 @@ async function refreshQueue() { try { const q = await api('/api/queue'); if (STA
 
 // ── 4단계: 완성 확인 ────────────────────────────────────
 function onWorkChange() { const f = $('workFile').value; if (f) { $('galFile').value = f; localStorage.setItem('selectedScript', f); refreshGallery(true); } loadWorkspace(true); }
-let lastWorkLoad = 0;
+let lastWorkLoad = 0, lastListRefresh = 0;
 async function loadWorkspace(showToast) {
   const file = $('workFile').value;
   if (!file) { WORK = null; $('workBody').classList.add('hidden'); $('workEmpty').classList.remove('hidden'); renderStageCards(); renderFiles(); return; }
