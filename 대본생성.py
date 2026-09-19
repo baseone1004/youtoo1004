@@ -15,6 +15,19 @@ from 공통_api import AI, web_search, format_sources, fix_script_sentences, fin
 
 지침_파일 = os.path.join("지침", "정보형_대본지침.txt")
 구간_이름 = ["질문", "공감", "첫 번째 이유", "두 번째 이유", "세 번째 이유 또는 반전", "사례 확장", "이해의 순간", "오늘 할 수 있는 한 가지", "여운"]
+# 구간별 분량 비율. 도입(질문·공감)이 길면 시청자가 빠져나가므로 짧게 두고, 이유·사례에 분량을 준다 (합계 1.0)
+구간_비율 = [0.04, 0.06, 0.15, 0.15, 0.14, 0.14, 0.12, 0.12, 0.08]
+
+
+def section_budgets(target):
+    """구간 번호(1~9) → 글자 수. 목표 글자 수를 구간_비율로 나눈다."""
+    return {i + 1: max(150, int(target * r)) for i, r in enumerate(구간_비율)}
+
+
+def budget_text(target, s, e):
+    """사용자 메시지에 넣을 '[구간별 분량]' 안내 (묶음 s~e 만)."""
+    b = section_budgets(target)
+    return "[구간별 분량 — 이 글자 수를 지킨다]\n" + "\n".join(f"구간 {i} {구간_이름[i - 1]}: 약 {b[i]:,}자" for i in range(s, e + 1))
 
 def load_cfg():
     with open("설정.json", encoding="utf-8") as f:
@@ -53,15 +66,16 @@ def generate(ai, system, t, target, n_parts):
     print(f"   참고 자료 {len(src)}건 검색")
     src_text = format_sources(src)
     groups = split_groups(n_parts)
-    per_chars = target // n_parts
+    budgets = section_budgets(target)
+    chars_of = lambda s, e: sum(budgets[i] for i in range(s, e + 1))
 
     # 1) 메타 블록 + 구간 계획 + 첫 묶음
     s, e = groups[0]
     user = (f"{card}\n\n{src_text}\n\n"
             f"먼저 [제목]부터 [고정댓글]까지 출력 형식의 블록을 쓴다.\n"
             f"그다음 '[구간 계획]' 이라는 줄 아래에 9개 구간 각각의 내용을 한 줄씩 쓴다 (구간 이름: {', '.join(구간_이름)}).\n"
-            f"그다음 '[대본]' 줄을 쓰고 구간 {s}~{e}만 약 {per_chars:,}자로 쓴다. 구간 {e} 끝에서 멈추고 마지막 줄에 '===계속===' 이라고만 쓴다.\n"
-            f"구간 제목이나 번호를 본문에 쓰지 않는다.")
+            f"그다음 '[대본]' 줄을 쓰고 구간 {s}~{e}만 약 {chars_of(s, e):,}자로 쓴다. 구간 {e} 끝에서 멈추고 마지막 줄에 '===계속===' 이라고만 쓴다.\n"
+            f"구간 제목이나 번호를 본문에 쓰지 않는다.\n\n{budget_text(target, s, e)}")
     print(f"   1/{n_parts} 묶음 (구간 {s}~{e}) ", end="", flush=True)
     first = ai.ask(system, user)
     head, plan, body = parse_first(first)
@@ -72,8 +86,8 @@ def generate(ai, system, t, target, n_parts):
         last = e == 9
         tail = "".join(parts)[-700:]
         user = (f"{card}\n\n{src_text}\n\n[구간 계획]\n{plan}\n\n[지금까지 쓴 대본의 마지막 부분]\n…{tail}\n\n"
-                f"위에 이어서 구간 {s}~{e}를 약 {per_chars:,}자로 쓴다. 앞 내용을 다시 요약하거나 반복하지 않는다. "
-                f"[대본] 같은 블록 제목, 구간 제목, 설명 없이 낭독할 본문만 쓴다.")
+                f"위에 이어서 구간 {s}~{e}를 약 {chars_of(s, e):,}자로 쓴다. 앞 내용을 다시 요약하거나 반복하지 않는다. "
+                f"[대본] 같은 블록 제목, 구간 제목, 설명 없이 낭독할 본문만 쓴다.\n\n{budget_text(target, s, e)}")
         if last:
             user += ("\n마지막 구간을 끝낸 뒤 줄을 바꿔 '===sum===' 을 쓰고, 그 다음 줄에 [상단 제목]과 [하단 제목]의 한글 두 줄을 정확히 포함하는 "
                      "16:9 썸네일 영어 프롬프트 한 문단을 쓴다.")
