@@ -94,6 +94,15 @@ class DropshotVideoPatchTest(unittest.TestCase):
                 self.assertTrue(pastes[1].startswith("scene one ") and "Cinematic" in pastes[1])
                 self.assertIn(("press", "enter"), actions)
                 self.assertEqual(st.to_dict()["output_dir"], str(images))
+                # 다운로드 버튼이 이미지를 받아 오면(이미지 화면을 누르고 있음) 바로 멈추고 이유를 남긴다
+                (images / "004.jpg").write_bytes(b"img4")
+                r._click = lambda xy: (xy == (4, 4)) and threading.Timer(0.2, lambda: (dl / "dup.jpg").write_bytes(b"image")).start()
+                r.start(vg.VideoSettings(images_dir=str(images), download_dir=str(dl), scenes=[4], prompts={}, upload_xy=(1, 1), prompt_xy=(2, 2), generate_xy=(3, 3), download_xy=(4, 4),
+                                         wait_upload=0.05, wait_min=0.05, wait_max=6, poll_every=0.05, wait_download=2, wait_next=0))
+                r._thread.join(20)
+                self.assertEqual(r.state.status, "error", r.state.log)
+                self.assertIn("이미지를 받아 왔습니다", r.state.error)
+                self.assertFalse((dl / "dup.jpg").exists())                        # 우리가 받은 중복 이미지는 지운다
             finally:
                 sys.path.remove(str(root))
                 for name in ("core", "core.imagegen", "core.videogen", "app"):

@@ -1131,6 +1131,13 @@ def kie_usable():
     return True, ""
 
 
+def video_engine(info=None):
+    """영상 변환 방식: auto(KIE 먼저, 안 되면 드롭샷) | kie | dropshot. 편집프로그램 설정 gen_ui.video_engine 에 저장."""
+    info = info or aip("/api/info")
+    v = str(((info.get("config") or {}).get("gen_ui") or {}).get("video_engine") or "auto").lower()
+    return v if v in ("auto", "kie", "dropshot") else "auto"
+
+
 def dropshot_video_xy(info=None):
     """설정에 저장된 드롭샷 영상 변환 좌표 4개 (업로드·입력창·생성·다운로드). 하나라도 없으면 None."""
     info = info or aip("/api/info")
@@ -1168,7 +1175,7 @@ def start_dropshot_videos(images_dir, prompts_file, scenes):
                 upload_xy=v["upload"], prompt_xy=v["prompt"], generate_xy=v["generate"], download_xy=v["download"],
                 motion_prompt=ui.get("motion_prompt") or "Cinematic slow camera movement, subtle natural motion, keep the same style and composition.",
                 wait_min=float(ui.get("video_wait_min") or 60), wait_max=float(ui.get("video_wait_max") or 360),
-                window_keyword=ui.get("window_keyword") or "드롭샷")
+                window_keyword=ui.get("video_window_keyword") or "영상")     # 이미지 창('드롭샷')이 아니라 영상 생성 창을 앞으로 가져온다
     aip("/api/vgen/start", body)
     return body
 
@@ -1574,7 +1581,11 @@ def make_pipeline(job, req):
             job.add(f"   앞 {n_hook}장 움직이는 영상이 이미 있어 건너뜀")
             result["hook"] = images_dir
         else:
-            ok, why = kie_usable()
+            engine = video_engine()                 # auto: KIE 먼저 → 안 되면 드롭샷 / kie: KIE 만 / dropshot: 드롭샷만
+            ok, why = (False, "드롭샷 AI 로 만들도록 설정됨") if engine == "dropshot" else kie_usable()
+            if engine == "kie" and not ok:
+                job.add(f"   ! {why} — KIE 만 쓰도록 설정되어 있어 그래도 KIE 로 시도합니다")
+                ok = True
             done_hook = False
             if ok:
                 try:
@@ -1582,7 +1593,9 @@ def make_pipeline(job, req):
                     result["hook"] = images_dir; done_hook = True
                 except Exception as e:  # noqa: BLE001
                     why = f"KIE 실패: {e}"
-            if not done_hook:                       # KIE 가 안 되면 드롭샷 좌표 변환으로 (좌표가 있을 때만)
+            if not done_hook and engine == "kie":
+                job.add(f"   ! 움직이는 영상 건너뜀(정지 이미지로 편집): {why}")
+            elif not done_hook:                     # KIE 가 안 되면(또는 드롭샷 설정이면) 드롭샷 좌표 변환으로 (좌표가 있을 때만)
                 if dropshot_video_xy():
                     job.add(f"   {why} → 드롭샷 좌표로 영상을 만듭니다")
                     try:

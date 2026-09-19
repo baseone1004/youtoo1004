@@ -43,9 +43,13 @@ class VideoSettings:
     poll_every: float = 20.0             # 다운로드를 다시 눌러 보는 간격
     wait_download: float = 25.0          # 다운로드 파일이 나타날 때까지 최대 초
     wait_next: float = 2.0
-    window_keyword: str = "드롭샷"
+    window_keyword: str = "영상"           # 영상 생성 창 제목의 일부 (이미지 창과 구분되도록 '드롭샷' 대신 '영상')
     clear_key: str = "ctrl+a"
     skip_existing: bool = True
+
+
+class WrongPage(Exception):
+    """다운로드 버튼이 영상이 아니라 이미지를 받아 왔다 → 좌표가 이미지 화면을 가리키고 있다."""
 
 
 @dataclass
@@ -142,7 +146,16 @@ class VideoRunner:
             if self._stop.is_set():
                 return None
             for p in folder.iterdir():
-                if not p.is_file() or p.name in before or p.suffix.lower() not in VIDEO_EXTS:
+                if not p.is_file() or p.name in before:
+                    continue
+                if p.suffix.lower() in IMAGE_EXTS:   # 영상 대신 이미지가 받아짐 → 이미지 생성 화면을 누르고 있다
+                    time.sleep(1.0)
+                    try:
+                        p.unlink()                   # 우리가 눌러서 받은 중복 이미지는 지운다
+                    except OSError:
+                        pass
+                    raise WrongPage("다운로드 버튼이 영상이 아니라 이미지를 받아 왔습니다. 드롭샷 '영상 생성' 화면이 앞에 보이는지, 영상 변환 좌표 4개를 그 화면에서 잡았는지 확인하세요.")
+                if p.suffix.lower() not in VIDEO_EXTS:
                     continue
                 size, same = -1, 0
                 for _ in range(300):                 # 받는 도중에 옮기지 않도록 크기가 멈출 때까지
@@ -257,6 +270,8 @@ class VideoRunner:
             st.add(f"끝 · 완료 {len(st.done)} / 실패 {len(st.failed)}")
         except pyautogui.FailSafeException:
             st.status = "stopped"; st.error = "마우스가 화면 모서리로 이동해 중단됨 (안전장치)"; st.add(st.error)
+        except WrongPage as e:
+            st.status = "error"; st.error = str(e); st.add("! " + st.error)
         except Exception as e:  # noqa: BLE001
             st.status = "error"; st.error = f"{e.__class__.__name__}: {e}"; st.add(st.error)
 
@@ -287,7 +302,7 @@ class VideoGenStart(BaseModel):
     poll_every: float = 20
     wait_download: float = 25
     wait_next: float = 2
-    window_keyword: str = "드롭샷"
+    window_keyword: str = "영상"
     skip_existing: bool = True
 
 
