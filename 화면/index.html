@@ -11,6 +11,7 @@
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
     <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
+    <button id="modeBtn" onclick="toggleUiMode()" title="간단 모드: 꼭 필요한 것만 보입니다 / 자세히: 대본 편집·영상 변환·자막 설정 등 전부">🙂 간단 모드</button>
     <button class="hidden" id="restartBtn" onclick="restartProgram()" style="color:var(--amber)">🔁 다시 시작</button>
     <button class="quit" onclick="exitProgram()">종료</button>
   </nav>
@@ -29,6 +30,7 @@
   <div class="pipe" id="pipe">
     <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
   </div>
+  <div class="simple-only banner info" style="margin:6px 0 10px">이렇게만 하면 됩니다: <b>① 아래에서 주제를 체크</b> (또는 직접 적기) → <b>② 🚀 제작 시작</b> → 기다리면 <b>③ 썸네일과 제목·설명</b>이 나옵니다. [복사]해서 유튜브에 올리세요. 더 많은 기능은 위의 [자세히 보기].</div>
   <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div>
   <div class="hint" id="pgSub"></div>
   <div class="bar"><i id="pgBar"></i></div>

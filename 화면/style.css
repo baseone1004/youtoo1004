@@ -16,6 +16,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 a{color:var(--blue)}
 [hidden]{display:none!important}
 .hidden{display:none!important}
+body.simple .adv{display:none!important}          /* 간단 모드에서 숨기는 고급 항목 */
+body:not(.simple) .simple-only{display:none!important}
 code{font-family:var(--mono);font-size:.85em;background:var(--bg);padding:1px 6px;border-radius:5px;word-break:break-all}
 
 /* ── 상단 ─────────────────────────────────────────── */

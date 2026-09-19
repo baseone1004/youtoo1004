@@ -67,6 +67,31 @@ async function exitProgram() {
   catch (e) { toast('종료 요청 실패: ' + e.message, true); }
 }
 
+// ── 간단 모드 / 자세히 보기 ──────────────────────────────
+// 초보자용 간단 모드(기본): 주제 고르기 → 제작 시작 → 썸네일·제목·설명 복사만 보이게 하고, 나머지는 '자세히 보기'에서
+const ADV_SELECTORS = [
+  '#benchBtn', '#benchBox', '#chAnalysisLine', '#personLenRow', '#mindamLenRow', '#contFile', '#optThumb', '#optHook',
+  'button[onclick="selectAllVisible(true)"]', 'button[onclick="selectAllVisible(false)"]',
+  '#workScript', '#stage-motion', '#stage-audio', '#adv-video', '#logPanel', '#pipe',
+  'button[onclick="emptyTrash()"]', '#trashStat', 'button[onclick="resetEverything()"]',
+  '#sVxyStatus', '#tgToken', '#benchChannels', 'button[onclick="saveBenchChannels()"]', 'button[onclick="runBenchmark()"]',
+];
+const ADV_CLOSEST = {'#contFile': '.row', '#optThumb': '.row', '#optHook': '.row', '#workScript': null, '#sVxyStatus': '.card', '#tgToken': '.card', '#benchChannels': null, 'button[onclick="saveBenchChannels()"]': '.row'};
+function markAdvanced() {
+  for (const sel of ADV_SELECTORS) for (const el of document.querySelectorAll(sel)) {
+    const up = ADV_CLOSEST[sel]; const target = up ? (el.closest(up) || el) : el; target.classList.add('adv');
+    if (sel === '#workScript') { const row = el.nextElementSibling; if (row && row.classList.contains('row')) row.classList.add('adv'); }
+  }
+  const h3 = [...document.querySelectorAll('#view-settings h3')].find(h => h.textContent.includes('벤치마킹할 채널')); if (h3) { h3.classList.add('adv'); if (h3.nextElementSibling && h3.nextElementSibling.classList.contains('hint')) h3.nextElementSibling.classList.add('adv'); }
+}
+let uiMode = localStorage.getItem('uiMode') || 'simple';
+function applyUiMode() {
+  document.body.classList.toggle('simple', uiMode === 'simple');
+  const b = $('modeBtn'); if (b) b.textContent = uiMode === 'simple' ? '🔎 자세히 보기' : '🙂 간단히 보기';
+}
+function toggleUiMode() { uiMode = uiMode === 'simple' ? 'full' : 'simple'; localStorage.setItem('uiMode', uiMode); applyUiMode(); toast(uiMode === 'simple' ? '간단 모드: 꼭 필요한 것만 보입니다' : '자세히 보기: 모든 기능이 보입니다'); }
+markAdvanced(); applyUiMode();
+
 // ── 화면 전환 ──────────────────────────────────────────
 let currentStep = 1;
 function showView(name) {
@@ -695,7 +720,10 @@ async function refreshKieFiles() {
     const count = [1, 2, 3, 4, 5, 6, 7].filter(n => done.has(n)).length;
     $('kieScenes').textContent = [1, 2, 3, 4, 5, 6, 7].map(n => `${pad3(n)} ${done.has(n) ? '✓' : '대기'}`).join(' · ');
     if (!kieJobId) $('kieProgress').textContent = count === 7 ? '✅ 앞 7장 영상 변환 완료' : `영상 ${count}/7개 완료`;
-  } catch (e) { $('kieScenes').textContent = '영상 파일 확인 실패: ' + e.message; }
+  } catch (e) {                                   // 서버가 잠깐 안 받을 때(다시 시작 중 등) — 5초 뒤 다시 읽는다
+    $('kieScenes').textContent = '영상 파일을 다시 확인하는 중… (' + e.message + ')';
+    if (!refreshKieFiles._retry) refreshKieFiles._retry = setTimeout(() => { refreshKieFiles._retry = null; refreshKieFiles(); }, 5000);
+  }
 }
 async function pollKieJob() {
   if (!kieJobId) return;
