@@ -46,6 +46,7 @@ class VideoSettings:
     window_keyword: str = "영상"           # 영상 생성 창 제목의 일부 (이미지 창과 구분되도록 '드롭샷' 대신 '영상')
     clear_key: str = "ctrl+a"
     skip_existing: bool = True
+    manual_download: bool = True         # True: 다운로드 버튼은 사람이 누르고, 프로그램은 다운로드 폴더에 새 영상이 생기면 가져간다
 
 
 class WrongPage(Exception):
@@ -63,6 +64,7 @@ class VideoState:
     error: str = ""
     files: dict[int, str] = field(default_factory=dict)
     output_dir: str = ""
+    waiting: str = ""                    # 사람이 해야 할 일이 있으면 그 안내 (화면에 크게 보여 준다)
 
     def add(self, s: str) -> None:
         self.log.append(time.strftime("%H:%M:%S ") + s)
@@ -71,7 +73,7 @@ class VideoState:
 
     def to_dict(self) -> dict:
         return {"status": self.status, "current": self.current, "done": self.done, "failed": self.failed, "total": self.total,
-                "log": self.log[-60:], "error": self.error, "files": self.files, "output_dir": self.output_dir}
+                "log": self.log[-60:], "error": self.error, "files": self.files, "output_dir": self.output_dir, "waiting": self.waiting}
 
 
 class VideoRunner:
@@ -168,60 +170,78 @@ class VideoRunner:
         except Exception:  # noqa: BLE001
             return None
 
-    def find_download_button(self, s: VideoSettings, near=None):
-        """영상 생성 화면에서 '다운로드' 버튼 위치를 찾는다. 결과 영상 위에 마우스를 올려야 버튼이 보이는 경우도 처리.
-        여러 개면 저장된 좌표(near)에 가장 가까운 것, 없으면 가장 아래(최신) 것. 못 찾으면 None."""
+    def _page_items(self, keyword: str):
+        """드롭샷 창의 웹 페이지 영역 안에 있는 컨트롤 [(이름, 사각형, 종류)]. 크롬 주소창·도구막대는 뺀다."""
         sw, sh = pyautogui.size()
-        keys = ("다운로드", "download", "저장", "save")
-
-        def buttons(ctrls):
-            out = []
-            for c in ctrls:
-                info = self._ctrl_info(c)
-                if not info:
-                    continue
-                name, r, t = info
-                if t in ("Button", "Hyperlink", "MenuItem") and any(k in name.lower() for k in keys) and r.width() > 0 and 0 <= r.top < sh and 0 <= r.left < sw:
-                    out.append((r, name))
-            return out
-
-        _win, controls = self._video_controls(s.window_keyword)
-        if not controls:
-            return None
-        docs = []                                      # 웹 페이지 영역 (크롬 도구막대·주소창은 여기 밖)
-        for c in controls:
-            info = self._ctrl_info(c)
-            if info and info[2] == "Document" and info[1].width() > 300 and info[1].height() > 200:
-                docs.append(info[1])
+        _win, controls = self._video_controls(keyword)
+        infos = [i for i in (self._ctrl_info(c) for c in controls) if i]
+        docs = [r for (n, r, t) in infos if t == "Document" and r.width() > 300 and r.height() > 200]
 
         def in_page(r):
             cx, cy = (r.left + r.right) // 2, (r.top + r.bottom) // 2
-            return (not docs) or any(d.left <= cx <= d.right and d.top <= cy <= d.bottom for d in docs)
+            return 0 <= cx < sw and 0 <= cy < sh and ((not docs) or any(d.left <= cx <= d.right and d.top <= cy <= d.bottom for d in docs))
 
-        found = [f for f in buttons(controls) if in_page(f[0])]
-        if not found:                                  # 버튼이 결과 위에 마우스를 올려야 나타나는 경우
-            media = []
-            for c in controls:
-                info = self._ctrl_info(c)
-                if not info:
-                    continue
-                name, r, t = info
-                if t in ("Image", "Group", "Custom", "Pane", "Document") and r.width() > 200 and r.height() > 100 and 0 <= r.top < sh \
-                        and (t == "Image" or any(k in name.lower() for k in ("video", "영상", "generated", "result", "결과"))):
-                    media.append((r.bottom, r))
-            if media:
-                r = max(media)[1]
-                pyautogui.moveTo((r.left + r.right) // 2, min(r.bottom - 24, sh - 5), duration=0.2)
-                time.sleep(0.5)
-                _w, hovered = self._video_controls(s.window_keyword)
-                found = [f for f in buttons(hovered) if in_page(f[0])]
-        if not found:
-            return None
-        if near:
-            r, _ = min(found, key=lambda f: abs((f[0].left + f[0].right) // 2 - near[0]) + abs((f[0].top + f[0].bottom) // 2 - near[1]))
-        else:
-            r, _ = max(found, key=lambda f: f[0].bottom)
+        return [(n, r, t) for (n, r, t) in infos if r.width() > 0 and in_page(r)]
+
+    @staticmethod
+    def _center(r):
         return ((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+
+    @staticmethod
+    def _nearest(rects, near):
+        if near and any(near):
+            return min(rects, key=lambda r: abs((r.left + r.right) // 2 - near[0]) + abs((r.top + r.bottom) // 2 - near[1]))
+        return min(rects, key=lambda r: r.top)                 # 저장 좌표가 없으면 가장 위(최신 결과)
+
+    def find_generate_button(self, s: VideoSettings):
+        """'영상 생성하기' 버튼 — 입력창이 커지거나 이미지를 올리면 아래로 밀리므로 매번 찾는다."""
+        items = self._page_items(s.window_keyword)
+        cands = [r for (n, r, t) in items if t == "Button" and ("생성하기" in n or n.startswith("영상 생성")) and r.width() > 100]
+        if cands:
+            return self._center(max(cands, key=lambda r: r.width()))
+        try:                                                   # 이름을 못 읽는 버전: 이미지 생성과 같은 파란 버튼 색으로 찾는다
+            from core.imagegen import find_button_by_color
+            import pygetwindow as gw
+            wins = [w for w in gw.getAllWindows() if self._title_ok(w.title, s.window_keyword)]
+            if wins:
+                w = wins[0]; sw, sh = pyautogui.size()
+                region = (max(0, w.left), max(0, w.top), min(sw, w.left + w.width) - max(0, w.left), min(sh, w.top + w.height) - max(0, w.top))
+                found = find_button_by_color(region)
+                if found:
+                    return tuple(found)
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    def find_prompt_input(self, s: VideoSettings):
+        """움직임 프롬프트 입력창 — 페이지 안의 넓은 입력 칸(Edit) 중 생성 버튼 바로 위의 것."""
+        items = self._page_items(s.window_keyword)
+        gen = self.find_generate_button(s)
+        edits = [r for (n, r, t) in items if t in ("Edit", "Document") and r.width() > 250 and 20 <= r.height() <= 600 and (not gen or r.top < gen[1])]
+        if not edits:
+            return None
+        r = max(edits, key=lambda r: r.bottom) if gen else max(edits, key=lambda r: r.width())
+        return self._center(r)
+
+    def find_download_button(self, s: VideoSettings, near=None):
+        """결과 카드의 다운로드 버튼. 드롭샷은 이름 없는 아이콘 버튼('icon')을 ♥ 즐겨찾기 버튼 바로 오른쪽에 둔다.
+        이름에 '다운로드'가 있으면 그것을, 없으면 즐겨찾기 옆 아이콘을 쓴다. 여러 결과가 있으면 저장 좌표에 가까운 것(없으면 맨 위)."""
+        items = self._page_items(s.window_keyword)
+        if not items:
+            return None
+        named = [r for (n, r, t) in items if t in ("Button", "Hyperlink") and any(k in n.lower() for k in ("다운로드", "download"))]
+        if named:
+            return self._center(self._nearest(named, near))
+        favs = [r for (n, r, t) in items if t == "Button" and "즐겨찾기" in n]
+        small = [r for (n, r, t) in items if t == "Button" and 16 <= r.width() <= 60 and 16 <= r.height() <= 60 and "즐겨찾기" not in n]
+        beside = []
+        for f in favs:
+            for r in small:
+                if abs(r.top - f.top) <= 6 and 0 <= r.left - f.right <= 24:      # 같은 줄, 바로 오른쪽
+                    beside.append(r)
+        if beside:
+            return self._center(self._nearest(beside, near))
+        return None
 
     # -- 파일 선택 창 (윈도우 '열기' 대화상자)
     DIALOG_TITLES = ("열기", "open", "파일 열기", "파일 업로드", "file upload", "업로드할 파일 선택")
@@ -312,22 +332,51 @@ class VideoRunner:
         prompt = (s.prompts.get(no) or "").strip()
         prompt = (prompt + " " if prompt else "") + s.motion_prompt.strip()
         self._focus_window(s.window_keyword)
-        self._click(s.prompt_xy)
+        pxy = self.find_prompt_input(s) or tuple(s.prompt_xy)
+        self._click(pxy)
         time.sleep(0.3)
         self._hotkey(s.clear_key)
         self._press("backspace")
         time.sleep(0.2)
         self._paste(prompt)
-        time.sleep(0.6)
+        time.sleep(0.8)
         # 3) 생성 → 최소 대기 → 다운로드를 주기적으로 시도
         before = self._snapshot(dl)
-        self._click(s.generate_xy)
-        st.add(f"{no:03d} 생성 클릭 → {s.wait_min:.0f}초 뒤부터 다운로드를 시도 (최대 {s.wait_max:.0f}초)")
+        gxy = self.find_generate_button(s)
+        self._click(gxy or tuple(s.generate_xy))
+        st.add(f"{no:03d} 생성 클릭 ({'버튼 자동 감지 ' + str(gxy) if gxy else '저장된 좌표 ' + str(tuple(s.generate_xy))}) → {s.wait_min:.0f}초 뒤부터 다운로드를 시도 (최대 {s.wait_max:.0f}초)")
         if not self._wait(max(float(s.wait_min), 5.0)):
             return None
         deadline = time.time() + max(float(s.wait_max), float(s.wait_min) + 30)
         f = None
         attempt = 0
+        if s.manual_download:                          # 사람이 다운로드를 누른다 → 새 영상 파일이 생길 때까지만 기다린다
+            st.waiting = f"{no:03d}번 영상이 완성되면 드롭샷에서 ⬇ 다운로드 버튼을 눌러 주세요 (최대 {int((deadline - time.time()) // 60)}분)"
+            st.add(f"{no:03d} 다운로드는 직접 눌러 주세요 — 다운로드 폴더에 새 영상이 생기면 가져갑니다")
+            while time.time() < deadline and not self._stop.is_set():
+                f = self._wait_new_video(dl, before, 5.0)
+                if f:
+                    h = _md5(f)
+                    if h and h == getattr(self, "_last_hash", None):
+                        st.add(f"{no:03d} 받은 영상이 직전 장면과 같음 → 새 영상을 눌러 주세요")
+                        try:
+                            f.unlink()
+                        except OSError:
+                            pass
+                        before = self._snapshot(dl); f = None
+                        continue
+                    self._last_hash = h
+                    break
+            st.waiting = ""
+            if not f:
+                return None
+            dest = out / f"{no:03d}.mp4"
+            for _ in range(10):
+                try:
+                    shutil.move(str(f), str(dest)); break
+                except PermissionError:
+                    time.sleep(0.5)
+            return dest if dest.exists() else None
         while time.time() < deadline and not self._stop.is_set():
             attempt += 1
             self._focus_window(s.window_keyword)
@@ -434,6 +483,7 @@ class VideoGenStart(BaseModel):
     wait_next: float = 2
     window_keyword: str = "영상"
     skip_existing: bool = True
+    manual_download: bool = True
 
 
 @app.post("/api/vgen/start")
@@ -447,7 +497,7 @@ def api_vgen_start(req: VideoGenStart):
         upload_xy=tuple(req.upload_xy), prompt_xy=tuple(req.prompt_xy), generate_xy=tuple(req.generate_xy), download_xy=tuple(req.download_xy),
         output_dir=req.output_dir, motion_prompt=req.motion_prompt, wait_upload=req.wait_upload, wait_min=req.wait_min, wait_max=req.wait_max,
         poll_every=req.poll_every, wait_download=req.wait_download, wait_next=req.wait_next, window_keyword=req.window_keyword,
-        skip_existing=req.skip_existing,
+        skip_existing=req.skip_existing, manual_download=req.manual_download,
     )
     try:
         videogen.runner.start(s)

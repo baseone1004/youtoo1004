@@ -101,7 +101,7 @@ class DropshotVideoPatchTest(unittest.TestCase):
 
                 s = vg.VideoSettings(images_dir=str(images), download_dir=str(dl), scenes=[1, 2, 3, 9],
                                      prompts={1: "scene one"}, upload_xy=(1, 1), prompt_xy=(2, 2), generate_xy=(3, 3), download_xy=(4, 4),
-                                     wait_upload=0.05, wait_min=0.05, wait_max=6, poll_every=0.05, wait_download=2, wait_next=0)
+                                     wait_upload=0.05, wait_min=0.05, wait_max=6, poll_every=0.05, wait_download=2, wait_next=0, manual_download=False)
                 r._wait = lambda sec: not r._stop.is_set()
                 r.start(s); r._thread.join(20)
                 st = r.state
@@ -124,10 +124,28 @@ class DropshotVideoPatchTest(unittest.TestCase):
                     if tuple(xy) == (4, 4): threading.Timer(0.2, lambda: (dl / "dup.jpg").write_bytes(b"image")).start()
                 r._click = click_wrong
                 r.start(vg.VideoSettings(images_dir=str(images), download_dir=str(dl), scenes=[4], prompts={}, upload_xy=(1, 1), prompt_xy=(2, 2), generate_xy=(3, 3), download_xy=(4, 4),
-                                         wait_upload=0.05, wait_min=0.05, wait_max=6, poll_every=0.05, wait_download=2, wait_next=0))
+                                         wait_upload=0.05, wait_min=0.05, wait_max=6, poll_every=0.05, wait_download=2, wait_next=0, manual_download=False))
                 r._thread.join(20)
                 self.assertEqual(r.state.status, "error", r.state.log)
                 self.assertIn("이미지를 받아 왔습니다", r.state.error)
+                # 수동 다운로드(기본): 다운로드 좌표를 누르지 않고, 사람이 받은 새 영상이 생기면 가져간다
+                (images / "005.jpg").write_bytes(b"img5"); clicks = []
+                def click_manual(xy):
+                    clicks.append(tuple(xy))
+                    if tuple(xy) == (1, 1): dialog["open"] = True
+                    if tuple(xy) == (3, 3): threading.Timer(0.6, lambda: (dl / "user.mp4").write_bytes(b"video-user")).start()   # 사람이 눌러 받은 영상
+                r._click = click_manual; r._dialog_window = lambda: Dlg() if dialog["open"] else None
+                r.start(vg.VideoSettings(images_dir=str(images), download_dir=str(dl), scenes=[5], prompts={}, upload_xy=(1, 1), prompt_xy=(2, 2), generate_xy=(3, 3), download_xy=(4, 4),
+                                         wait_upload=0.05, wait_min=0.05, wait_max=8, poll_every=0.05, wait_download=2, wait_next=0))
+                for _ in range(50):                                                 # 안내 문구가 뜰 때까지 (최대 5초)
+                    if "005번" in r.state.waiting: break
+                    time.sleep(0.1)
+                self.assertIn("005번", r.state.to_dict()["waiting"])
+                r._thread.join(25)
+                self.assertEqual(r.state.status, "done", r.state.log)
+                self.assertNotIn((4, 4), clicks)                                    # 다운로드 좌표는 안 누른다
+                self.assertEqual((images / "005.mp4").read_bytes(), b"video-user")
+                self.assertEqual(r.state.waiting, "")
                 self.assertFalse((dl / "dup.jpg").exists())                        # 우리가 받은 중복 이미지는 지운다
                 # 업로드 좌표를 눌러도 파일 선택 창이 안 뜨면 바로 멈춘다
                 r._dialog_window = lambda: None
@@ -151,12 +169,16 @@ class DropshotVideoPatchTest(unittest.TestCase):
                 self.assertFalse(r._title_ok("메모장", "드롭샷"))
                 ctrls = [Ctrl("", Rect(0, 110, 1000, 900), "Document"),                                   # 웹 페이지 영역
                          Ctrl("다운로드", Rect(940, 80, 974, 114), "Button"),                            # 크롬 도구막대 (최근 다운로드 기록) → 제외
-                         Ctrl("다운로드", Rect(100, 100, 140, 130), "Button"), Ctrl("다운로드", Rect(100, 500, 140, 530), "Button"), Ctrl("공유", Rect(200, 500, 240, 530), "Button")]
+                         Ctrl("즐겨찾기", Rect(500, 300, 536, 336), "Button"), Ctrl("icon", Rect(540, 300, 576, 336), "Button"),   # 결과 카드 1 (♥ + 다운로드 아이콘)
+                         Ctrl("즐겨찾기", Rect(500, 700, 536, 736), "Button"), Ctrl("icon", Rect(540, 700, 576, 736), "Button"),   # 결과 카드 2
+                         Ctrl("영상 생성하기 130", Rect(80, 850, 448, 888), "Button"), Ctrl("", Rect(80, 600, 448, 760), "Edit"), Ctrl("공유", Rect(200, 500, 240, 530), "Button")]
                 r._video_controls = lambda kw: (object(), ctrls)
                 s2 = vg.VideoSettings(images_dir="", download_dir="", scenes=[], prompts={}, upload_xy=(0, 0), prompt_xy=(0, 0), generate_xy=(0, 0), download_xy=(0, 0))
-                self.assertEqual(r.find_download_button(s2), (120, 515))                 # 가장 아래(최신)
-                self.assertEqual(r.find_download_button(s2, near=(118, 112)), (120, 115))  # 저장 좌표에 가까운 것
-                self.assertEqual(r.find_download_button(s2, near=(957, 97)), (120, 115))   # 도구막대 버튼은 가까워도 안 고른다
+                self.assertEqual(r.find_download_button(s2), (558, 318))                   # 저장 좌표 없으면 맨 위(최신) 카드의 아이콘
+                self.assertEqual(r.find_download_button(s2, near=(560, 720)), (558, 718))  # 저장 좌표에 가까운 카드
+                self.assertEqual(r.find_download_button(s2, near=(957, 97)), (558, 318))   # 도구막대 '다운로드'는 안 고른다
+                self.assertEqual(r.find_generate_button(s2), (264, 869))                   # '영상 생성하기' 버튼
+                self.assertEqual(r.find_prompt_input(s2), (264, 680))                      # 생성 버튼 위의 입력창
                 r._video_controls = lambda kw: (object(), [Ctrl("공유", Rect(200, 500, 240, 530), "Button")])
                 self.assertIsNone(r.find_download_button(s2))
             finally:
