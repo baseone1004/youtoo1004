@@ -72,7 +72,8 @@ async function exitProgram() {
 const ADV_SELECTORS = [
   '#benchBtn', '#benchBox', '#chAnalysisLine', '#personLenRow', '#mindamLenRow', '#contFile', '#optThumb', '#optHook',
   'button[onclick="selectAllVisible(true)"]', 'button[onclick="selectAllVisible(false)"]',
-  '#workScript', '#stage-motion', '#stage-audio', '#adv-video', '#logPanel', '#pipe',
+  '#workScript', '#stage-image', '#stage-motion', '#stage-audio', '#adv-video', '#logPanel', '#pipe', '#filePanel', '#chanCard',
+  'button[onclick="composeThumbnails()"]', 'button[onclick="makeWorkspaceThumbnails()"]', 'button[onclick="openWork(\'thumbs\')"]', 'button[onclick="rerunTTS()"]',
   'button[onclick="emptyTrash()"]', '#trashStat', 'button[onclick="resetEverything()"]',
   '#sVxyStatus', '#tgToken', '#benchChannels', 'button[onclick="saveBenchChannels()"]', 'button[onclick="runBenchmark()"]',
 ];
@@ -91,6 +92,7 @@ function applyUiMode() {
 }
 function toggleUiMode() { uiMode = uiMode === 'simple' ? 'full' : 'simple'; localStorage.setItem('uiMode', uiMode); applyUiMode(); toast(uiMode === 'simple' ? '간단 모드: 꼭 필요한 것만 보입니다' : '자세히 보기: 모든 기능이 보입니다'); }
 markAdvanced(); applyUiMode();
+if (uiMode === 'simple' && !localStorage.getItem('helpSeen')) { $('helpBox').classList.remove('hidden'); localStorage.setItem('helpSeen', '1'); }
 
 // ── 화면 전환 ──────────────────────────────────────────
 let currentStep = 1;
@@ -371,7 +373,7 @@ function humanStage(j) {
 }
 async function poll() {
   let j; try { j = await api('/api/job'); } catch (e) { return; }
-  if (!j || j.status === 'none') { $('pgStage').textContent = '지금은 진행 중인 작업이 없습니다.'; $('liveDot').classList.remove('on'); return; }
+  if (!j || j.status === 'none') { $('pgStage').textContent = '지금은 진행 중인 작업이 없습니다.'; $('liveDot').classList.remove('on'); if (!genBusyNow && !vgenTimer) $('cancelJob').classList.add('hidden'); return; }
   if (STATE) STATE.job = j;
   renderOverview(j); renderStepBar();
   $('cancelJob').classList.toggle('hidden', j.status !== 'running' && !(STATE && STATE.queue && STATE.queue.status === 'running'));
@@ -623,6 +625,7 @@ async function refreshGallery(force) {
   await updateGallery(dir, pr); await refreshKieFiles();
 }
 const busyGen = st => st && ['running', 'paused'].includes(st.status);
+let genBusyNow = false;                       // 편집프로그램이 이미지를 만드는 중인지 (제작 작업이 없어도 [■ 중단]을 보여 준다)
 async function updateGallery(dir, pr) {
   if (!dir) { $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>'; $('galStat').textContent = ''; return; }
   if (galBusy) { if (!galKey) setTimeout(() => refreshGallery(true), 500); return; }   // 강제 새로고침이 앞선 읽기와 겹치면 잠시 뒤 다시
@@ -636,7 +639,7 @@ async function updateGallery(dir, pr) {
     const queued = new Set(st.queued || []);
     const key = JSON.stringify([st.status, st.current, [...queued], Object.values(imgs).map(i => i.mtime)]);
     galFilled = total ? Math.round(Object.keys(imgs).length / total * 100) : 0; renderStageCards();
-    if (busyGen(st)) $('cancelJob').classList.remove('hidden');
+    genBusyNow = busyGen(st); if (genBusyNow) $('cancelJob').classList.remove('hidden');
     $('galStat').textContent = `${Object.keys(imgs).length}/${total} · ${({running: '생성 중', paused: '잠시 멈춤', done: '완료', stopped: '중단', error: '오류', idle: '대기'})[st.status] || st.status}${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}${st.failed && st.failed.length ? ' · 실패 ' + st.failed.join(',') : ''}`;
     if (key === galKey) return; galKey = key;
     const busy = st.status === 'running' || st.status === 'paused', failed = new Set(st.failed || []); const out = [];
