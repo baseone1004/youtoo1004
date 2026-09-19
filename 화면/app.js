@@ -346,10 +346,10 @@ function humanStage(j) {
 }
 async function poll() {
   let j; try { j = await api('/api/job'); } catch (e) { return; }
-  if (!j || j.status === 'none') { $('pgStage').textContent = '지금은 진행 중인 작업이 없습니다.'; $('cancelJob').classList.add('hidden'); $('liveDot').classList.remove('on'); return; }
+  if (!j || j.status === 'none') { $('pgStage').textContent = '지금은 진행 중인 작업이 없습니다.'; $('liveDot').classList.remove('on'); return; }
   if (STATE) STATE.job = j;
   renderOverview(j); renderStepBar();
-  $('cancelJob').classList.toggle('hidden', j.status !== 'running');
+  $('cancelJob').classList.toggle('hidden', j.status !== 'running' && !(STATE && STATE.queue && STATE.queue.status === 'running'));
   $('pgKind').textContent = (KIND_LABEL[j.kind] || '작업 중') + ' · ' + j.started + ' 시작';
   $('pgKind').className = 'stat ' + (j.status === 'running' ? 'now' : j.status === 'done' ? 'ok' : 'bad');
   $('liveDot').classList.toggle('on', j.status === 'running');
@@ -430,7 +430,15 @@ async function switchAI(name) {
   try { await api('/api/config', {AI: name, 모델: ''}); toast(`대본 AI를 ${name} 로 바꿨습니다. 다시 시도합니다…`); await refresh(); if (STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status))) await queueControl('resume'); }
   catch (e) { toast(e.message, true); }
 }
-async function cancelJob() { if (!confirm('지금 만들고 있는 작업을 중단할까요?')) return; try { await api('/api/cancel', {}); toast('중단을 요청했습니다.'); } catch (e) { toast(e.message, true); } }
+// [■ 중단] 하나로 전부 멈춘다: 지금 작업 + 남은 주제 + 편집프로그램 이미지 생성/영상 변환 + KIE 영상화
+async function stopAll() {
+  if (!confirm('지금 만드는 작업과 남은 주제, 이미지 생성·영상 변환을 모두 중단할까요?')) return;
+  try {
+    const r = await api('/api/stop-all', {});
+    if (kieJobId) { try { await post8765('/api/jobs/' + encodeURIComponent(kieJobId) + '/cancel', {}); } catch (e) {} }
+    galKey = ''; toast('중단했습니다: ' + ((r.stopped || []).join(' · ') || '진행 중인 것 없음')); refreshQueue();
+  } catch (e) { toast(e.message, true); }
+}
 async function queueControl(action) {
   const labels = {pause: '지금 만드는 편이 끝나면 잠시 멈춥니다.', resume: '연속 제작을 계속합니다.', cancel: '지금 작업과 남은 주제를 모두 중단할까요?'};
   if (action === 'cancel' && !confirm(labels.cancel)) return;
@@ -589,6 +597,7 @@ async function refreshGallery(force) {
   galDir = dir; galPromptsPath = pr; if (force) galKey = '';
   await updateGallery(dir, pr); await refreshKieFiles();
 }
+const busyGen = st => st && ['running', 'paused'].includes(st.status);
 async function updateGallery(dir, pr) {
   if (!dir) { $('advGal').innerHTML = '<div class="hint">제작이 시작되면 여기에 이미지가 나타납니다. 위에서 작업을 고르면 그 작업의 이미지를 보여 줍니다.</div>'; $('galStat').textContent = ''; return; }
   if (galBusy) { if (!galKey) setTimeout(() => refreshGallery(true), 500); return; }   // 강제 새로고침이 앞선 읽기와 겹치면 잠시 뒤 다시
@@ -602,6 +611,7 @@ async function updateGallery(dir, pr) {
     const queued = new Set(st.queued || []);
     const key = JSON.stringify([st.status, st.current, [...queued], Object.values(imgs).map(i => i.mtime)]);
     galFilled = total ? Math.round(Object.keys(imgs).length / total * 100) : 0; renderStageCards();
+    if (busyGen(st)) $('cancelJob').classList.remove('hidden');
     $('galStat').textContent = `${Object.keys(imgs).length}/${total} · ${({running: '생성 중', paused: '잠시 멈춤', done: '완료', stopped: '중단', error: '오류', idle: '대기'})[st.status] || st.status}${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}${st.failed && st.failed.length ? ' · 실패 ' + st.failed.join(',') : ''}`;
     if (key === galKey) return; galKey = key;
     const busy = st.status === 'running' || st.status === 'paused', failed = new Set(st.failed || []); const out = [];
@@ -633,26 +643,6 @@ async function galStart() {
     if (galPrompts.count && !missing.length) return toast('빠진 장면이 없습니다. 특정 장면을 바꾸려면 그 그림의 [다시 만들기]를 누르세요.');
     await post8765('/api/gen/start', body); galKey = '';
     toast((missing.length ? `빠진 장면 ${missing.length}장(${pad3(missing[0])}번부터)을 이어서 만듭니다` : '빠진 장면부터 이어서 만듭니다') + ' — 드롭샷 창을 가리지 마세요');
-  } catch (e) { toast(e.message, true); }
-}
-// 자동 제작 중에 단계 칸의 [■ 중단]을 누르면: 제작 전체를 멈출지, 이 단계만 멈추고 제작은 계속할지 묻는다 (단계만 멈추면 제작은 다음 단계로 넘어가 "계속 되는" 것처럼 보인다)
-async function stopWholeProductionIfAsked(what) {
-  const j = STATE && STATE.job, active = j && j.status === 'running' && ['pipeline', 'queue_pipeline'].includes(j.kind);
-  if (!active) return false;
-  if (confirm(`자동 제작이 돌아가는 중입니다.
-
-[확인] 제작 전체를 중단합니다 (남은 단계·남은 주제 모두).
-[취소] ${what}만 멈추고 제작은 다음 단계로 계속합니다.`)) {
-    try { await api('/api/queue/cancel', {}); await api('/api/cancel', {}); toast('제작 전체를 중단했습니다.'); } catch (e) { toast(e.message, true); }
-    return true;
-  }
-  return false;
-}
-async function galStop() {
-  try {
-    const st = await genStatus(); if (!['running', 'paused'].includes(st.status)) return toast('지금 만드는 중인 이미지가 없습니다.');
-    if (await stopWholeProductionIfAsked('이미지 생성')) return;
-    await post8765('/api/gen/stop', {}); toast('이미지 생성만 중단 — 제작은 다음 단계로 계속됩니다. 전체를 멈추려면 제작 현황의 [■ 지금 작업 중단]'); galKey = '';
   } catch (e) { toast(e.message, true); }
 }
 async function regenScene(no) {
@@ -742,6 +732,7 @@ async function vgenStatus() { try { return await get8765('/api/vgen/status'); } 
 async function pollVgen() {
   const st = await vgenStatus();
   const n = (st.done || []).length + (st.failed || []).length;
+  if (st.status === 'running') $('cancelJob').classList.remove('hidden');
   $('kieProgress').textContent = st.status === 'running' ? `드롭샷 영상 변환 ${n}/${st.total} · 지금 ${pad3(st.current || 0)}번 — 드롭샷 창을 가리지 마세요` : st.status === 'done' ? `✅ 드롭샷 영상 변환 완료 ${(st.done || []).length}개${(st.failed || []).length ? ' · 실패 ' + st.failed.map(pad3).join(', ') : ''}` : st.status === 'error' ? '❌ 드롭샷 영상 변환 오류: ' + (st.error || '') : st.status === 'stopped' ? '■ 드롭샷 영상 변환 중단됨' : '';
   await refreshKieFiles();
   if (st.status !== 'running') { clearInterval(vgenTimer); vgenTimer = null; await refreshGallery(true); }
@@ -770,14 +761,6 @@ async function startFirstSevenVideos() {
     kieJobId = j.job_id; sessionStorage.setItem('kieJobId', kieJobId); clearInterval(kieTimer); kieTimer = setInterval(pollKieJob, 2000); pollKieJob(); toast('앞 7장 영상 변환을 시작했습니다');
   } catch (e) { toast('영상화 실패: ' + e.message, true); }
 }
-async function cancelKieVideos() {
-  if (vgenTimer || (await vgenStatus()).status === 'running') {
-    if (await stopWholeProductionIfAsked('영상 변환')) return;
-    try { await post8765('/api/vgen/stop', {}); $('kieProgress').textContent = '중단 요청'; toast('영상 변환만 중단 — 제작은 정지 이미지로 계속됩니다. 전체를 멈추려면 [■ 지금 작업 중단]'); } catch (e) { toast('중단 실패: ' + e.message, true); } return;
-  }
-  if (!kieJobId) return toast('진행 중인 영상화가 없습니다', true);
-  if (await stopWholeProductionIfAsked('영상 변환')) return;
-  try { await post8765('/api/jobs/' + encodeURIComponent(kieJobId) + '/cancel', {}); $('kieProgress').textContent = '중단 요청'; } catch (e) { toast('중단 실패: ' + e.message, true); } }
 if (kieJobId) { kieTimer = setInterval(pollKieJob, 2000); setTimeout(pollKieJob, 500); }
 setTimeout(async () => { if ((await vgenStatus()).status === 'running' && !vgenTimer) { vgenTimer = setInterval(pollVgen, 3000); pollVgen(); } }, 1500);
 

@@ -1982,6 +1982,23 @@ class H(BaseHTTPRequestHandler):
                 if j and j.status == "running":
                     j.cancel_requested = True
                 self._json({"ok": True})
+            elif u.path == "/api/stop-all":                      # 화면의 [■ 중단] 하나로 전부: 지금 작업·남은 주제·편집프로그램의 이미지 생성·영상 변환
+                stopped = []
+                with QUEUE.lock:
+                    if QUEUE.data.get("status") in ("running", "paused"):
+                        QUEUE.data["status"] = "cancelled"; stopped.append("대기열")
+                        for x in QUEUE.data.get("items", []):
+                            if x.get("status") == "pending": x.update(status="cancelled", stage="취소됨")
+                        QUEUE.save()
+                j = STATE["job"]
+                if j and j.status == "running":
+                    j.cancel_requested = True; stopped.append("지금 작업")
+                for path, name in (("/api/gen/stop", "이미지 생성"), ("/api/vgen/stop", "영상 변환")):
+                    try:
+                        _rq.post(AIP + path, json={}, timeout=5); stopped.append(name)
+                    except _rq.RequestException:
+                        pass
+                self._json({"ok": True, "stopped": stopped})
             elif u.path == "/api/restart":
                 if STATE["job"] and STATE["job"].status == "running":
                     raise ValueError("진행 중인 작업이 끝난 뒤 다시 시작하세요.")
