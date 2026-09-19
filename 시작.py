@@ -98,6 +98,8 @@ def main():
             apply_regen_queue(editor)
             from 편집프로그램_드롭샷영상_연결 import apply as apply_dropshot_video
             apply_dropshot_video(editor)
+            from 편집프로그램_자막두께_연결 import apply as apply_subtitle_weight
+            apply_subtitle_weight(editor)
         except (OSError, ValueError) as exc:
             print("편집프로그램 연결 설정을 확인하세요:", exc)
     if editor and not ready(8765):

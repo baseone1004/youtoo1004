@@ -1228,7 +1228,7 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     # 편집프로그램 화면에서 마지막으로 쓴 자막 글꼴·색·위치·화면 설정을 그대로 가져와 쓴다
     ui = ((aip("/api/info").get("config") or {}).get("ui") or {})
     keep = {k: ui[k] for k in ("width", "height", "fps", "fit", "ken_burns", "kb_zoom", "transition", "transition_duration", "crf", "preset",
-                               "srt_font", "srt_font_size", "srt_margin_v", "srt_color", "srt_outline_color", "srt_outline", "srt_bold",
+                               "srt_font", "srt_font_size", "srt_margin_v", "srt_color", "srt_outline_color", "srt_outline", "srt_bold", "srt_weight",
                                "srt_box", "srt_box_color", "srt_box_alpha", "srt_align", "srt_fonts_dir",
                                "bgm", "bgm_volume", "bgm_duck", "bgm_fade") if k in ui}
     body = dict(srt=os.path.abspath(srt), flow=os.path.abspath(flow), images=os.path.abspath(images_dir), narration=os.path.abspath(narration),
