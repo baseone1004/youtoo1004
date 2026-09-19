@@ -742,6 +742,12 @@ async function loadVideoEngine() {
   try { const info = await get8765('/api/info'); const v = ((info.config || {}).gen_ui || {}).video_engine; videoEngine = ['auto', 'kie', 'dropshot'].includes(v) ? v : 'auto'; } catch (e) {}
   renderVideoEngine();
 }
+async function detectVideoDownload() {
+  const near = [$('s_vdownload_x').value, $('s_vdownload_y').value].map(Number); const body = {window_keyword: $('sVideoWindowKeyword').value.trim() || '영상', near: near[0] && near[1] ? near : []};
+  $('sVxyStatus').textContent = '드롭샷 영상 창에서 다운로드 버튼을 찾는 중…';
+  try { const j = await post8765('/api/vgen/find_download', body); $('s_vdownload_x').value = j.x; $('s_vdownload_y').value = j.y; await saveEditorXY(); $('sVxyStatus').textContent = `✓ 다운로드 버튼 자동 감지 (${j.x}, ${j.y}) — 저장했습니다. 변환 중에도 매번 다시 찾습니다.`; }
+  catch (e) { $('sVxyStatus').textContent = '✗ ' + e.message; toast(e.message, true); }
+}
 async function testVideoUpload() {
   const x = $('s_vupload_x').value.trim(), y = $('s_vupload_y').value.trim(); if (!x || !y) return toast('업로드 좌표를 먼저 잡으세요', true);
   if (!galDir) return toast('작업 화면에서 대본(이미지가 있는 작업)을 먼저 고르세요', true);

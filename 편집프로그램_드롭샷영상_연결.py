@@ -140,6 +140,69 @@ class VideoRunner:
     def _snapshot(folder: Path) -> set[str]:
         return {p.name for p in folder.iterdir() if p.is_file()}
 
+    # -- 드롭샷 영상 창의 접근성 트리 (Chrome UIA) 로 버튼 찾기
+    def _video_controls(self, keyword: str):
+        try:
+            from pywinauto import Desktop
+            wins = [w for w in Desktop(backend="uia").windows() if keyword and keyword.lower() in (w.window_text() or "").lower()]
+            if not wins:
+                return None, []
+            return wins[0], wins[0].descendants()
+        except Exception:  # noqa: BLE001
+            return None, []
+
+    @staticmethod
+    def _ctrl_info(c):
+        try:
+            return (c.window_text() or "").strip(), c.rectangle(), c.element_info.control_type
+        except Exception:  # noqa: BLE001
+            return None
+
+    def find_download_button(self, s: VideoSettings, near=None):
+        """영상 생성 화면에서 '다운로드' 버튼 위치를 찾는다. 결과 영상 위에 마우스를 올려야 버튼이 보이는 경우도 처리.
+        여러 개면 저장된 좌표(near)에 가장 가까운 것, 없으면 가장 아래(최신) 것. 못 찾으면 None."""
+        sw, sh = pyautogui.size()
+        keys = ("다운로드", "download", "저장", "save")
+
+        def buttons(ctrls):
+            out = []
+            for c in ctrls:
+                info = self._ctrl_info(c)
+                if not info:
+                    continue
+                name, r, t = info
+                if t in ("Button", "Hyperlink", "MenuItem") and any(k in name.lower() for k in keys) and r.width() > 0 and 0 <= r.top < sh and 0 <= r.left < sw:
+                    out.append((r, name))
+            return out
+
+        _win, controls = self._video_controls(s.window_keyword)
+        if not controls:
+            return None
+        found = buttons(controls)
+        if not found:                                  # 버튼이 결과 위에 마우스를 올려야 나타나는 경우
+            media = []
+            for c in controls:
+                info = self._ctrl_info(c)
+                if not info:
+                    continue
+                name, r, t = info
+                if t in ("Image", "Group", "Custom", "Pane", "Document") and r.width() > 200 and r.height() > 100 and 0 <= r.top < sh \
+                        and (t == "Image" or any(k in name.lower() for k in ("video", "영상", "generated", "result", "결과"))):
+                    media.append((r.bottom, r))
+            if media:
+                r = max(media)[1]
+                pyautogui.moveTo((r.left + r.right) // 2, min(r.bottom - 24, sh - 5), duration=0.2)
+                time.sleep(0.5)
+                _w, hovered = self._video_controls(s.window_keyword)
+                found = buttons(hovered)
+        if not found:
+            return None
+        if near:
+            r, _ = min(found, key=lambda f: abs((f[0].left + f[0].right) // 2 - near[0]) + abs((f[0].top + f[0].bottom) // 2 - near[1]))
+        else:
+            r, _ = max(found, key=lambda f: f[0].bottom)
+        return ((r.left + r.right) // 2, (r.top + r.bottom) // 2)
+
     # -- 파일 선택 창 (윈도우 '열기' 대화상자)
     DIALOG_TITLES = ("열기", "open", "파일 열기", "파일 업로드", "file upload", "업로드할 파일 선택")
 
@@ -249,7 +312,11 @@ class VideoRunner:
             attempt += 1
             self._focus_window(s.window_keyword)
             before = self._snapshot(dl)
-            self._click(s.download_xy)
+            xy = self.find_download_button(s, tuple(s.download_xy) if any(s.download_xy) else None) or tuple(s.download_xy)
+            if xy != getattr(self, "_last_dl_xy", None):
+                st.add(f"{no:03d} 다운로드 버튼 {'자동 감지' if xy != tuple(s.download_xy) else '저장된 좌표'} → X={xy[0]}, Y={xy[1]}")
+                self._last_dl_xy = xy
+            self._click(xy)
             f = self._wait_new_video(dl, before, max(float(s.wait_download), 10.0))
             if f:
                 h = _md5(f)
@@ -391,6 +458,29 @@ def api_vgen_upload_test(req: VideoUploadTest):
     return {"ok": ok, "detail": "" if ok else "파일 선택 창이 뜨지 않았거나 닫히지 않았습니다. 업로드 좌표를 '시작 프레임' 업로드 자리로 다시 잡으세요."}
 
 
+class VideoFindDownload(BaseModel):
+    window_keyword: str = "영상"
+    near: list[int] = []
+
+
+@app.post("/api/vgen/find_download")
+def api_vgen_find_download(req: VideoFindDownload):
+    """설정 화면용: 드롭샷 영상 창에서 '다운로드' 버튼을 접근성 트리로 찾아 좌표를 돌려준다 (마우스를 결과 위로 옮길 수 있음)."""
+    r = videogen.runner
+    if r.busy():
+        raise HTTPException(400, "영상 변환이 돌아가는 중입니다.")
+    if req.window_keyword and not r._focus_window(req.window_keyword):
+        raise HTTPException(400, f"제목에 '{req.window_keyword}'이(가) 들어간 창을 찾지 못했습니다. 드롭샷 [영상 생성] 화면을 별도 창으로 열어 두세요.")
+    s = videogen.VideoSettings(images_dir="", download_dir="", scenes=[], prompts={}, upload_xy=(0, 0), prompt_xy=(0, 0), generate_xy=(0, 0),
+                               download_xy=tuple(req.near) if len(req.near) == 2 else (0, 0), window_keyword=req.window_keyword)
+    xy = r.find_download_button(s, tuple(req.near) if len(req.near) == 2 else None)
+    if not xy:
+        _w, controls = r._video_controls(req.window_keyword)
+        names = sorted({(r._ctrl_info(c) or ("",))[0] for c in controls if (r._ctrl_info(c) or ("", None, ""))[2] == "Button"})[:40]
+        raise HTTPException(400, "영상 창에서 '다운로드' 버튼을 찾지 못했습니다. 영상이 하나 이상 만들어져 있어야 합니다. (보이는 버튼: " + ", ".join(n for n in names if n)[:300] + ")")
+    return {"x": xy[0], "y": xy[1]}
+
+
 @app.get("/api/vgen/status")
 def api_vgen_status():
     return videogen.runner.state.to_dict()
@@ -413,10 +503,16 @@ def apply(editor_dir):
         target.write_text(VIDEOGEN, encoding="utf-8"); changed = True
     app_file = editor / "app.py"
     text = app_file.read_text(encoding="utf-8")
-    if "/api/vgen/start" in text and "/api/vgen/upload_test" not in text:      # 먼저 붙인 버전에 업로드 시험 경로만 더한다
-        a = APP_ADDITION.index("class VideoUploadTest"); b = APP_ADDITION.index('@app.get("/api/vgen/status")')
-        text = text.replace('@app.get("/api/vgen/status")', APP_ADDITION[a:b] + '@app.get("/api/vgen/status")', 1)
-        app_file.write_text(text, encoding="utf-8"); changed = True
+    if "/api/vgen/start" in text:                          # 먼저 붙인 버전에 빠진 경로 블록만 더한다
+        for start_marker, route in (("class VideoUploadTest", "/api/vgen/upload_test"), ("class VideoFindDownload", "/api/vgen/find_download")):
+            if route in text:
+                continue
+            a = APP_ADDITION.index(start_marker)
+            ends = [APP_ADDITION.find(m, a + 1) for m in ("class VideoUploadTest", "class VideoFindDownload", '@app.get("/api/vgen/status")')]
+            b = min(k for k in ends if k > 0)                  # 그 블록의 끝 = 다음 정의가 시작하는 곳
+            block = APP_ADDITION[a:b]
+            text = text.replace('@app.get("/api/vgen/status")', block + '@app.get("/api/vgen/status")', 1)
+            app_file.write_text(text, encoding="utf-8"); changed = True
     if "/api/vgen/start" not in text:
         if "@app.post(\"/api/hook/start\")" not in text:
             raise ValueError("편집프로그램 app.py 에서 KIE 영상 변환(/api/hook/start)을 찾지 못했습니다.")

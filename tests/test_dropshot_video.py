@@ -52,6 +52,14 @@ class DropshotVideoPatchTest(unittest.TestCase):
             py_compile.compile(str(root / "app.py"), doraise=True)
             app_text = (root / "app.py").read_text(encoding="utf-8")
             self.assertLess(app_text.index("/api/vgen/start"), app_text.index('if __name__ == "__main__":'))   # main() 앞에 등록돼야 한다
+            self.assertEqual(app_text.count("class VideoFindDownload"), 1); self.assertEqual(app_text.count("class VideoUploadTest"), 1)
+            # 예전 버전(찾기 경로 없음)에 다시 적용하면 그 블록만 한 번 더해진다
+            a = app_text.index("class VideoFindDownload"); b = app_text.index('@app.get("/api/vgen/status")')
+            (root / "app.py").write_text(app_text[:a] + app_text[b:], encoding="utf-8")
+            self.assertTrue(apply(root)); self.assertFalse(apply(root))
+            app_text = (root / "app.py").read_text(encoding="utf-8")
+            self.assertEqual(app_text.count("class VideoFindDownload"), 1); self.assertIn("/api/vgen/find_download", app_text)
+            py_compile.compile(str(root / "app.py"), doraise=True)
 
             sys.path.insert(0, str(root))
             for name in ("core", "core.imagegen", "core.videogen", "app"):
@@ -76,6 +84,7 @@ class DropshotVideoPatchTest(unittest.TestCase):
                 r._press = lambda key: actions.append(("press", key))
                 r._hotkey = lambda combo: actions.append(("hotkey", combo))
                 r._focus_window = lambda kw: True
+                r._video_controls = lambda kw: (None, [])                    # 접근성 트리 없음 → 저장된 다운로드 좌표 사용
                 dialog = {"open": False}
                 class Dlg:
                     def activate(self): pass
@@ -127,6 +136,22 @@ class DropshotVideoPatchTest(unittest.TestCase):
                 r._thread.join(30)
                 self.assertEqual(r.state.status, "error")
                 self.assertIn("파일 선택 창", r.state.error)
+                # 다운로드 버튼 자동 찾기: 접근성 트리의 '다운로드' 버튼 중 저장 좌표에 가까운 것 / 없으면 가장 아래 것
+                class Rect:
+                    def __init__(self, l, t, rgt, b): self.left, self.top, self.right, self.bottom = l, t, rgt, b
+                    def width(self): return self.right - self.left
+                    def height(self): return self.bottom - self.top
+                class Ctrl:
+                    def __init__(self, name, rect, ctype): self._n, self._r, self.element_info = name, rect, type("EI", (), {"control_type": ctype})()
+                    def window_text(self): return self._n
+                    def rectangle(self): return self._r
+                ctrls = [Ctrl("다운로드", Rect(100, 100, 140, 130), "Button"), Ctrl("다운로드", Rect(100, 500, 140, 530), "Button"), Ctrl("공유", Rect(200, 500, 240, 530), "Button")]
+                r._video_controls = lambda kw: (object(), ctrls)
+                s2 = vg.VideoSettings(images_dir="", download_dir="", scenes=[], prompts={}, upload_xy=(0, 0), prompt_xy=(0, 0), generate_xy=(0, 0), download_xy=(0, 0))
+                self.assertEqual(r.find_download_button(s2), (120, 515))                 # 가장 아래(최신)
+                self.assertEqual(r.find_download_button(s2, near=(118, 112)), (120, 115))  # 저장 좌표에 가까운 것
+                r._video_controls = lambda kw: (object(), [Ctrl("공유", Rect(200, 500, 240, 530), "Button")])
+                self.assertIsNone(r.find_download_button(s2))
             finally:
                 sys.path.remove(str(root))
                 for name in ("core", "core.imagegen", "core.videogen", "app"):
