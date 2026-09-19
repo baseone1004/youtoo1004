@@ -1175,7 +1175,7 @@ def start_dropshot_videos(images_dir, prompts_file, scenes):
                 upload_xy=v["upload"], prompt_xy=v["prompt"], generate_xy=v["generate"], download_xy=v["download"],
                 motion_prompt=ui.get("motion_prompt") or "Cinematic slow camera movement, subtle natural motion, keep the same style and composition.",
                 wait_min=float(ui.get("video_wait_min") or 60), wait_max=float(ui.get("video_wait_max") or 360),
-                window_keyword=ui.get("video_window_keyword") or "영상")     # 이미지 창('드롭샷')이 아니라 영상 생성 창을 앞으로 가져온다
+                window_keyword=ui.get("video_window_keyword") or "드롭샷")   # 드롭샷 창 (우리 프로그램 창은 제외된다)
     aip("/api/vgen/start", body)
     return body
 

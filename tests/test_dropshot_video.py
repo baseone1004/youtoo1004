@@ -145,11 +145,18 @@ class DropshotVideoPatchTest(unittest.TestCase):
                     def __init__(self, name, rect, ctype): self._n, self._r, self.element_info = name, rect, type("EI", (), {"control_type": ctype})()
                     def window_text(self): return self._n
                     def rectangle(self): return self._r
-                ctrls = [Ctrl("다운로드", Rect(100, 100, 140, 130), "Button"), Ctrl("다운로드", Rect(100, 500, 140, 530), "Button"), Ctrl("공유", Rect(200, 500, 240, 530), "Button")]
+                self.assertTrue(r._title_ok("AI 영상 제작과 AI 이미지 생성을 한 곳에서 | 드롭샷 AI - Chrome", "드롭샷"))
+                self.assertTrue(r._title_ok("AI 영상 만들기 | 드롭샷 AI - Chrome", "영상"))
+                self.assertFalse(r._title_ok("유튜브 영상 자동 제작 - Chrome", "영상"))       # 우리 프로그램 창은 절대 아님
+                self.assertFalse(r._title_ok("메모장", "드롭샷"))
+                ctrls = [Ctrl("", Rect(0, 110, 1000, 900), "Document"),                                   # 웹 페이지 영역
+                         Ctrl("다운로드", Rect(940, 80, 974, 114), "Button"),                            # 크롬 도구막대 (최근 다운로드 기록) → 제외
+                         Ctrl("다운로드", Rect(100, 100, 140, 130), "Button"), Ctrl("다운로드", Rect(100, 500, 140, 530), "Button"), Ctrl("공유", Rect(200, 500, 240, 530), "Button")]
                 r._video_controls = lambda kw: (object(), ctrls)
                 s2 = vg.VideoSettings(images_dir="", download_dir="", scenes=[], prompts={}, upload_xy=(0, 0), prompt_xy=(0, 0), generate_xy=(0, 0), download_xy=(0, 0))
                 self.assertEqual(r.find_download_button(s2), (120, 515))                 # 가장 아래(최신)
                 self.assertEqual(r.find_download_button(s2, near=(118, 112)), (120, 115))  # 저장 좌표에 가까운 것
+                self.assertEqual(r.find_download_button(s2, near=(957, 97)), (120, 115))   # 도구막대 버튼은 가까워도 안 고른다
                 r._video_controls = lambda kw: (object(), [Ctrl("공유", Rect(200, 500, 240, 530), "Button")])
                 self.assertIsNone(r.find_download_button(s2))
             finally:

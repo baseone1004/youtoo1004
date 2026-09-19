@@ -102,13 +102,23 @@ class VideoRunner:
             time.sleep(0.2)
         return not self._stop.is_set()
 
+    # -- 창 고르기: 드롭샷 창만 (우리 프로그램 창 제목에도 '영상'이 들어 있어 키워드만으로 고르면 엉뚱한 창을 누른다)
+    OWN_TITLES = ("유튜브 영상 자동 제작", "auto image placer")
+
+    @classmethod
+    def _title_ok(cls, title: str, keyword: str) -> bool:
+        t = (title or "").lower()
+        if not t or any(o.lower() in t for o in cls.OWN_TITLES):
+            return False
+        if "드롭샷" not in t and "dropshot" not in t:
+            return False
+        return (not keyword) or keyword.lower() in t or keyword.lower() in ("드롭샷", "dropshot", "영상")
+
     # -- 화면 조작 (테스트에서 바꿔 끼울 수 있게 메서드로 둔다)
     def _focus_window(self, keyword: str) -> bool:
-        if not keyword:
-            return True
         try:
             import pygetwindow as gw
-            wins = [w for w in gw.getAllWindows() if keyword.lower() in (w.title or "").lower()]
+            wins = [w for w in gw.getAllWindows() if self._title_ok(w.title, keyword)]
             if not wins:
                 return False
             w = wins[0]
@@ -144,7 +154,7 @@ class VideoRunner:
     def _video_controls(self, keyword: str):
         try:
             from pywinauto import Desktop
-            wins = [w for w in Desktop(backend="uia").windows() if keyword and keyword.lower() in (w.window_text() or "").lower()]
+            wins = [w for w in Desktop(backend="uia").windows() if self._title_ok(w.window_text(), keyword)]
             if not wins:
                 return None, []
             return wins[0], wins[0].descendants()
@@ -178,7 +188,17 @@ class VideoRunner:
         _win, controls = self._video_controls(s.window_keyword)
         if not controls:
             return None
-        found = buttons(controls)
+        docs = []                                      # 웹 페이지 영역 (크롬 도구막대·주소창은 여기 밖)
+        for c in controls:
+            info = self._ctrl_info(c)
+            if info and info[2] == "Document" and info[1].width() > 300 and info[1].height() > 200:
+                docs.append(info[1])
+
+        def in_page(r):
+            cx, cy = (r.left + r.right) // 2, (r.top + r.bottom) // 2
+            return (not docs) or any(d.left <= cx <= d.right and d.top <= cy <= d.bottom for d in docs)
+
+        found = [f for f in buttons(controls) if in_page(f[0])]
         if not found:                                  # 버튼이 결과 위에 마우스를 올려야 나타나는 경우
             media = []
             for c in controls:
@@ -194,7 +214,7 @@ class VideoRunner:
                 pyautogui.moveTo((r.left + r.right) // 2, min(r.bottom - 24, sh - 5), duration=0.2)
                 time.sleep(0.5)
                 _w, hovered = self._video_controls(s.window_keyword)
-                found = buttons(hovered)
+                found = [f for f in buttons(hovered) if in_page(f[0])]
         if not found:
             return None
         if near:
