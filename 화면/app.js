@@ -707,6 +707,15 @@ async function loadVideoEngine() {
   try { const info = await get8765('/api/info'); const v = ((info.config || {}).gen_ui || {}).video_engine; videoEngine = ['auto', 'kie', 'dropshot'].includes(v) ? v : 'auto'; } catch (e) {}
   renderVideoEngine();
 }
+async function testVideoUpload() {
+  const x = $('s_vupload_x').value.trim(), y = $('s_vupload_y').value.trim(); if (!x || !y) return toast('업로드 좌표를 먼저 잡으세요', true);
+  if (!galDir) return toast('작업 화면에서 대본(이미지가 있는 작업)을 먼저 고르세요', true);
+  const first = (await listImages(galDir)).filter(i => !i.video)[0]; if (!first) return toast('시험에 쓸 이미지가 없습니다 (이미지를 먼저 만드세요)', true);
+  if (!confirm('드롭샷 영상 창을 앞으로 가져와 업로드 좌표를 한 번 누르고 001 이미지를 올려 봅니다. 잠시 마우스를 쓰지 마세요.')) return;
+  $('sVxyStatus').textContent = '업로드 시험 중… (최대 15초)';
+  try { const r = await post8765('/api/vgen/upload_test', {image: first.path, upload_xy: [Number(x), Number(y)], window_keyword: $('sVideoWindowKeyword').value.trim() || '영상'}); $('sVxyStatus').textContent = r.ok ? '✓ 파일 선택 창에 이미지를 넣었습니다. 드롭샷 시작 프레임에 그림이 보이면 성공입니다.' : '✗ ' + r.detail; toast(r.ok ? '업로드 시험 성공' : r.detail, !r.ok); }
+  catch (e) { $('sVxyStatus').textContent = '✗ ' + e.message; toast(e.message, true); }
+}
 async function setVideoEngine(v) {
   try { const info = await get8765('/api/info'); const ui = (info.config || {}).gen_ui || {}; await post8765('/api/config', {gen_ui: {...ui, video_engine: v}}); videoEngine = v; renderVideoEngine(); toast('영상 변환 방식: ' + {auto: '자동', kie: 'KIE', dropshot: '드롭샷 AI'}[v]); }
   catch (e) { toast('저장 실패: ' + e.message, true); }

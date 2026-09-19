@@ -76,6 +76,19 @@ class DropshotVideoPatchTest(unittest.TestCase):
                 r._press = lambda key: actions.append(("press", key))
                 r._hotkey = lambda combo: actions.append(("hotkey", combo))
                 r._focus_window = lambda kw: True
+                dialog = {"open": False}
+                class Dlg:
+                    def activate(self): pass
+                def click_dialog(xy):                                       # 업로드 버튼을 누르면 '열기' 창이 뜬다
+                    if tuple(xy) == (1, 1): dialog["open"] = True
+                    click(xy)
+                r._click = click_dialog
+                r._dialog_window = lambda: Dlg() if dialog["open"] else None
+                real_press = r._press
+                def press(key):                                             # Enter 로 파일을 받으면 창이 닫힌다
+                    if key == "enter" and dialog["open"]: dialog["open"] = False
+                    real_press(key)
+                r._press = press
 
                 s = vg.VideoSettings(images_dir=str(images), download_dir=str(dl), scenes=[1, 2, 3, 9],
                                      prompts={1: "scene one"}, upload_xy=(1, 1), prompt_xy=(2, 2), generate_xy=(3, 3), download_xy=(4, 4),
@@ -90,19 +103,30 @@ class DropshotVideoPatchTest(unittest.TestCase):
                 self.assertTrue((images / "001.mp4").exists() and (images / "003.mp4").exists())
                 self.assertNotEqual((images / "001.mp4").read_bytes(), b"already")      # 중복 영상은 버리고 새것을 받음
                 pastes = [a[1] for a in actions if a[0] == "paste"]
-                self.assertEqual(pastes[0], str(images / "001.jpg"))                # 파일 대화상자에 이미지 경로
+                self.assertEqual(pastes[0], str(images / "001.jpg"))                # 파일 선택 창의 파일 이름 칸에 이미지 경로
+                self.assertIn(("hotkey", "alt+n"), actions)
                 self.assertTrue(pastes[1].startswith("scene one ") and "Cinematic" in pastes[1])
                 self.assertIn(("press", "enter"), actions)
                 self.assertEqual(st.to_dict()["output_dir"], str(images))
                 # 다운로드 버튼이 이미지를 받아 오면(이미지 화면을 누르고 있음) 바로 멈추고 이유를 남긴다
                 (images / "004.jpg").write_bytes(b"img4")
-                r._click = lambda xy: (xy == (4, 4)) and threading.Timer(0.2, lambda: (dl / "dup.jpg").write_bytes(b"image")).start()
+                def click_wrong(xy):
+                    if tuple(xy) == (1, 1): dialog["open"] = True
+                    if tuple(xy) == (4, 4): threading.Timer(0.2, lambda: (dl / "dup.jpg").write_bytes(b"image")).start()
+                r._click = click_wrong
                 r.start(vg.VideoSettings(images_dir=str(images), download_dir=str(dl), scenes=[4], prompts={}, upload_xy=(1, 1), prompt_xy=(2, 2), generate_xy=(3, 3), download_xy=(4, 4),
                                          wait_upload=0.05, wait_min=0.05, wait_max=6, poll_every=0.05, wait_download=2, wait_next=0))
                 r._thread.join(20)
                 self.assertEqual(r.state.status, "error", r.state.log)
                 self.assertIn("이미지를 받아 왔습니다", r.state.error)
                 self.assertFalse((dl / "dup.jpg").exists())                        # 우리가 받은 중복 이미지는 지운다
+                # 업로드 좌표를 눌러도 파일 선택 창이 안 뜨면 바로 멈춘다
+                r._dialog_window = lambda: None
+                r.start(vg.VideoSettings(images_dir=str(images), download_dir=str(dl), scenes=[4], prompts={}, upload_xy=(1, 1), prompt_xy=(2, 2), generate_xy=(3, 3), download_xy=(4, 4),
+                                         wait_upload=0.05, wait_min=0.05, wait_max=6, poll_every=0.05, wait_download=2, wait_next=0))
+                r._thread.join(30)
+                self.assertEqual(r.state.status, "error")
+                self.assertIn("파일 선택 창", r.state.error)
             finally:
                 sys.path.remove(str(root))
                 for name in ("core", "core.imagegen", "core.videogen", "app"):

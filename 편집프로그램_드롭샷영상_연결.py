@@ -140,6 +140,48 @@ class VideoRunner:
     def _snapshot(folder: Path) -> set[str]:
         return {p.name for p in folder.iterdir() if p.is_file()}
 
+    # -- 파일 선택 창 (윈도우 '열기' 대화상자)
+    DIALOG_TITLES = ("열기", "open", "파일 열기", "파일 업로드", "file upload", "업로드할 파일 선택")
+
+    def _dialog_window(self):
+        try:
+            import pygetwindow as gw
+            for w in gw.getAllWindows():
+                if (w.title or "").strip().lower() in self.DIALOG_TITLES and w.width > 200:
+                    return w
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    def _upload_image(self, s: VideoSettings, image: Path) -> bool:
+        """[이미지 업로드] 클릭 → 파일 선택 창이 뜨면 파일 이름 칸에 경로를 넣고 Enter → 창이 닫히면 성공."""
+        self._click(s.upload_xy)
+        dlg = None
+        for _ in range(40):                          # 최대 8초 동안 파일 선택 창을 기다린다
+            time.sleep(0.2)
+            dlg = self._dialog_window()
+            if dlg or self._stop.is_set():
+                break
+        if not dlg:
+            return False
+        try:
+            dlg.activate()
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(0.4)
+        self._hotkey("alt+n")                        # '파일 이름' 칸으로
+        time.sleep(0.2)
+        self._hotkey(s.clear_key)
+        self._paste(str(image))
+        time.sleep(0.4)
+        self._press("enter")
+        for _ in range(25):                          # 창이 닫히면 파일이 선택된 것
+            time.sleep(0.2)
+            if not self._dialog_window():
+                return True
+        self._press("escape")
+        return False
+
     def _wait_new_video(self, folder: Path, before: set[str], timeout: float) -> Path | None:
         end = time.time() + timeout
         while time.time() < end:
@@ -176,12 +218,11 @@ class VideoRunner:
     def _do_scene(self, s: VideoSettings, no: int, image: Path, out: Path, dl: Path) -> Path | None:
         st = self.state
         self._focus_window(s.window_keyword)
-        # 1) 이미지 업로드: 버튼 → 파일 대화상자 → 경로 붙여넣기 → Enter
-        self._click(s.upload_xy)
-        time.sleep(1.5)
-        self._paste(str(image))
-        time.sleep(0.4)
-        self._press("enter")
+        # 1) 이미지 업로드: 버튼 → 파일 선택 창 → 파일 이름 칸에 경로 → Enter (창이 안 뜨거나 안 닫히면 좌표가 틀린 것)
+        if not self._upload_image(s, image):
+            raise WrongPage("[이미지 업로드] 좌표를 눌렀는데 파일 선택 창이 뜨지 않았거나 파일을 받지 않았습니다. "
+                            "영상 생성 화면의 '시작 프레임(이미지) 업로드' 자리를 눌렀을 때 윈도우 '열기' 창이 바로 뜨는 위치로 좌표를 다시 잡으세요.")
+        st.add(f"{no:03d} 이미지 업로드 완료 → {s.wait_upload:.0f}초 대기")
         if not self._wait(max(float(s.wait_upload), 2.0)):
             return None
         # 2) 움직임 프롬프트
@@ -329,6 +370,27 @@ def api_vgen_start(req: VideoGenStart):
     return {"ok": True}
 
 
+class VideoUploadTest(BaseModel):
+    image: str
+    upload_xy: list[int]
+    window_keyword: str = "영상"
+
+
+@app.post("/api/vgen/upload_test")
+def api_vgen_upload_test(req: VideoUploadTest):
+    """설정 화면용: 영상 창을 앞으로 가져와 [이미지 업로드] 좌표를 한 번 눌러 파일 선택 창이 뜨고 이미지가 들어가는지 본다."""
+    if videogen.runner.busy() or imagegen.runner.state.status in ("running", "paused"):
+        raise HTTPException(400, "지금 생성이 돌아가는 중입니다.")
+    if not Path(req.image).is_file():
+        raise HTTPException(400, "시험할 이미지 파일이 없습니다.")
+    r = videogen.runner
+    if req.window_keyword and not r._focus_window(req.window_keyword):
+        raise HTTPException(400, f"제목에 '{req.window_keyword}'이(가) 들어간 창을 찾지 못했습니다. 드롭샷 [영상 생성] 화면을 별도 창으로 열어 두세요.")
+    s = videogen.VideoSettings(images_dir="", download_dir="", scenes=[], prompts={}, upload_xy=tuple(req.upload_xy), prompt_xy=(0, 0), generate_xy=(0, 0), download_xy=(0, 0))
+    ok = r._upload_image(s, Path(req.image))
+    return {"ok": ok, "detail": "" if ok else "파일 선택 창이 뜨지 않았거나 닫히지 않았습니다. 업로드 좌표를 '시작 프레임' 업로드 자리로 다시 잡으세요."}
+
+
 @app.get("/api/vgen/status")
 def api_vgen_status():
     return videogen.runner.state.to_dict()
@@ -351,6 +413,10 @@ def apply(editor_dir):
         target.write_text(VIDEOGEN, encoding="utf-8"); changed = True
     app_file = editor / "app.py"
     text = app_file.read_text(encoding="utf-8")
+    if "/api/vgen/start" in text and "/api/vgen/upload_test" not in text:      # 먼저 붙인 버전에 업로드 시험 경로만 더한다
+        a = APP_ADDITION.index("class VideoUploadTest"); b = APP_ADDITION.index('@app.get("/api/vgen/status")')
+        text = text.replace('@app.get("/api/vgen/status")', APP_ADDITION[a:b] + '@app.get("/api/vgen/status")', 1)
+        app_file.write_text(text, encoding="utf-8"); changed = True
     if "/api/vgen/start" not in text:
         if "@app.post(\"/api/hook/start\")" not in text:
             raise ValueError("편집프로그램 app.py 에서 KIE 영상 변환(/api/hook/start)을 찾지 못했습니다.")
