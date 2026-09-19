@@ -85,14 +85,13 @@ function markAdvanced() {
   }
   const h3 = [...document.querySelectorAll('#view-settings h3')].find(h => h.textContent.includes('벤치마킹할 채널')); if (h3) { h3.classList.add('adv'); if (h3.nextElementSibling && h3.nextElementSibling.classList.contains('hint')) h3.nextElementSibling.classList.add('adv'); }
 }
-let uiMode = localStorage.getItem('uiMode') || 'simple';
+let uiMode = localStorage.getItem('uiMode') || 'full';   // 기본은 전부 보이는 화면, 간단 모드는 원할 때만
 function applyUiMode() {
   document.body.classList.toggle('simple', uiMode === 'simple');
-  const b = $('modeBtn'); if (b) b.textContent = uiMode === 'simple' ? '🔎 자세히 보기' : '🙂 간단히 보기';
+  const b = $('modeBtn'); if (b) b.textContent = uiMode === 'simple' ? '🔎 전부 보기' : '🙂 간단 모드';
 }
 function toggleUiMode() { uiMode = uiMode === 'simple' ? 'full' : 'simple'; localStorage.setItem('uiMode', uiMode); applyUiMode(); toast(uiMode === 'simple' ? '간단 모드: 꼭 필요한 것만 보입니다' : '자세히 보기: 모든 기능이 보입니다'); }
 markAdvanced(); applyUiMode();
-if (uiMode === 'simple' && !localStorage.getItem('helpSeen')) { $('helpBox').classList.remove('hidden'); localStorage.setItem('helpSeen', '1'); }
 
 // ── 화면 전환 ──────────────────────────────────────────
 let currentStep = 1;
