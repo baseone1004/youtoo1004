@@ -246,6 +246,8 @@ class VideoRunner:
             st.total = len(s.scenes); st.status = "running"
             prev = sorted((p for p in out.glob("*.mp4") if p.is_file()), key=lambda p: p.stat().st_mtime)
             self._last_hash = _md5(prev[-1]) if prev else None      # 마지막 영상을 또 받으면 '아직 안 됨'으로 안다
+            if s.window_keyword and not self._focus_window(s.window_keyword):      # 영상 창을 못 찾으면 엉뚱한 화면을 누르지 않는다
+                raise WrongPage(f"제목에 '{s.window_keyword}'이(가) 들어간 창을 찾지 못했습니다. 드롭샷 [영상 생성] 화면을 별도 창으로 열어 두세요 (제목 'AI 영상 만들기 | 드롭샷 AI').")
             st.add(f"장면 {len(s.scenes)}개 영상 변환 · 3초 뒤 시작 (드롭샷 창을 가리지 마세요)")
             if not self._wait(3):
                 st.status = "stopped"; return
