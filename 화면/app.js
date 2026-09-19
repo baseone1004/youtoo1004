@@ -67,32 +67,6 @@ async function exitProgram() {
   catch (e) { toast('종료 요청 실패: ' + e.message, true); }
 }
 
-// ── 간단 모드 / 자세히 보기 ──────────────────────────────
-// 초보자용 간단 모드(기본): 주제 고르기 → 제작 시작 → 썸네일·제목·설명 복사만 보이게 하고, 나머지는 '자세히 보기'에서
-const ADV_SELECTORS = [
-  '#benchBtn', '#benchBox', '#chAnalysisLine', '#personLenRow', '#mindamLenRow', '#contFile', '#optThumb', '#optHook',
-  'button[onclick="selectAllVisible(true)"]', 'button[onclick="selectAllVisible(false)"]',
-  '#workScript', '#stage-image', '#stage-motion', '#stage-audio', '#adv-video', '#logPanel', '#pipe', '#filePanel', '#chanCard',
-  'button[onclick="composeThumbnails()"]', 'button[onclick="makeWorkspaceThumbnails()"]', 'button[onclick="openWork(\'thumbs\')"]', 'button[onclick="rerunTTS()"]',
-  'button[onclick="emptyTrash()"]', '#trashStat', 'button[onclick="resetEverything()"]',
-  '#sVxyStatus', '#tgToken', '#benchChannels', 'button[onclick="saveBenchChannels()"]', 'button[onclick="runBenchmark()"]',
-];
-const ADV_CLOSEST = {'#contFile': '.row', '#optThumb': '.row', '#optHook': '.row', '#workScript': null, '#sVxyStatus': '.card', '#tgToken': '.card', '#benchChannels': null, 'button[onclick="saveBenchChannels()"]': '.row'};
-function markAdvanced() {
-  for (const sel of ADV_SELECTORS) for (const el of document.querySelectorAll(sel)) {
-    const up = ADV_CLOSEST[sel]; const target = up ? (el.closest(up) || el) : el; target.classList.add('adv');
-    if (sel === '#workScript') { const row = el.nextElementSibling; if (row && row.classList.contains('row')) row.classList.add('adv'); }
-  }
-  const h3 = [...document.querySelectorAll('#view-settings h3')].find(h => h.textContent.includes('벤치마킹할 채널')); if (h3) { h3.classList.add('adv'); if (h3.nextElementSibling && h3.nextElementSibling.classList.contains('hint')) h3.nextElementSibling.classList.add('adv'); }
-}
-let uiMode = localStorage.getItem('uiMode') || 'full';   // 기본은 전부 보이는 화면, 간단 모드는 원할 때만
-function applyUiMode() {
-  document.body.classList.toggle('simple', uiMode === 'simple');
-  const b = $('modeBtn'); if (b) b.textContent = uiMode === 'simple' ? '🔎 전부 보기' : '🙂 간단 모드';
-}
-function toggleUiMode() { uiMode = uiMode === 'simple' ? 'full' : 'simple'; localStorage.setItem('uiMode', uiMode); applyUiMode(); toast(uiMode === 'simple' ? '간단 모드: 꼭 필요한 것만 보입니다' : '자세히 보기: 모든 기능이 보입니다'); }
-markAdvanced(); applyUiMode();
-
 // ── 화면 전환 ──────────────────────────────────────────
 let currentStep = 1;
 function showView(name) {

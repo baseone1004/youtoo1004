@@ -1801,9 +1801,18 @@ class H(BaseHTTPRequestHandler):
 
     def _json(self, obj, code=200):
         data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-        self.send_response(code); self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        try:
+            self.send_response(code); self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass                                   # 화면이 새로고침되거나 확장이 긴 폴링을 끊은 것 — 오류가 아니므로 로그에 남기지 않는다
+
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass
 
     def do_OPTIONS(self):
         self.send_response(204)
