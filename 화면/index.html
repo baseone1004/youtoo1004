@@ -25,7 +25,7 @@
 
 <!-- ═══ 상단: 제작 현황 + 시작 ═══ -->
 <div class="panel" id="step-3">
-  <div class="panel-head"><span class="tag-lbl">제작 현황</span><span class="stat" id="pgKind">대기 중</span><span class="spacer"></span><span id="queueSummary" class="hint">대기열 없음</span></div>
+  <div class="panel-head"><span class="tag-lbl">제작 현황</span><span class="stat" id="pgKind">대기 중</span><span class="spacer"></span><span id="queueSummary" class="hint">대기열 없음</span><button class="mini" onclick="$('stage-image').scrollIntoView({behavior:'smooth',block:'start'})">🖼 이미지 칸으로</button></div>
   <div class="pipe" id="pipe">
     <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
   </div>
