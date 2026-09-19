@@ -251,9 +251,9 @@ def reset_everything():
             for ch in os.listdir(upload_root):
                 for sub in os.listdir(os.path.join(upload_root, ch)):
                     shutil.move(os.path.join(upload_root, ch, sub), os.path.join(trash, "업로드_" + sub)); moved += 1
-        for used in ("사용한_주제.txt", "민담_사용한_주제.txt"):
+        for used in ("사용한_주제.txt", "민담_사용한_주제.txt"):     # 이미 만든 주제 기록은 남긴다 (지우면 올린 주제가 추천에 다시 나온다)
             if os.path.isfile(used):
-                shutil.move(used, os.path.join(trash, used)); moved += 1
+                shutil.copy2(used, os.path.join(trash, used))
         with QUEUE.lock:
             QUEUE.data = {"status": "idle", "items": [], "options": {}, "current_id": "", "updated": ""}
             QUEUE.save()
@@ -718,8 +718,10 @@ def image_style_lock(style, channel=None):
     base = 화풍.get(style, 화풍["2D 일러스트"])
     tail = (" " + 채널_프로필.style_tail(channel) + ".") if channel and 채널_프로필.style_tail(channel) else ""
     if style == "실사":
-        return base + tail
+        return base + tail + " Every person shown is Korean with East Asian facial features; never Western faces."
     return (f"STRICT STYLE LOCK: every image must be {style} style. {base}{tail} "
+            "PEOPLE LOCK: every person shown is Korean with East Asian facial features, dark hair and Korean clothing and setting; "
+            "never Western, Caucasian, Black, South Asian or Southeast Asian faces. "
             "Keep the same linework, character design, proportions and color palette as the uploaded Dropshot reference image. "
             "If a later scene description conflicts, this style lock takes priority. "
             "Never generate a photo, photorealistic face, live-action still, realistic skin texture, 3D render or mixed-media image.")
@@ -762,6 +764,7 @@ def prompt_blocks(text):
         no, body = int(parts[i]), parts[i + 1]
         body = re.split(r"^={10,}\s*$|^\[(?:요청|좋은 예|나쁜 예|프로그램과 맞추는 규칙|출력 형식)|^[^\n]*\|\s*이미지 프롬프트 지침\s*$", body, flags=re.M)[0].rstrip()
         if re.search(r"^\s*(?:프롬프트|prompt)\s*[:：]\s*\S", body, flags=re.M | re.I) and "[화풍 문구]" not in body and no not in out:
+            body = re.sub(r"^(\s*(?:프롬프트|prompt)\s*[:：]\s*)(?:\[화풍[^\]]*\]\s*)+", r"\1", body, flags=re.M | re.I)   # 꼬리표 제거
             out[no] = body.strip()
     return out
 
@@ -1066,6 +1069,12 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
     if not dl or not os.path.isdir(dl):          # 저장된 폴더가 없으면 실제 다운로드 폴더로
         dl = info.get("downloads_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
         job.add(f"   브라우저 다운로드 폴더 → {dl}")
+    try:
+        with open(prompts_file, encoding="utf-8-sig") as f:
+            if "STRICT STYLE LOCK" in f.read():
+                style_prefix = ""                     # 장면 프롬프트마다 이미 화풍 고정이 들어 있다
+    except OSError:
+        pass
     body = dict(prompts_file=os.path.abspath(prompts_file), output_dir=os.path.abspath(images_dir), download_dir=dl,
                 prompt_xy=xy["prompt"], generate_xy=xy.get("generate") or xy["prompt"], download_xy=xy["download"],
                 wait_generate=float(ui.get("wait_generate") or 60), wait_download=float(ui.get("wait_download") or 120), window_keyword=ui.get("window_keyword") or "드롭샷", auto_generate=ui.get("auto_generate", True) is not False,
@@ -2070,6 +2079,14 @@ class H(BaseHTTPRequestHandler):
                 with open("설정.json", "w", encoding="utf-8") as f:
                     json.dump(cfg, f, ensure_ascii=False, indent=2)
                 self._json({"ok": True, "count": len(cfg["벤치_채널_추가"])})
+            elif u.path == "/api/topics/hide":                    # 추천 목록의 주제를 '이미 만든 주제'로 기록해 다시 안 나오게
+                title = str(body.get("title") or "").strip()
+                if not title:
+                    raise ValueError("숨길 주제가 없습니다.")
+                ch = "mindam" if body.get("channel") == "mindam" else "person"
+                mark_used(title, "민담_사용한_주제.txt" if ch == "mindam" else "사용한_주제.txt")
+                SEEN_TOPICS[ch].add(title)
+                self._json(dict(ok=True, topics=topics()))
             elif u.path == "/api/topics/refresh":
                 self._json(refresh_topics(body.get("channel"), body.get("shown") or []))
             elif u.path == "/api/channel/refresh":

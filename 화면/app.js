@@ -208,7 +208,7 @@ function renderTopics() {
     if (!t._custom && t.생성) { const key = channel + '|' + t.제목, on = selection.has(key);
       return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}<span class="m">${esc([t.카테고리 || t.장르, t.한줄].filter(Boolean).join(' · '))}${near}</span></span><span class="tag" style="color:#F5B942;background:#3A2E12">AI 추천</span></li>`; }
     const meta = (t._custom ? '' : channel === 'mindam' ? `${t.장르 || ''} · ${t.채널 || ''} · 조회수 ${((t.조회수 || 0) / 10000).toFixed(1)}만 (평소의 ${t.배수}배)` : (t.카테고리 || '') + (t.날짜 ? ` · ${t.날짜} 계획` : ' · 추천 후보')) + near;
-    return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}${meta ? `<span class="m">${esc(meta)}</span>` : ''}</span>${t._custom ? `<span class="tag custom">직접 입력</span><button class="x" onclick="removeCustom('${channel}',${i},event)" title="목록에서 지우기">×</button>` : '<span class="tag">추천</span>'}</li>`;
+    return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}${meta ? `<span class="m">${esc(meta)}</span>` : ''}</span>${t._custom ? `<span class="tag custom">직접 입력</span><button class="x" onclick="removeCustom('${channel}',${i},event)" title="목록에서 지우기">×</button>` : `<span class="tag">추천</span><button class="x" onclick="hideTopic('${channel}',${i},event)" title="이미 올린 주제 — 목록에서 빼고 다시 추천하지 않기">×</button>`}</li>`;
   });
   $('topicList').innerHTML = rows.join('') || `<li class="empty">추천 주제가 아직 없습니다. ${channel === 'mindam' ? '민담_주제뽑기.bat' : '실행.bat'} 으로 주제를 먼저 뽑거나, 아래에 직접 적어 추가하세요.</li>`;
   renderSelection();
@@ -243,6 +243,11 @@ async function addCustomTopic(silent) {
 function removeCustom(ch, i, ev) {
   ev.stopPropagation(); const t = topicSource(ch)[i]; if (!t || !t._custom) return;
   custom[ch] = custom[ch].filter(x => x !== t.제목); selection.delete(ch + '|' + t.제목); renderTopics();
+}
+async function hideTopic(ch, i, ev) {
+  ev.stopPropagation(); const t = topicSource(ch)[i]; if (!t) return;
+  if (!confirm(`「${t.제목}」을(를) 이미 만든 주제로 기록하고 추천에서 뺄까요? (다시 추천되지 않습니다)`)) return;
+  try { const r = await api('/api/topics/hide', {channel: ch, title: t.제목}); selection.delete(ch + '|' + t.제목); STATE.topics = r.topics; renderTopics(); toast('추천에서 뺐습니다. 다시 나오지 않습니다.'); } catch (e) { toast(e.message, true); }
 }
 function removeSel(key) { selection.delete(key); renderTopics(); if (!selection.size && currentStep === 2) goStep(1); }
 function renderSelection() {

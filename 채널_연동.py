@@ -159,7 +159,10 @@ def filter_topics(cfg, channel, items, key="제목"):
         return items
     kept = []
     for item in items:
-        st, sim, near = T.dup_status(str(item.get(key, "")), mine)
+        # 올릴 때 제목을 바꾸는 경우가 많으므로 주제 제목뿐 아니라 유튜브용 제목·썸네일 문구와도 비교해 가장 가까운 것을 쓴다
+        names = [str(item.get(k, "") or "").strip() for k in (key, "유튜브제목", "썸네일")]
+        results = [T.dup_status(n, mine) for n in names if n]
+        st, sim, near = max(results, key=lambda r: r[1]) if results else ("new", 0.0, "")
         if st == "dup":
             continue
         if st == "similar":
