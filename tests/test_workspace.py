@@ -84,7 +84,7 @@ class ResetEverythingTest(unittest.TestCase):
             self.assertFalse((root / "대본" / "2026-09-01_주제.txt").exists())
             self.assertFalse(list((root / "업로드" / "심리해독소").iterdir()))
             self.assertTrue((root / "사용한_주제.txt").exists())          # 이미 만든 주제 기록은 남긴다 (지우면 올린 주제가 추천에 다시 나온다)
-        self.assertTrue((Path(result["trash"]) / "사용한_주제.txt").exists())   # 휴지통에는 복사본
+            self.assertTrue((Path(result["trash"]) / "사용한_주제.txt").exists())   # 휴지통에는 복사본
             self.assertTrue((root / "설정.json").exists())
             self.assertTrue(any(p.name == "2026-09-01_주제.txt" for p in Path(result["trash"]).iterdir()))
             self.assertEqual(store.data["status"], "idle")
