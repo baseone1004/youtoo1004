@@ -46,7 +46,7 @@ def topic_card(t, target):
              "[이 영상에서 다룰 내용]"] + [f"- {p}" for p in t.get("다룰내용", [])]
     if t.get("출처후보"):
         lines += ["[참고할 만한 저서·연구]"] + [f"- {s}" for s in t["출처후보"]]
-    lines += [f"[작성 목표] 공백 포함 {target:,}자 이상 (이십 분 이상 롱폼 · 이 분량을 반드시 채운다), 9개 구간"]
+    lines += [f"[작성 목표] 공백 포함 {target:,}자 이상 (이십오 분 이상 롱폼 · 이 분량을 반드시 채운다), 9개 구간"]
     return "\n".join(lines)
 
 def split_groups(n_parts):
@@ -120,6 +120,31 @@ def generate(ai, system, t, target, n_parts):
     head = compose_description(head)
     full = head.strip() + "\n[대본]\n" + body + "\n\n===sum===\n" + thumb.strip() + "\n"
     return full, body
+
+def generate_short(ai, system, t, target):
+    """쇼츠(세로 짧은 영상) 대본: 한 번의 요청으로 [제목][설명글][태그][대본]을 받는다. (full, body) 를 돌려준다."""
+    lines = [f"[주제] {t['제목']}", f"[카테고리] {t.get('카테고리', '')}", f"[오프닝 한 줄] {t.get('오프닝', '')}",
+             "[이 영상에서 다룰 내용]"] + [f"- {p}" for p in t.get("다룰내용", [])[:3]]
+    lines += [f"[작성 목표] 공백 포함 약 {target:,}자 (세로 쇼츠 · 앞뒤 삼십 자 안에서 맞춘다), 다섯에서 아홉 문장"]
+    card = "\n".join(lines)
+    kw = " ".join(t.get("태그", [])[:2])
+    src = web_search([t["제목"]] + ([f"{kw} 연구 결과"] if kw else []), per_query=4, max_total=5)
+    print(f"   참고 자료 {len(src)}건 검색")
+    user = (f"{card}\n\n{format_sources(src)}\n\n"
+            f"[제목], [설명글], [태그], [대본] 순서로 출력 형식의 블록을 쓴다. [대본] 아래에는 낭독할 본문만 쓴다. "
+            f"===sum=== 이나 썸네일 프롬프트는 쓰지 않는다.")
+    text = ai.ask(system, user).replace("```", "")
+    i_body = text.find("[대본]")
+    head = text[:i_body] if i_body >= 0 else "[제목]\n(형식 오류 — 확인 필요)\n"
+    body = clean_part(text[i_body + len("[대본]"):] if i_body >= 0 else text)
+    body = strip_next_teaser(fix_script_sentences(body)).strip()
+    if len(body) > target * 1.6:                    # 너무 길면 한 번 줄여 달라고 한다 (쇼츠는 잘리면 안 된다)
+        shorter = clean_part(ai.ask(system, f"{card}\n\n아래 대본을 뜻은 그대로 두고 약 {target:,}자로 줄인다. 낭독할 본문만 출력한다.\n\n{body}"))
+        if shorter:
+            body = strip_next_teaser(fix_script_sentences(shorter)).strip()
+    full = compose_description(head).strip() + "\n[대본]\n" + body + "\n"
+    return full, body
+
 
 def 면책문():
     """채널 프로필의 면책 문구 + 인공지능 사용 고지."""

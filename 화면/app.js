@@ -190,6 +190,8 @@ function setChannel(ch) {
   const pf = (STATE && STATE.profiles && STATE.profiles[ch]) || {};
   $('chHint').textContent = `${pf.이름 || ''} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
   $('genreChips').classList.toggle('hidden', ch !== 'mindam');
+  $('formatRow').classList.toggle('hidden', ch !== 'person');                 // 쇼츠는 정보형만
+  if (ch !== 'person') $('personLenRow').classList.remove('hidden'); else setFormat(videoFormat);
   if (STATE) { renderChannels(STATE.channels || {}); loadAnalysis(ch); }
   $('customTitle').placeholder = ch === 'mindam' ? '예) 장터에서 아기를 백 냥에 사온 과부, 그 아이의 정체는' : '예) 나이 들수록 친구가 줄어드는 진짜 이유';
   renderTopics();
@@ -291,13 +293,22 @@ function pickStyle(v, silent) {
 let cpm = 270, targetChars = 6750;
 function renderLenButtons(cpmValue, chars) {
   cpm = cpmValue; targetChars = chars || Math.round(25 * cpm);
-  $('personLen').innerHTML = [20, 25, 30].map(m => `<button type="button" data-min="${m}" onclick="setLen(${m})">${m}분</button>`).join('');
+  $('personLen').innerHTML = [25, 30, 35, 40].map(m => `<button type="button" data-min="${m}" onclick="setLen(${m})">${m}분</button>`).join('');
   markLen();
 }
 function markLen() { document.querySelectorAll('#personLen button').forEach(b => b.classList.toggle('on', Math.abs(targetChars - Math.round(+b.dataset.min * cpm)) < 50)); $('personLenHint').textContent = `약 ${targetChars.toLocaleString()}자`; }
 function setLen(min) { targetChars = Math.round(min * cpm); markLen(); api('/api/config', {대본_글자수: targetChars}).catch(() => {}); }
+let videoFormat = localStorage.getItem('videoFormat') || 'long';          // long(롱폼 16:9) | shorts(세로 9:16, 정보형만)
+function setFormat(f) {
+  videoFormat = f; localStorage.setItem('videoFormat', f);
+  document.querySelectorAll('#formatSeg button').forEach(b => b.classList.toggle('on', b.dataset.format === f));
+  $('shortsLenLbl').classList.toggle('hidden', f !== 'shorts'); $('personLenRow').classList.toggle('hidden', f === 'shorts');
+  $('formatHint').textContent = f === 'shorts' ? '세로 짧은 영상 · 이유 하나 · 썸네일·움직이는 영상 없음 · 드롭샷 화면 비율을 9:16으로 맞춰 두세요' : '';
+  $('startBtn').textContent = f === 'shorts' ? '🚀 입력한 주제로 쇼츠 제작 시작' : '🚀 입력한 주제로 제작 시작';
+}
 function productionOptions() {
-  return {guideline: '', target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: '', style: styleValue, chunk: +((STATE && STATE.config || {}).프롬프트_묶음 || 30), thumb_position: 'auto',
+  return {guideline: '', target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: '', style: styleValue,
+    format: channel === 'person' ? videoFormat : 'long', shorts_seconds: +$('shortsLen').value || 60, chunk: +((STATE && STATE.config || {}).프롬프트_묶음 || 30), thumb_position: 'auto',
     steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: +$('optHook').value, render: true, thumbnail: $('optThumb').checked}};
 }
 async function startProduction() {
@@ -305,7 +316,8 @@ async function startProduction() {
   if (!selection.size) { $('customTitle').focus(); return toast('주제를 체크하거나 적어 주세요.', true); }
   const options = productionOptions();
   if (options.steps.hook > 0 && !await refreshKieStatus()) toast('KIE 키가 없어 움직이는 영상은 건너뜁니다. 나머지는 모두 자동으로 만듭니다.');
-  if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 영상변환 → 썸네일 → 최종 영상 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
+  if (options.format === 'shorts' && [...selection.values()].some(x => x.channel !== 'person')) toast('쇼츠는 정보형 주제만 만듭니다. 이야기형 주제는 롱폼으로 만듭니다.');
+  if (!confirm(`선택한 ${selection.size}편을 순서대로 ${options.format === 'shorts' ? '쇼츠(세로 ' + options.shorts_seconds + '초)로 ' : ''}만들까요?\n대본 → 나레이션 → 이미지 → 영상변환 → 썸네일 → 최종 영상 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
   try {
     const q = await api('/api/queue/start', {items: [...selection.values()], options});
     selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); startPolling(true); window.scrollTo({top: 0, behavior: 'smooth'}); toast('제작을 시작했습니다.');
@@ -970,7 +982,7 @@ async function detectGenerateButton() {
   $('customTitle').addEventListener('input', renderSelection);
   for (const ch of ['person', 'mindam']) { const info = (STATE && STATE.channels || {})[ch] || {}; if (info.url && (info.busy || (!info.fetched && !info.error))) pollChannel(ch); }
   if (busy) startPolling(false);
-  loadVideoEngine();
+  loadVideoEngine(); setFormat(videoFormat);
   setInterval(refreshQueue, 3000); setInterval(checkReady, 20000); checkVersion(); setInterval(checkVersion, 30000); setInterval(() => refreshGallery(false), 4000);
   refreshGallery(true);
 })();
