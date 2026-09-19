@@ -14,7 +14,7 @@
   const DRIVER_KEY = 'DAEBON_DRIVER';                // 담당 탭 (localStorage: 탭끼리 공유)
   const DRIVER_TTL = 25000;
   const DRIVER_ID = Math.random().toString(36).slice(2);
-  const FIRST_REPLY_MS = 4 * 60 * 1000;             // 답변이 시작조차 안 되면 실패
+  const FIRST_REPLY_MS = 90 * 1000;                 // 답변이 시작조차 안 되면 실패 (딥시크가 바쁘면 바로 다시 시도/예비 AI 로)
   const REPLY_TIMEOUT_MS = 20 * 60 * 1000;
   const QUIET_MS = 4000;                             // 글자 변화가 이 시간 동안 없고 중지 버튼도 없으면 완료
   const BLOCKED = /서버가 바쁩니다|서버가 혼잡|잠시 후 다시 시도|다시 시도해 주세요|사용량이 많아|로그인이 만료|다시 로그인|服务器繁忙|系统繁忙|登录已过期|server is busy|too many requests|rate limit|try again later|something went wrong/i;
@@ -140,14 +140,24 @@
   }
 
   /* ───────── 작업 실행 ───────── */
+  let phase = '';                                      // 지금 무엇을 하는지 (서버 진행 표시용)
   async function runJob(job) {
     sentText = norm(job.text).slice(0, 200);
-    setBadge('새 대화 준비 중…');
+    setBadge('새 대화 준비 중…'); phase = '새 대화 준비 중';
+    const beat = () => api('/api/web/beat', 'POST', { id: job.id, progress: (document.hidden ? '⚠ 딥시크 창이 가려져 있어 답변이 그려지지 않음 · ' : '') + phase, hidden: !!document.hidden }).catch(() => { });
+    const beater = setInterval(beat, 8000); beat();
+    try {
+      await runJobInner(job);
+    } finally { clearInterval(beater); }
+  }
+  async function runJobInner(job) {
     sessionStorage.setItem(PENDING_KEY, JSON.stringify(job));
     if (!(await ensureFreshChat(job))) return;                      // 새로고침 → 다시 이어받음
+    phase = '입력창 찾는 중';
     let composer = await waitComposer();
     await sleep(600); rememberIdleSend();
     const before = assistantNodes().length;
+    phase = '메시지 전송 중';
     for (let attempt = 1; attempt <= 3; attempt++) {
       setComposerText(composer, job.text); await sleep(700);
       if (!composerText(findComposer()).includes(job.text.slice(0, 40))) { composer = await waitComposer(10000); setComposerText(composer, job.text); await sleep(900); }
@@ -158,15 +168,15 @@
       if (attempt === 3) throw new Error('메시지를 보내지 못했습니다');
       composer = await waitComposer();
     }
-    setBadge('답변 기다리는 중…');
-    const start = Date.now(); let lastText = '', lastChange = Date.now(), lastBeat = 0, started = false;
+    setBadge('답변 기다리는 중…'); phase = '답변 기다리는 중 · 0자';
+    const start = Date.now(); let lastText = '', lastChange = Date.now(), started = false;
     while (true) {
       await sleep(1000);
       const now = Date.now();
       const text = lastAssistantText();
       if (assistantNodes().length > before || (text && text !== lastText)) started = true;
       if (text !== lastText) { lastText = text; lastChange = now; }
-      if (now - lastBeat > 8000) { lastBeat = now; try { await api('/api/web/beat', 'POST', { id: job.id, progress: (document.hidden ? '⚠ 딥시크 창이 가려져 있어 답변이 그려지지 않음 · ' : '') + `${text.length}자`, hidden: !!document.hidden, v: VERSION }); } catch (_) { } setBadge(`답변 받는 중 · ${text.length.toLocaleString()}자`); }
+      phase = started ? `답변 받는 중 · ${text.length.toLocaleString()}자` : `답변 기다리는 중 · ${Math.round((now - start) / 1000)}초`;
       const generating = !!stopButton();
       if (!text && now - start > 20000 && (now - start) % 10000 < 1100) {   // 답변 영역이 안 그려지면 목록을 아래로 밀어 렌더를 유도
         const vl = document.querySelector('.ds-virtual-list'); if (vl) vl.scrollTop = vl.scrollHeight;
