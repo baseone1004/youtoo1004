@@ -239,8 +239,21 @@
     <p class="hint" id="sXyStatus">저장된 좌표를 읽는 중…</p>
   </div>
 
+  <div class="card">
+    <h2>5. 드롭샷 영상 변환 좌표 <span class="hint">(KIE 크레딧이 없을 때 대신 씀)</span></h2>
+    <p class="lead">앞 7장을 움직이는 영상으로 바꿀 때 KIE 크레딧이 모자라면, 드롭샷 AI의 <b>영상 생성</b> 화면을 자동으로 클릭해서 만듭니다. 아래 네 곳의 위치를 한 번만 잡아 두세요.</p>
+    <div class="row"><button class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board','_blank','noopener')">↗ 드롭샷 AI 열기</button><span class="hint">드롭샷에서 [영상 생성] → 이미지로 영상 만들기 화면을 열고, 모델·16:9·길이를 원하는 대로 골라 둔 뒤 좌표를 잡으세요.</span><span class="xy-countdown">6</span></div>
+    <div class="keyrow"><b>이미지 업로드 버튼</b><label>X <input type="number" id="s_vupload_x" style="width:90px"></label><label>Y <input type="number" id="s_vupload_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vupload')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vupload')">위치 확인</button></div>
+    <div class="keyrow"><b>움직임 프롬프트 입력창</b><label>X <input type="number" id="s_vprompt_x" style="width:90px"></label><label>Y <input type="number" id="s_vprompt_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vprompt')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vprompt')">위치 확인</button></div>
+    <div class="keyrow"><b>생성하기 버튼</b><label>X <input type="number" id="s_vgenerate_x" style="width:90px"></label><label>Y <input type="number" id="s_vgenerate_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vgenerate')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vgenerate')">위치 확인</button></div>
+    <div class="keyrow"><b>영상 다운로드 버튼</b><label>X <input type="number" id="s_vdownload_x" style="width:90px"></label><label>Y <input type="number" id="s_vdownload_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vdownload')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vdownload')">위치 확인</button></div>
+    <div class="row"><label>생성 뒤 처음 확인까지 <input type="number" id="s_video_wait_min" value="60" min="10" style="width:80px"> 초</label><label>최대 대기 <input type="number" id="s_video_wait_max" value="360" min="60" style="width:80px"> 초</label><button onclick="saveEditorXY()">좌표 저장</button></div>
+    <p class="hint">업로드 버튼을 누르면 뜨는 파일 창에 이미지 경로를 자동으로 넣습니다. 영상이 만들어지는 동안(장면당 1~5분) 드롭샷 창을 가리거나 마우스를 쓰지 마세요. 다운로드 버튼은 <b>가장 최근 영상</b>의 다운로드 위치로 잡으세요.</p>
+    <p class="hint" id="sVxyStatus"></p>
+  </div>
+
   <div class="card" id="chanCard">
-    <h2>5. 내 유튜브 채널 연동</h2>
+    <h2>6. 내 유튜브 채널 연동</h2>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>
     <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px;white-space:pre-wrap"></p>
@@ -259,7 +272,7 @@
   </div>
 
   <div class="card">
-    <h2>6. 텔레그램 완성 알림 <span class="stat">선택</span></h2>
+    <h2>7. 텔레그램 완성 알림 <span class="stat">선택</span></h2>
     <p class="hint">① BotFather에서 받은 봇 토큰 저장 → ② 텔레그램에서 그 봇에게 아무 메시지 보내기 → ③ 채팅 자동 찾기 → 저장 → 테스트</p>
     <div class="keyrow"><b>봇 토큰</b><span class="stat" id="tgTokenStat"></span><input type="password" id="tgToken" placeholder="123456:ABC…"><button class="mini" onclick="saveTelegramToken()">저장</button></div>
     <div class="row"><button onclick="findTelegramChats()">🔎 채팅 자동 찾기</button><select id="tgChats" style="min-width:220px"><option value="">먼저 채팅을 찾으세요</option></select><button onclick="saveTelegramChat()">선택한 채팅 저장</button><button class="primary" onclick="testTelegram()">테스트 메시지</button></div>

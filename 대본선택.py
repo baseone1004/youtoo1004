@@ -1105,6 +1105,86 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
         time.sleep(4)
 
 
+KIE_MIN_CREDIT = 50           # 이보다 적으면 KIE 대신 드롭샷 좌표 변환을 쓴다 (장면 하나에 수십 크레딧)
+
+
+def kie_usable():
+    """KIE 로 영상을 만들 수 있는지: 키가 있고 크레딧이 충분한지. (크레딧 조회가 안 되면 키만 보고 시도한다) → (가능 여부, 이유)"""
+    info = aip("/api/info")
+    if not info.get("kie_key_saved"):
+        return False, "KIE 키 없음"
+    try:
+        c = kie_credit()
+    except Exception:  # noqa: BLE001
+        return True, ""
+    if c.get("ok") and c.get("credit") is not None and c["credit"] < KIE_MIN_CREDIT:
+        return False, f"KIE 크레딧 부족 ({c['credit']:.0f})"
+    return True, ""
+
+
+def dropshot_video_xy(info=None):
+    """설정에 저장된 드롭샷 영상 변환 좌표 4개 (업로드·입력창·생성·다운로드). 하나라도 없으면 None."""
+    info = info or aip("/api/info")
+    v = ((info.get("config") or {}).get("gen_ui") or {}).get("VXY") or {}
+    if all(v.get(k) for k in ("upload", "prompt", "generate", "download")):
+        return v
+    return None
+
+
+def scene_motion_prompts(prompts_file, scenes):
+    """장면별 영어 프롬프트에서 화풍 고정 문구를 떼고 움직임 프롬프트 앞에 붙일 장면 설명을 만든다."""
+    out = {}
+    if not prompts_file or not os.path.isfile(prompts_file):
+        return out
+    with open(prompts_file, encoding="utf-8-sig") as f:
+        blocks = prompt_blocks(f.read())
+    for no in scenes:
+        m = re.search(r"^\s*(?:프롬프트|prompt)\s*[:：]\s*(.+)$", blocks.get(no, ""), flags=re.M | re.I)
+        if not m:
+            continue
+        text = re.sub(r"^STRICT STYLE LOCK:.*?mixed-media image\.\s*", "", m.group(1).strip(), flags=re.S)
+        out[no] = text[:600]
+    return out
+
+
+def start_dropshot_videos(images_dir, prompts_file, scenes):
+    """편집프로그램에 드롭샷 좌표 영상 변환을 요청한다 (앞 n장). 좌표가 없으면 안내와 함께 실패."""
+    info = aip("/api/info")
+    v = dropshot_video_xy(info)
+    if not v:
+        raise RuntimeError("드롭샷 영상 변환 좌표(업로드·입력창·생성·다운로드)가 없습니다. 설정 → 드롭샷 영상 변환 좌표에서 먼저 잡으세요.")
+    ui = (info.get("config") or {}).get("gen_ui") or {}
+    dl = (ui.get("P") or {}).get("download") or info.get("downloads_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
+    body = dict(images_dir=os.path.abspath(images_dir), download_dir=dl, scenes=list(scenes), prompts=scene_motion_prompts(prompts_file, scenes),
+                upload_xy=v["upload"], prompt_xy=v["prompt"], generate_xy=v["generate"], download_xy=v["download"],
+                motion_prompt=ui.get("motion_prompt") or "Cinematic slow camera movement, subtle natural motion, keep the same style and composition.",
+                wait_min=float(ui.get("video_wait_min") or 60), wait_max=float(ui.get("video_wait_max") or 360),
+                window_keyword=ui.get("window_keyword") or "드롭샷")
+    aip("/api/vgen/start", body)
+    return body
+
+
+def run_hook_videos_dropshot(job, images_dir, prompts_file, scenes):
+    """드롭샷 좌표 변환이 끝날 때까지 기다린다. 실패한 장면이 있으면 오류."""
+    start_dropshot_videos(images_dir, prompts_file, scenes)
+    job.add(f"   드롭샷 좌표로 {len(scenes)}장면 영상 변환 · 드롭샷 창을 가리지 마세요 (장면당 1~5분)")
+    while True:
+        if job.cancel_requested:
+            aip("/api/vgen/stop", {}); raise RuntimeError("취소됨")
+        st = aip("/api/vgen/status")
+        n = len(st.get("done", [])) + len(st.get("failed", []))
+        job.stage = f"후킹 영상(드롭샷): {st.get('current', 0):03d} ({n}/{st.get('total') or len(scenes)})"
+        if st.get("status") in ("done", "error", "stopped"):
+            if st.get("status") != "done":
+                raise RuntimeError("드롭샷 영상 변환이 끝나지 않음: " + (st.get("error") or st.get("status")))
+            failed = list(st.get("failed") or [])
+            if failed:
+                raise RuntimeError("드롭샷 영상 변환 실패 장면: " + ", ".join(f"{no:03d}" for no in failed))
+            job.add(f"   ✓ 드롭샷 영상 {len(st.get('done', []))}개")
+            return st
+        time.sleep(4)
+
+
 def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
     body = dict(images_dir=os.path.abspath(images_dir), prompts_file=os.path.abspath(prompts_file), scenes=scenes,
                 output_dir=os.path.abspath(out_dir) if out_dir else "")
@@ -1485,11 +1565,26 @@ def make_pipeline(job, req):
             job.add(f"   앞 {n_hook}장 움직이는 영상이 이미 있어 건너뜀")
             result["hook"] = images_dir
         else:
-            try:
-                run_hook_videos(job, images_dir, result["prompts"], todo)
-                result["hook"] = images_dir
-            except Exception as e:  # noqa: BLE001
-                job.add(f"   ! 움직이는 영상 실패(넘어감, 정지 이미지로 편집): {e}")
+            ok, why = kie_usable()
+            done_hook = False
+            if ok:
+                try:
+                    run_hook_videos(job, images_dir, result["prompts"], todo)
+                    result["hook"] = images_dir; done_hook = True
+                except Exception as e:  # noqa: BLE001
+                    why = f"KIE 실패: {e}"
+            if not done_hook:                       # KIE 가 안 되면 드롭샷 좌표 변환으로 (좌표가 있을 때만)
+                if dropshot_video_xy():
+                    job.add(f"   {why} → 드롭샷 좌표로 영상을 만듭니다")
+                    try:
+                        todo = [n for n in todo if not os.path.exists(os.path.join(images_dir, f"{n:03d}.mp4"))]
+                        if todo:
+                            run_hook_videos_dropshot(job, images_dir, result["prompts"], todo)
+                        result["hook"] = images_dir
+                    except Exception as e:  # noqa: BLE001
+                        job.add(f"   ! 드롭샷 영상 변환 실패(넘어감, 정지 이미지로 편집): {e}")
+                else:
+                    job.add(f"   ! 움직이는 영상 건너뜀(정지 이미지로 편집): {why} · 드롭샷 영상 좌표도 없음")
     check_cancelled()
     # 5.5) 썸네일
     if steps.get("thumbnail", True):
@@ -1911,6 +2006,18 @@ class H(BaseHTTPRequestHandler):
                 self._json(reset_everything())
             elif u.path == "/api/delete-script":
                 self._json(delete_script(body.get("script_file", "")))
+            elif u.path == "/api/hook/dropshot":               # 앞 n장을 드롭샷 좌표로 영상 변환 (KIE 대신)
+                sf = body.get("script_file", "")
+                if not sf or not os.path.exists(sf):
+                    raise ValueError("대본을 먼저 고르세요.")
+                a = assets_dir(sf)
+                pr = os.path.join(a, "이미지프롬프트.txt") if os.path.basename(sf) == "final.txt" else re.sub(r"\.txt$", "", sf) + "_이미지프롬프트.txt"
+                scenes = [int(n) for n in (body.get("scenes") or [1, 2, 3, 4, 5, 6, 7])]
+                try:
+                    start_dropshot_videos(os.path.join(a, "images"), pr, scenes)
+                except SystemExit as e:
+                    raise ValueError(str(e))
+                self._json({"ok": True, "scenes": scenes})
             elif u.path == "/api/thumbnail":
                 run_job("thumbnail", lambda job: make_thumbnails(job, body)); self._json({"ok": True})
             elif u.path == "/api/thumbnail/compose":            # raw 원본에 문구만 다시 얹기 (빠름, 비용 없음)

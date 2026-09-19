@@ -639,7 +639,15 @@ async function regenScene(no) {
   } catch (e) { toast(e.message, true); }
 }
 async function hookScene(no) {
-  if (!await ensureKieReady()) return;
+  const kieOk = (await refreshKieStatus()) && (kieCredit === null || kieCredit >= 50);
+  if (!kieOk) {                                    // KIE 가 안 되면 드롭샷 좌표로 그 장면만
+    if (vgenTimer || (await vgenStatus()).status === 'running') return toast('드롭샷 영상 변환이 이미 진행 중입니다', true);
+    const info = await get8765('/api/info'), v = ((info.config || {}).gen_ui || {}).VXY || {};
+    if (!VIDEO_XY.every(k => v[k])) { showView('settings'); setTimeout(() => $('sVxyStatus').scrollIntoView({behavior: 'smooth', block: 'center'}), 200); return toast('KIE 크레딧이 없어 드롭샷으로 만들려면 설정 5번의 영상 변환 좌표 4개를 먼저 잡으세요.', true); }
+    if (!confirm(pad3(no) + '번 장면을 드롭샷 AI 화면을 자동 클릭해서 영상으로 만들까요? (1~5분, 그동안 마우스·키보드를 쓰지 마세요)')) return;
+    try { await api('/api/hook/dropshot', {script_file: $('galFile').value, scenes: [no]}); clearInterval(vgenTimer); vgenTimer = setInterval(pollVgen, 3000); pollVgen(); toast(pad3(no) + '번 드롭샷 영상 변환 시작'); } catch (e) { toast(e.message, true); }
+    return;
+  }
   if (!confirm(pad3(no) + '번 장면을 움직이는 영상으로 만들까요? (KIE 크레딧 사용, 1~4분)')) return;
   try {
     const info = await get8765('/api/info'); const ui = (info.config || {}).gen_ui || {};
@@ -662,7 +670,6 @@ async function saveKieKey() {
   const key = $('sKieKey').value.trim(); if (!key) return toast('KIE API 키를 입력하세요', true);
   try { await post8765('/api/config', {kie_api_key: key}); $('sKieKey').value = ''; await refreshKieStatus(); toast('KIE 키 저장됨'); } catch (e) { toast('KIE 키 저장 실패: ' + e.message, true); }
 }
-async function ensureKieReady() { if (await refreshKieStatus()) return true; showView('settings'); $('sKieKey').focus(); toast('움직이는 영상을 만들려면 KIE 키를 먼저 저장하세요. (세부 옵션에서 0으로 하면 건너뜁니다)', true); return false; }
 async function refreshKieFiles() {
   if (!galDir) { $('kieScenes').textContent = ''; if (!kieJobId) $('kieProgress').textContent = ''; return; }
   try {
@@ -680,25 +687,42 @@ async function pollKieJob() {
     if (['done', 'error', 'cancelled'].includes(j.status)) { clearInterval(kieTimer); kieTimer = null; kieJobId = ''; sessionStorage.removeItem('kieJobId'); await refreshGallery(true); if (j.status === 'error') $('kieProgress').textContent = '❌ 영상화 오류: ' + (j.error || '로그를 확인하세요'); else if (j.status === 'cancelled') $('kieProgress').textContent = '■ 중단됨'; }
   } catch (e) { clearInterval(kieTimer); kieTimer = null; kieJobId = ''; sessionStorage.removeItem('kieJobId'); await refreshKieFiles(); }
 }
+let vgenTimer = null;
+async function vgenStatus() { try { return await get8765('/api/vgen/status'); } catch (e) { return {status: 'idle', done: [], failed: [], total: 0}; } }
+// 드롭샷 좌표 변환 진행 표시 (편집프로그램 /api/vgen/status)
+async function pollVgen() {
+  const st = await vgenStatus();
+  const n = (st.done || []).length + (st.failed || []).length;
+  $('kieProgress').textContent = st.status === 'running' ? `드롭샷 영상 변환 ${n}/${st.total} · 지금 ${pad3(st.current || 0)}번 — 드롭샷 창을 가리지 마세요` : st.status === 'done' ? `✅ 드롭샷 영상 변환 완료 ${(st.done || []).length}개${(st.failed || []).length ? ' · 실패 ' + st.failed.map(pad3).join(', ') : ''}` : st.status === 'error' ? '❌ 드롭샷 영상 변환 오류: ' + (st.error || '') : st.status === 'stopped' ? '■ 드롭샷 영상 변환 중단됨' : '';
+  await refreshKieFiles();
+  if (st.status !== 'running') { clearInterval(vgenTimer); vgenTimer = null; await refreshGallery(true); }
+}
 async function startFirstSevenVideos() {
-  if (kieJobId) return toast('앞 7장 영상화가 이미 진행 중입니다', true);
+  if (kieJobId || vgenTimer) return toast('앞 7장 영상화가 이미 진행 중입니다', true);
   if (!galDir || !galPromptsPath) return toast('대본과 이미지 프롬프트를 먼저 고르세요', true);
-  if (!await ensureKieReady()) return;
+  const kieOk = (await refreshKieStatus()) && (kieCredit === null || kieCredit >= 50);
   try {
     const ready = new Set((await listImages(galDir)).filter(x => !x.video).map(x => x.no));
     const missing = [1, 2, 3, 4, 5, 6, 7].filter(no => !ready.has(no));
     if (missing.length) return toast('앞 7장 이미지가 먼저 필요합니다. 없는 장면: ' + missing.map(pad3).join(', '), true);
-    const low = kieCredit !== null && kieCredit < 100 ? `
-
-⚠ 남은 KIE 크레딧이 ${Math.round(kieCredit)}뿐입니다. 장면 하나에 수십 크레딧이 들어 부족하면 실패합니다. https://kie.ai 에서 충전하세요.` : '';
-    if (!confirm('앞 7장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.' + low)) return;
+    if (!kieOk) {                                  // KIE 키 없음·크레딧 부족 → 드롭샷 좌표로
+      const info = await get8765('/api/info'), v = ((info.config || {}).gen_ui || {}).VXY || {};
+      if (!VIDEO_XY.every(k => v[k])) { showView('settings'); setTimeout(() => $('sVxyStatus').scrollIntoView({behavior: 'smooth', block: 'center'}), 200); return toast(`KIE 크레딧이 ${kieCredit === null ? '없어' : Math.round(kieCredit) + '뿐이라'} 드롭샷으로 만들려면 설정 5번의 영상 변환 좌표 4개를 먼저 잡으세요.`, true); }
+      if (!confirm(`KIE 크레딧이 ${kieCredit === null ? '없어서' : Math.round(kieCredit) + '뿐이라'} 드롭샷 AI 화면을 자동 클릭해서 앞 7장을 영상으로 만듭니다.\n장면당 1~5분, 그동안 드롭샷 창을 가리거나 마우스·키보드를 쓰지 마세요. 시작할까요?`)) return;
+      const r = await api('/api/hook/dropshot', {script_file: $('galFile').value, scenes: [1, 2, 3, 4, 5, 6, 7]});
+      clearInterval(vgenTimer); vgenTimer = setInterval(pollVgen, 3000); pollVgen(); toast(`드롭샷으로 ${r.scenes.length}장면 영상 변환을 시작했습니다`); return;
+    }
+    if (!confirm('앞 7장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.')) return;
     const info = await get8765('/api/info'), ui = (info.config || {}).gen_ui || {};
     const j = await post8765('/api/hook/start', {api_key: '', images_dir: galDir, prompts_file: galPromptsPath, scenes: [1, 2, 3, 4, 5, 6, 7], model: ui.kie_model || 'veo-3-1', aspect_ratio: ui.kie_ratio || '16:9', duration: 0, motion_prompt: ui.motion_prompt || 'Subtle 2D motion, preserve characters and composition.', use_scene_prompt: true, output_dir: ''});
     kieJobId = j.job_id; sessionStorage.setItem('kieJobId', kieJobId); clearInterval(kieTimer); kieTimer = setInterval(pollKieJob, 2000); pollKieJob(); toast('앞 7장 영상 변환을 시작했습니다');
   } catch (e) { toast('영상화 실패: ' + e.message, true); }
 }
-async function cancelKieVideos() { if (!kieJobId) return toast('진행 중인 영상화가 없습니다', true); try { await post8765('/api/jobs/' + encodeURIComponent(kieJobId) + '/cancel', {}); $('kieProgress').textContent = '중단 요청'; } catch (e) { toast('중단 실패: ' + e.message, true); } }
+async function cancelKieVideos() {
+  if (vgenTimer || (await vgenStatus()).status === 'running') { try { await post8765('/api/vgen/stop', {}); $('kieProgress').textContent = '중단 요청'; toast('드롭샷 영상 변환 중단 요청'); } catch (e) { toast('중단 실패: ' + e.message, true); } return; }
+  if (!kieJobId) return toast('진행 중인 영상화가 없습니다', true); try { await post8765('/api/jobs/' + encodeURIComponent(kieJobId) + '/cancel', {}); $('kieProgress').textContent = '중단 요청'; } catch (e) { toast('중단 실패: ' + e.message, true); } }
 if (kieJobId) { kieTimer = setInterval(pollKieJob, 2000); setTimeout(pollKieJob, 500); }
+setTimeout(async () => { if ((await vgenStatus()).status === 'running' && !vgenTimer) { vgenTimer = setInterval(pollVgen, 3000); pollVgen(); } }, 1500);
 
 // ── 고급: 영상·자막 설정 (편집프로그램 iframe) ─────────────
 async function prepareVideoEditor() {
@@ -841,12 +865,18 @@ async function loadMascot() {
     $('mascotImg').src = '/api/image?path=' + encodeURIComponent(path) + '&t=' + Date.now(); $('mascotImg').classList.remove('hidden'); $('mascotStat').textContent = '저장됨'; $('mascotStat').className = 'stat ok'; }
   catch (e) { $('mascotImg').classList.add('hidden'); $('mascotStat').textContent = '파일 없음'; $('mascotStat').className = 'stat'; }
 }
+const VIDEO_XY = ['upload', 'prompt', 'generate', 'download'];
 async function loadEditorSettings() {
   loadMascot();
   try {
     const info = await get8765('/api/info'); if (!info.config) throw new Error('편집프로그램 응답 없음');
     const ui = info.config.gen_ui || {}, xy = ui.XY || {};
     for (const name of ['prompt', 'generate', 'download']) { const pair = xy[name] || []; $('s_' + name + '_x').value = pair[0] ?? ''; $('s_' + name + '_y').value = pair[1] ?? ''; }
+    const vxy = ui.VXY || {};                     // 드롭샷 영상 변환 좌표 (KIE 대신)
+    for (const name of VIDEO_XY) { const pair = vxy[name] || []; $('s_v' + name + '_x').value = pair[0] ?? ''; $('s_v' + name + '_y').value = pair[1] ?? ''; }
+    $('s_video_wait_min').value = ui.video_wait_min || 60; $('s_video_wait_max').value = ui.video_wait_max || 360;
+    const vn = {upload: '업로드', prompt: '입력창', generate: '생성', download: '다운로드'};
+    $('sVxyStatus').textContent = VIDEO_XY.every(n => vxy[n]) ? '✓ 영상 변환 좌표 4개 저장됨 — KIE 크레딧이 없으면 이 좌표로 만듭니다' : '저장된 좌표: ' + VIDEO_XY.map(n => vxy[n] ? `${vn[n]} (${vxy[n].join(', ')})` : `${vn[n]} 없음`).join(' · ');
     $('sWindowKeyword').value = ui.window_keyword || '드롭샷';
     const nm = {prompt: '입력창', generate: '생성', download: '다운로드'};
     $('sXyStatus').textContent = '저장된 좌표: ' + ['prompt', 'generate', 'download'].map(n => xy[n] ? `${nm[n]} (${xy[n].join(', ')})` : `${nm[n]} 없음`).join(' · ');
@@ -857,12 +887,14 @@ async function saveEditorXY() {
   try {
     const info = await get8765('/api/info'), ui = (info.config || {}).gen_ui || {}, XY = {...(ui.XY || {})};
     for (const name of ['prompt', 'generate', 'download']) { const x = $('s_' + name + '_x').value.trim(), y = $('s_' + name + '_y').value.trim(); if ((x && !y) || (!x && y)) throw new Error('X와 Y를 모두 입력하세요: ' + name); if (x && y) XY[name] = [Number(x), Number(y)]; }
-    await post8765('/api/config', {gen_ui: {...ui, XY, window_keyword: $('sWindowKeyword').value.trim() || '드롭샷'}});
+    const VXY = {...(ui.VXY || {})};
+    for (const name of VIDEO_XY) { const x = $('s_v' + name + '_x').value.trim(), y = $('s_v' + name + '_y').value.trim(); if ((x && !y) || (!x && y)) throw new Error('X와 Y를 모두 입력하세요: 영상 ' + name); if (x && y) VXY[name] = [Number(x), Number(y)]; }
+    await post8765('/api/config', {gen_ui: {...ui, XY, VXY, video_wait_min: +$('s_video_wait_min').value || 60, video_wait_max: +$('s_video_wait_max').value || 360, window_keyword: $('sWindowKeyword').value.trim() || '드롭샷'}});
     $('sXyStatus').textContent = '✓ 좌표가 저장됐습니다'; toast('좌표 저장됨'); checkReady(); return true;
   } catch (e) { $('sXyStatus').textContent = '좌표 저장 실패: ' + e.message; toast(e.message, true); return false; }
 }
 async function captureEditorXY(name) {
-  const label = {prompt: '프롬프트 입력창', generate: '생성 버튼', download: '다운로드 버튼'}[name]; const counters = [...document.querySelectorAll('.xy-countdown')];
+  const label = {prompt: '프롬프트 입력창', generate: '생성 버튼', download: '다운로드 버튼', vupload: '영상 생성의 이미지 업로드 버튼', vprompt: '영상 생성의 프롬프트 입력창', vgenerate: '영상 생성하기 버튼', vdownload: '영상 다운로드 버튼'}[name]; const counters = [...document.querySelectorAll('.xy-countdown')];
   const setC = (t, on) => counters.forEach(c => { c.textContent = t; c.classList.toggle('active', !!on); });
   xyStatus(`마우스를 드롭샷의 ${label} 위에 올려 두세요`); setC('6', true);
   try {
