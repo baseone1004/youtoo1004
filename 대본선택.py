@@ -1067,7 +1067,14 @@ def workspace_data(script_file):
     thumb_dir = os.path.join(assets, "썸네일")
     thumbnails = [os.path.abspath(p) for p in sorted(glob.glob(os.path.join(thumb_dir, "썸네일_*.jpg")))]
     thumbnail_raw = [v for _, v in sorted(raw_thumbnails(thumb_dir).items())]
-    title = saved.get("title") or _block(script_text, "제목")
+    if os.path.basename(script_file) == "final.txt":          # 이야기형: final.txt 는 본문뿐이라 제목·설명·태그는 유튜브_설명.txt (없으면 기획.txt) 에서
+        for extra in ("유튜브_설명.txt", "기획.txt"):
+            ep = os.path.join(assets, extra)
+            if os.path.isfile(ep):
+                opt_text = Path(ep).read_text(encoding="utf-8-sig", errors="replace") + "\n\n" + opt_text
+    title = saved.get("title") or _block(script_text, "제목") or _block(opt_text, "제목")
+    if not title and os.path.basename(script_file) == "final.txt":
+        title = re.sub(r"^\d{4}-\d{2}-\d{2}_", "", os.path.basename(os.path.dirname(script_file)))
     return dict(script_file=os.path.abspath(script_file), assets=os.path.abspath(assets), script=script_text,
                 prompts=Path(prompts).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(prompts) else "",
                 prompts_file=os.path.abspath(prompts),
@@ -1077,7 +1084,7 @@ def workspace_data(script_file):
                 thumbnail_dir=os.path.abspath(thumb_dir), title=title,
                 description=upload_description(saved.get("description") or _block(script_text, "설명글") or _block(opt_text, "설명글"),
                                                saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그")),
-                sources=saved.get("sources") or _block(script_text, "출처"),
+                sources=saved.get("sources") or _block(script_text, "출처") or _block(opt_text, "출처"),
                 tags=saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그"))
 
 def save_workspace(body):

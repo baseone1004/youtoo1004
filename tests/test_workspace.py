@@ -58,9 +58,6 @@ class WorkspaceEditorTest(unittest.TestCase):
                 self.assertEqual(saved["title"], "새 제목")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class ResetEverythingTest(unittest.TestCase):
     def test_moves_all_work_to_trash_and_keeps_settings(self):
@@ -88,3 +85,25 @@ class ResetEverythingTest(unittest.TestCase):
             self.assertTrue((root / "설정.json").exists())
             self.assertTrue(any(p.name == "2026-09-01_주제.txt" for p in Path(result["trash"]).iterdir()))
             self.assertEqual(store.data["status"], "idle")
+
+
+class FolktaleWorkspaceTitleTest(unittest.TestCase):
+    def test_title_and_description_come_from_youtube_file(self):
+        import os, tempfile
+        from unittest.mock import patch
+        import 대본선택 as app
+        with tempfile.TemporaryDirectory() as tmp:
+            d = os.path.join(tmp, "대본", "민담", "2026-01-01_몰락한 아씨"); os.makedirs(d)
+            f = os.path.join(d, "final.txt"); open(f, "w", encoding="utf-8").write("이야기 본문.")
+            open(os.path.join(d, "유튜브_설명.txt"), "w", encoding="utf-8").write("[제목]\n몰락한 아씨 | 야담\n\n[설명글]\n줄거리.\n\n[태그]\n야담, 민담\n")
+            with patch.object(app, "BASE", tmp), patch.object(app, "script_files", return_value=[{"path": f}]), patch.object(app, "assets_dir", return_value=d):
+                w = app.workspace_data(f)
+            self.assertEqual(w["title"], "몰락한 아씨 | 야담")
+            self.assertIn("줄거리.", w["description"]); self.assertEqual(w["tags"], "야담, 민담")
+            os.remove(os.path.join(d, "유튜브_설명.txt"))
+            with patch.object(app, "BASE", tmp), patch.object(app, "script_files", return_value=[{"path": f}]), patch.object(app, "assets_dir", return_value=d):
+                self.assertEqual(app.workspace_data(f)["title"], "몰락한 아씨")     # 파일이 없으면 폴더 이름(날짜 뺀)
+
+
+if __name__ == "__main__":
+    unittest.main()
