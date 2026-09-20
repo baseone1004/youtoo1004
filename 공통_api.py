@@ -148,9 +148,18 @@ class AI:
         import 웹큐
         text = (system.strip() + "\n\n" + "=" * 30 + "\n[요청]\n" + user.strip()
                 + "\n\n(위 지침을 그대로 따른다. 설명·확인 질문·머리말 없이 결과물만 출력한다.)")
-        jid = 웹큐.submit(text, {"new_chat": True})
-        print(" [딥시크 웹 대기]", end="", flush=True)
-        out = 웹큐.wait(jid, cancel_check=self._cancelled)
+        for attempt in range(7):                     # 딥시크 웹이 "Messages too frequent" 로 막으면 5분씩 기다렸다 다시 (최대 30분)
+            jid = 웹큐.submit(text, {"new_chat": True})
+            print(" [딥시크 웹 대기]", end="", flush=True)
+            try:
+                out = 웹큐.wait(jid, cancel_check=self._cancelled)
+                break
+            except RuntimeError as e:
+                if "too frequent" not in str(e).lower() and "사용량 제한" not in str(e) or attempt >= 6:
+                    raise
+                print(f"\n   ! 딥시크 웹 사용량 제한 → 5분 뒤 다시 시도 ({attempt + 1}/6)", flush=True)
+                for _ in range(300):
+                    self._raise_if_cancelled(); time.sleep(1)
         self.usage["in"] += len(text) // 2; self.usage["out"] += len(out) // 2
         print()
         if is_echo(out, text):                        # 확장이 답변 대신 내가 보낸 메시지를 읽어 온 경우 → 실패로 보고 다시 시도

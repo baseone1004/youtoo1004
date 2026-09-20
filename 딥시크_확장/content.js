@@ -181,6 +181,7 @@
       if (!text && now - start > 20000 && (now - start) % 10000 < 1100) {   // 답변 영역이 안 그려지면 목록을 아래로 밀어 렌더를 유도
         const vl = document.querySelector('.ds-virtual-list'); if (vl) vl.scrollTop = vl.scrollHeight;
       }
+      if (!started && now - start > 3000 && /Messages too frequent|too frequent|请求过于频繁|服务器繁忙|Server busy/i.test(document.body.innerText || '')) throw new Error('딥시크 사용량 제한 (Messages too frequent)');
       if (!started && now - start > FIRST_REPLY_MS) throw new Error('답변이 시작되지 않았습니다');
       if (now - start > REPLY_TIMEOUT_MS) throw new Error('답변 대기 시간 초과');
       if (started && !generating && text.length > 0 && now - lastChange > QUIET_MS) break;
