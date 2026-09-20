@@ -117,8 +117,8 @@ class AI:
         if self.fallback is not None:                 # 이미 예비로 넘어갔으면 계속 예비를 쓴다
             return self.fallback.ask(system, user, max_tokens)
         if self.name == "deepseek-web" and retries > 0:
-            # 웹은 한 번 실패에 몇 분씩 걸린다: 예비 AI 키가 있으면 한 번 실패하자마자 넘어가고, 없으면 한 번만 더 해 본다
-            retries = 0 if (not self._is_fallback and fallback_candidates(self.cfg, self.name)) else 1
+            # 웹은 '답변이 시작되지 않음' 같은 일시 오류가 잦다: 예비 키가 있어도 한 번은 더 해 보고(무료 예비 AI 는 한도가 금방 찬다), 그 다음 넘어간다
+            retries = 1
         max_tokens = min(max_tokens or self.p["max_out"], self.p["max_out"])
         for attempt in range(retries + 1):
             try:
