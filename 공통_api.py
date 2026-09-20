@@ -68,6 +68,10 @@ class AI:
         if name == "deepseek-web":
             import 웹큐
             self.key, self.client = "", None
+            for _ in range(45):                       # 프로그램을 막 켠 직후에는 확장의 첫 신호가 오기까지 몇십 초 걸린다 → 기다려 본다
+                if 웹큐.extension_alive():
+                    break
+                time.sleep(2)
             if not 웹큐.extension_alive():
                 spare = self._make_fallback("딥시크 확장이 연결되어 있지 않음")
                 if spare is None:
