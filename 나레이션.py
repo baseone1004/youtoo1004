@@ -159,48 +159,94 @@ def split_subtitle_text(text, max_chars=자막_최대_글자):
     return merged or [text]
 
 
+def detect_silences(ffmpeg, path, noise_db=-35, min_len=0.15):
+    """음성 파일 안의 조용한 구간 [(시작, 끝)] — 문장 사이의 자연스러운 쉼을 찾는 데 쓴다."""
+    out = subprocess.run([ffmpeg, "-hide_banner", "-nostats", "-i", path, "-af", f"silencedetect=noise={noise_db}dB:d={min_len}", "-f", "null", "-"],
+                         capture_output=True, text=True, errors="replace")
+    text = out.stderr or ""
+    starts = [float(x) for x in re.findall(r"silence_start:\s*([\d.]+)", text)]
+    ends = [float(x) for x in re.findall(r"silence_end:\s*([\d.]+)", text)]
+    return list(zip(starts, ends))
+
+
+def sentence_boundaries(ffmpeg, path, total, texts):
+    """묶어 읽은 음성에서 문장 경계 시각 목록(길이 = 문장 수 - 1). 글자 수 비율로 예상한 자리에 가장 가까운 쉼(무음)의 가운데를 고른다.
+    맞는 쉼이 없으면 예상 자리를 그대로 쓴다."""
+    m = len(texts)
+    if m <= 1:
+        return []
+    weights = [max(1, len(re.sub(r"\s+", "", t))) for t in texts]
+    acc, expected = 0, []
+    for w in weights[:-1]:
+        acc += w
+        expected.append(total * acc / sum(weights))
+    mids = [(a + b) / 2 for (a, b) in detect_silences(ffmpeg, path) if a > 0.2 and b < total - 0.2]
+    bounds, prev = [], 0.0
+    for k, e in enumerate(expected):
+        remaining = len(expected) - k - 1
+        cands = [x for x in mids if x > prev + 0.3 and x < total - 0.3 * (remaining + 1)]
+        pick = min(cands, key=lambda x: abs(x - e)) if cands else None
+        if pick is None or abs(pick - e) > max(1.5, 0.25 * total / m):
+            pick = max(prev + 0.3, min(e, total - 0.3 * (remaining + 1)))
+        bounds.append(pick); prev = pick
+        mids = [x for x in mids if x > pick]
+    return bounds
+
+
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,
-               temperature=None, name="나레이션", subtitle_lines=1):
-    """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 문장 파일은 재사용."""
+               temperature=None, name="나레이션", subtitle_lines=1, groups=None):
+    """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 부분 파일은 (같은 문장이면) 재사용.
+    groups: [(첫 문장 번호, 끝 문장 번호)] — 이 범위의 문장을 한 번에 읽혀 억양이 이어지게 한다 (문장마다 따로 읽으면 매 문장이 새로 시작하는 느낌).
+            None 이면 문장마다 따로 읽는다 (예전 방식). 문장별 자막 시각은 음성 안의 쉼(무음)으로 되찾는다."""
     ffmpeg, ffprobe = find_ffmpeg("ffmpeg"), find_ffmpeg("ffprobe")
     out_dir = os.path.abspath(out_dir)          # concat 목록은 절대 경로여야 함 (목록 파일 기준 상대경로로 해석되므로)
     os.makedirs(out_dir, exist_ok=True)
     part_dir = os.path.join(out_dir, "tts_parts"); os.makedirs(part_dir, exist_ok=True)
     tts = Inworld(api_key, voice_id, model, speed, temperature)
     n = len(sentences)
-    log(f"   인월드 TTS · 목소리 {voice_id} · {model} · 문장 {n}개")
+    if groups:
+        groups = [(int(a), int(b)) for a, b in groups if 1 <= int(a) <= int(b) <= n]
+    else:
+        groups = [(i, i) for i in range(1, n + 1)]
+    grouped = any(b > a for a, b in groups)
+    log(f"   인월드 TTS · 목소리 {voice_id} · {model} · 문장 {n}개" + (f" · {len(groups)}묶음으로 이어 읽기" if grouped else ""))
     done = [0]
     errors = []
     # 예전에 만든 부분 파일에는 문장 텍스트(.txt)가 없다 → 개수가 지금 문장 수와 같을 때만 번호가 안 밀린 것으로 보고 재사용
-    legacy_ok = len([f for f in os.listdir(part_dir) if re.fullmatch(r"\d{4}\.mp3", f)]) == n
+    legacy_ok = (not grouped) and len([f for f in os.listdir(part_dir) if re.fullmatch(r"\d{4}\.mp3", f)]) == n
 
-    def work(i):
+    def part_path(a, b):
+        return os.path.join(part_dir, f"{a:04d}.mp3" if a == b else f"g{a:04d}_{b:04d}.mp3")
+
+    def work(g):
         if cancel and cancel():
             return
-        p = os.path.join(part_dir, f"{i + 1:04d}.mp3")
-        txt = p[:-4] + ".txt"                    # 이 번호의 mp3 가 어떤 문장을 읽은 것인지 — 문장 나누기가 바뀌어 번호가 밀리면 다시 만든다
+        a, b = g
+        text = " ".join(x.strip() for x in sentences[a - 1:b])
+        p = part_path(a, b)
+        txt = p[:-4] + ".txt"                    # 이 파일이 어떤 문장을 읽은 것인지 — 문장 나누기가 바뀌어 번호가 밀리면 다시 만든다
         try:
-            same_text = (open(txt, encoding="utf-8").read().strip() == sentences[i].strip()) if os.path.isfile(txt) else legacy_ok
+            same_text = (open(txt, encoding="utf-8").read().strip() == text) if os.path.isfile(txt) else legacy_ok
         except OSError:
             same_text = False
         if os.path.exists(p) and os.path.getsize(p) > 500 and same_text:
             done[0] += 1; return
         try:
-            tts.synth(sentences[i], p)
+            tts.synth(text, p)
             with open(txt, "w", encoding="utf-8") as f:
-                f.write(sentences[i].strip())
+                f.write(text)
         except SystemExit as e:
             errors.append(str(e)); raise
         except Exception as e:  # noqa: BLE001
-            errors.append(f"{i + 1:04d}: {e}")
+            errors.append(f"{a:04d}: {e}")
             if len(errors) == 1:
-                log(f"   ! {i + 1:04d}번 문장 실패: {e}")
+                log(f"   ! {a:04d}번 문장 실패: {e}")
         done[0] += 1
-        if done[0] % 20 == 0 or done[0] == n:
-            log(f"      {done[0]}/{n}")
+        if done[0] % 20 == 0 or done[0] == len(groups):
+            log(f"      {done[0]}/{len(groups)}")
 
     with ThreadPoolExecutor(max_workers=동시_요청) as ex:
-        list(ex.map(work, range(n)))
+        list(ex.map(work, groups))
     if cancel and cancel():
         raise RuntimeError("취소됨")
     fatal = [e for e in errors if "인월드" in e]
@@ -217,28 +263,33 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
     # 길이 계산 + SRT + concat 목록
     t = 0.0
     srt, lst, flow = [], [], ["# 이미지번호: 자막번호 (긴 문장은 짧은 한 줄 자막으로 나눔)"]
-    for i, s in enumerate(sentences):
-        p = os.path.join(part_dir, f"{i + 1:04d}.mp3")
+    for a, b in groups:
+        p = part_path(a, b)
         if not os.path.exists(p):
             continue
-        d = probe_duration(ffprobe, p)
-        cue_start = len(srt) + 1
-        chunks = split_subtitle_text(s)
-        if int(subtitle_lines or 1) > 1:
-            line_count = int(subtitle_lines)
-            chunks = ["\n".join(chunks[j:j + line_count]) for j in range(0, len(chunks), line_count)]
-        weights = [max(1, len(re.sub(r"\s+", "", chunk))) for chunk in chunks]
-        total_weight = sum(weights)
-        elapsed = 0.0
-        for chunk_no, (chunk, weight) in enumerate(zip(chunks, weights)):
-            start = t + elapsed
-            elapsed += d * weight / total_weight
-            end = t + d if chunk_no == len(chunks) - 1 else t + elapsed
-            srt.append(f"{len(srt) + 1}\n{fmt_srt(start)} --> {fmt_srt(end)}\n{chunk}\n")
-        cue_end = len(srt)
+        total = probe_duration(ffprobe, p)
+        texts = sentences[a - 1:b]
+        bounds = [0.0] + sentence_boundaries(ffmpeg, p, total, texts) + [total]
+        for k, s in enumerate(texts):
+            s_start, s_end = t + bounds[k], t + bounds[k + 1]
+            d = max(0.05, s_end - s_start)
+            cue_start = len(srt) + 1
+            chunks = split_subtitle_text(s)
+            if int(subtitle_lines or 1) > 1:
+                line_count = int(subtitle_lines)
+                chunks = ["\n".join(chunks[j:j + line_count]) for j in range(0, len(chunks), line_count)]
+            weights = [max(1, len(re.sub(r"\s+", "", chunk))) for chunk in chunks]
+            total_weight = sum(weights)
+            elapsed = 0.0
+            for chunk_no, (chunk, weight) in enumerate(zip(chunks, weights)):
+                start = s_start + elapsed
+                elapsed += d * weight / total_weight
+                end = s_end if chunk_no == len(chunks) - 1 else s_start + elapsed
+                srt.append(f"{len(srt) + 1}\n{fmt_srt(start)} --> {fmt_srt(end)}\n{chunk}\n")
+            cue_end = len(srt)
+            flow.append(f"{a + k}: {cue_start}" if cue_start == cue_end else f"{a + k}: {cue_start}-{cue_end}")
         lst.append(f"file '{p.replace(os.sep, '/')}'"); lst.append(f"file '{silence.replace(os.sep, '/')}'")
-        flow.append(f"{i + 1}: {cue_start}" if cue_start == cue_end else f"{i + 1}: {cue_start}-{cue_end}")
-        t += d + 문장_간격
+        t += total + 문장_간격
     list_path = os.path.join(part_dir, "_list.txt")
     with open(list_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lst) + "\n")

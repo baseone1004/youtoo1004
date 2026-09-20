@@ -1209,11 +1209,30 @@ def make_tts(job, req):
         raise SystemExit(f"{채널_프로필.name(channel)} 채널 목소리 ID 가 없습니다. [설정] 탭의 인월드 목소리에 넣어주세요.")
     job.add(f"   목소리: {채널_프로필.name(channel)} 채널 → {voice} · 속도 {speed}")
     job.stage = "나레이션 합성"
+    groups = None if legacy_split(path) else tts_groups(path, sents)    # 문장을 묶어 읽혀 억양이 이어지게 (예전 방식 편은 그대로)
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
                          req.get("model") or cfg.get("인월드_모델", "inworld-tts-1.5-max"), speed,
                          log=job.add, cancel=lambda: job.cancel_requested,
-                         subtitle_lines=2 if channel == "mindam" else 1)
+                         subtitle_lines=2 if channel == "mindam" else 1, groups=groups)
     return r
+
+
+정보형_읽기_묶음 = 3          # 정보형: 한 번에 읽히는 문장 수 (억양이 이어지도록), 아래 글자 수를 넘으면 그 전에 끊는다
+읽기_묶음_글자수 = 220
+
+
+def tts_groups(script_file, sents):
+    """나레이션을 한 번에 읽힐 문장 범위 [(첫 번호, 끝 번호)]. 이야기형은 그림 한 장(장면) 단위, 정보형은 2~3문장씩."""
+    if channel_of(script_file) == "mindam":
+        return [(a, b) for a, b, _t in scene_units(script_file, sents)]
+    groups, a, chars = [], 1, 0
+    for i, t in enumerate(sents, 1):
+        chars += len(t)
+        if i - a + 1 >= 정보형_읽기_묶음 or chars >= 읽기_묶음_글자수:
+            groups.append((a, i)); a, chars = i + 1, 0
+    if a <= len(sents):
+        groups.append((a, len(sents)))
+    return groups
 
 
 # ── 편집프로그램(8765) 연동 ─────────────────────────────────────
