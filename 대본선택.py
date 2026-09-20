@@ -926,7 +926,7 @@ def make_image_prompts(job, req):
         job.add(f"   {s+1:03d}~{e:03d} 변환 ")
         best = {}
         for attempt in range(3):
-            if job.cancel_requested:
+            if getattr(job, "cancel_requested", False):
                 raise RuntimeError("사용자가 중단했습니다. (받은 프롬프트는 저장되어 있어 [이어서 만들기]로 계속할 수 있습니다)")
             out = ai.ask(system, user).replace("```", "").strip()
             if any(m in out for m in ECHO_MARKS):    # 딥시크 웹이 보낸 질문(지침)을 답변으로 돌려준 경우
