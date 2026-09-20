@@ -155,7 +155,8 @@ class AI:
                 out = 웹큐.wait(jid, cancel_check=self._cancelled)
                 break
             except RuntimeError as e:
-                if "too frequent" not in str(e).lower() and "사용량 제한" not in str(e) or attempt >= 6:
+                throttled = any(k in str(e) for k in ("too frequent", "사용량 제한", "답변이 시작되지 않았습니다"))   # 답이 아예 안 오는 것도 대개 사용량 제한
+                if not throttled or attempt >= 6:
                     raise
                 print(f"\n   ! 딥시크 웹 사용량 제한 → 5분 뒤 다시 시도 ({attempt + 1}/6)", flush=True)
                 for _ in range(300):
