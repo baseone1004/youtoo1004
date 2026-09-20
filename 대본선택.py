@@ -1239,11 +1239,17 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
                 srt_font="Malgun Gothic", srt_font_size=22, srt_bold=True, srt_outline=3.5, crf=18, preset="medium")
     body.update(keep); body["burn_srt"] = True
     j = aip("/api/render", body, timeout=120)
+    last_progress, since = -1.0, time.time()
     while True:
         if job.cancel_requested:
             aip(f"/api/jobs/{j['job_id']}/cancel", {}); raise RuntimeError("취소됨")
         st = aip(f"/api/jobs/{j['job_id']}")
-        job.stage = "최종 렌더링: " + (st.get("stage") or st.get("status")); job.progress = st.get("progress", 0)
+        prog = float(st.get("progress") or 0)
+        if prog != last_progress:
+            last_progress, since = prog, time.time()
+        stalled = time.time() - since
+        note = "  · 마무리 중(파일 정리) — 진행률이 멈춘 것처럼 보여도 몇 분 더 걸립니다" if prog >= 0.9 and stalled > 45 else (f"  · {int(stalled)}초째 같은 위치" if stalled > 120 else "")
+        job.stage = "최종 렌더링: " + (st.get("stage") or st.get("status")) + note; job.progress = prog
         if st["status"] in ("done", "error", "cancelled"):
             if st["status"] != "done":
                 raise RuntimeError("렌더 실패: " + (st.get("error") or st["status"]))
