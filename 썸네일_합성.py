@@ -153,18 +153,65 @@ def _seal(target, xy, text, size=118, rotate=-6, color=(179, 38, 30)):
     target.paste(s, xy, s)
 
 
-def _two_lines(draw, top, bottom, color_top, color_bottom, stroke_fill, max_w=W - 120):
-    """아래 두 줄: 1줄 흰색, 2줄 강조색·더 크게. 글자는 화면 폭에 맞춰 줄인다."""
-    top, bottom = (top or "").strip(), (bottom or "").strip()
+# 낱말 색 규칙 (디노식): 숫자 = 노랑, 가장 센 낱말 = 빨강, 나머지 = 흰색, 전부 검은 외곽선.
+# 센 낱말은 최적화 AI 가 *별표* 로 표시해 주고, 표시가 없으면 아래 낱말 목록에서 고른다.
+EMPH_RED, EMPH_YELLOW = "#FF2D2D", "#FFE83D"
+EMPH_WORDS = ("손절", "정체", "진짜", "절대", "후회", "위험", "비밀", "경고", "함정", "실수", "착각", "거짓", "독", "끝", "탓", "이유", "신호",
+              "무섭", "충격", "배신", "이용", "무시", "상처", "지친", "지치", "피로", "불안", "번아웃", "눈치", "체면", "가스라이팅", "손해", "만만")
+
+
+def _clean_marks(text):
+    return (text or "").replace("*", "").strip()
+
+
+def color_tokens(line, default=WHITE):
+    """한 줄을 [(낱말, 색)] 로. *별표* 낱말은 빨강, 숫자가 든 낱말은 노랑, 표시가 없으면 목록의 첫 낱말 하나만 빨강."""
+    import re as _re
+    words = (line or "").split()
+    marked = [w.replace("*", "") for w in words if "*" in w]
+    out, red_used = [], False
+    for w in words:
+        clean = w.replace("*", "")
+        if _re.search(r"\d", clean):
+            out.append((clean, EMPH_YELLOW))
+        elif "*" in w or clean in marked:
+            out.append((clean, EMPH_RED)); red_used = True
+        else:
+            out.append((clean, default))
+    if not red_used and not marked:
+        for i, (w, c) in enumerate(out):
+            if c == default and any(k in w for k in EMPH_WORDS):
+                out[i] = (w, EMPH_RED); break
+    return out
+
+
+def _colored_line(draw, y, tokens, font, stroke, stroke_fill):
+    """낱말마다 색을 달리해 가운데 정렬로 한 줄을 그린다."""
+    gap = draw.textlength(" ", font=font)
+    widths = [draw.textlength(w, font=font) for w, _ in tokens]
+    x = (W - (sum(widths) + gap * (len(tokens) - 1))) / 2
+    for (w, c), tw in zip(tokens, widths):
+        _outlined(draw, (x, y), w, font, c, stroke, stroke_fill); x += tw + gap
+
+
+def _two_lines(draw, top, bottom, color_top, color_bottom, stroke_fill, max_w=W - 120, colored=False):
+    """아래 두 줄: 1줄 흰색, 2줄 강조색·더 크게. colored=True 면 낱말별 색 규칙(숫자 노랑·센 낱말 빨강·나머지 흰색)을 쓴다."""
+    top, bottom = _clean_marks(top) if not colored else (top or "").strip(), _clean_marks(bottom) if not colored else (bottom or "").strip()
     if not bottom:
         top, bottom = "", top
-    f2 = _fit(draw, bottom, 150, max_w, 56)
-    f1 = _fit(draw, top, 112, max_w, 48) if top else None
+    f2 = _fit(draw, _clean_marks(bottom), 150, max_w, 56)
+    f1 = _fit(draw, _clean_marks(top), 112, max_w, 48) if top else None
     y2 = H - 40 - f2.size
     if f1:
         y1 = y2 - f1.size - 6
-        _outlined(draw, ((W - draw.textlength(top, font=f1)) / 2, y1), top, f1, color_top, max(8, f1.size // 9), stroke_fill)
-    _outlined(draw, ((W - draw.textlength(bottom, font=f2)) / 2, y2), bottom, f2, color_bottom, max(8, f2.size // 9), stroke_fill)
+        if colored:
+            _colored_line(draw, y1, color_tokens(top), f1, max(8, f1.size // 9), stroke_fill)
+        else:
+            _outlined(draw, ((W - draw.textlength(top, font=f1)) / 2, y1), top, f1, color_top, max(8, f1.size // 9), stroke_fill)
+    if colored:
+        _colored_line(draw, y2, color_tokens(bottom), f2, max(8, f2.size // 9), stroke_fill)
+    else:
+        _outlined(draw, ((W - draw.textlength(bottom, font=f2)) / 2, y2), bottom, f2, color_bottom, max(8, f2.size // 9), stroke_fill)
 
 
 # ── 정보형 레이아웃 ─────────────────────────────────────
@@ -174,7 +221,7 @@ def layout_navy_mint(im, top, bottom, b):
     d = ImageDraw.Draw(im)
     if b["배지"]:
         _pill(d, (36, 34), b["배지"], _font(34, LABEL), accent, main)
-    _two_lines(d, top, bottom, WHITE, b["강조색"], main)
+    _two_lines(d, top, bottom, WHITE, b["강조색"], BLACK, colored=True)
     d.rectangle((0, H - 10, W, H), fill=accent)
     return im
 
@@ -221,7 +268,7 @@ def layout_coral_ribbon(im, top, bottom, b):
     accent = _hex(b["강조색"])
     im = _shade_bottom(_tone(im, b["사진_톤"]), 0.5, 0.88)
     d = ImageDraw.Draw(im)
-    _two_lines(d, top, bottom, WHITE, b["강조색"], BLACK)
+    _two_lines(d, top, bottom, WHITE, b["강조색"], BLACK, colored=True)
     if b["배지"]:
         rib = Image.new("RGBA", (420, 70), (0, 0, 0, 0))
         rd = ImageDraw.Draw(rib)
@@ -237,7 +284,7 @@ def layout_bottom_two(im, top, bottom, b=None):
     """예전 방식 — 아래 두 줄 (흰색 + 노란색, 검정 테두리)."""
     im = _shade_bottom(im, 0.55, 0.55)
     d = ImageDraw.Draw(im)
-    _two_lines(d, top, bottom, WHITE, YELLOW, BLACK)
+    _two_lines(d, top, bottom, WHITE, YELLOW, BLACK, colored=True)
     return im
 
 
@@ -349,6 +396,8 @@ LAYOUTS = {
 
 
 def compose(image, out, top, bottom, channel="person", layout=None, tag_text=None, brand=None):
+    if (channel or "person") != "person":            # 이야기형 레이아웃은 낱말 색 규칙을 쓰지 않으므로 별표 표시만 걷어 낸다
+        top, bottom = _clean_marks(top), _clean_marks(bottom)
     """원본 이미지 + 문구 → out (1280×720 JPG). 쓴 레이아웃 이름을 돌려준다.
     layout: 레이아웃_이름 의 키. 비우면 채널 자리의 기본(정보형 navy_mint, 이야기형 hanji_seal).
     brand: {주색, 강조색, 바탕색, 보조색, 배지, 사진_톤} — 비우면 기본_브랜드."""
