@@ -1068,7 +1068,7 @@ def workspace_data(script_file):
     thumbnails = [os.path.abspath(p) for p in sorted(glob.glob(os.path.join(thumb_dir, "썸네일_*.jpg")))]
     thumbnail_raw = [v for _, v in sorted(raw_thumbnails(thumb_dir).items())]
     if os.path.basename(script_file) == "final.txt":          # 이야기형: final.txt 는 본문뿐이라 제목·설명·태그는 유튜브_설명.txt (없으면 기획.txt) 에서
-        for extra in ("유튜브_설명.txt", "기획.txt"):
+        for extra in ("기획.txt", "유튜브_설명.txt"):        # 앞에 끼워 넣으므로 뒤에 적은 유튜브_설명.txt 가 맨 앞(우선)
             ep = os.path.join(assets, extra)
             if os.path.isfile(ep):
                 opt_text = Path(ep).read_text(encoding="utf-8-sig", errors="replace") + "\n\n" + opt_text
