@@ -773,8 +773,41 @@ def restyle_prompts(prompts_file, style, channel):
             f.write(text2)
     return changed[0]
 
-def split_sentences(body):
-    return 나레이션.split_sentences(body)      # 이미지 프롬프트·나레이션·자막이 같은 문장 번호를 쓰도록 한 곳에서 나눔
+예전_나누기_표시 = "문장나누기_예전방식.txt"     # 자료 폴더에 이 파일이 있으면 그 편은 끝까지 예전 방식(따옴표 그대로)으로 문장을 나눈다
+
+
+def legacy_split(script_file):
+    """이 편을 예전 문장 나누기(따옴표 처리 없음)로 만들어야 하는지. 예전 방식으로 나레이션을 이미 만든 편은 번호가 밀리지 않도록 그대로 간다."""
+    if not script_file:
+        return False
+    try:
+        assets = assets_dir(script_file)
+    except OSError:
+        return False
+    marker = os.path.join(assets, 예전_나누기_표시)
+    if os.path.isfile(marker):
+        return True
+    flow = os.path.join(assets, "플로우.txt")
+    if not os.path.isfile(flow):
+        return False
+    try:
+        with open(flow, encoding="utf-8-sig") as f:
+            n_flow = sum(1 for ln in f if re.match(r"^\s*\d+\s*:", ln))
+        with open(script_file, encoding="utf-8-sig") as f:
+            body = fix_script_sentences(script_body(f.read()))
+        old, new = 나레이션.split_sentences(body, quotes=False), 나레이션.split_sentences(body, quotes=True)
+        if n_flow == len(old) and n_flow != len(new):
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write("이 편은 예전 문장 나누기(따옴표 그대로)로 나레이션을 만들었으므로 끝까지 같은 방식으로 만든다.\n")
+            return True
+    except OSError:
+        pass
+    return False
+
+
+def split_sentences(body, script_file=None):
+    """이미지 프롬프트·나레이션·자막이 같은 문장 번호를 쓰도록 한 곳에서 나눔. 편(script_file)을 주면 그 편의 방식을 따른다."""
+    return 나레이션.split_sentences(body, quotes=not legacy_split(script_file))
 
 def script_body(text):
     if "[대본]" in text:
@@ -826,7 +859,7 @@ def scene_units(script_file, sents=None):
     정보형: 문장 하나 = 장면 하나. 이야기형(민담): 1~2시간짜리라 연속 문장을 약 민담_장면_글자수 만큼 묶어 장면 하나로."""
     if sents is None:
         with open(script_file, encoding="utf-8-sig") as f:
-            sents = split_sentences(fix_script_sentences(script_body(f.read())))
+            sents = split_sentences(fix_script_sentences(script_body(f.read())), script_file)
     if channel_of(script_file) != "mindam":
         return [(i + 1, i + 1, t) for i, t in enumerate(sents)]
     units, start, buf = [], 1, []
@@ -916,7 +949,7 @@ def make_image_prompts(job, req):
     with open(path, encoding="utf-8-sig") as f:
         raw = f.read()
     body = fix_script_sentences(script_body(raw))
-    sents = split_sentences(body)
+    sents = split_sentences(body, path)
     if not sents:
         raise SystemExit("대본에서 문장을 찾지 못했습니다.")
     units = scene_units(path, sents)              # 그림 단위 (정보형: 문장 하나 / 이야기형: 문장 묶음)
@@ -1164,7 +1197,7 @@ def make_tts(job, req):
         raise SystemExit("대본 파일을 고르세요.")
     with open(path, encoding="utf-8-sig") as f:
         body = fix_script_sentences(script_body(f.read()))
-    sents = split_sentences(body)
+    sents = split_sentences(body, path)
     out = req.get("out_dir") or assets_dir(path)
     channel = req.get("channel") or channel_of(path)
     voice, speed = voice_for(cfg, channel)
@@ -1674,7 +1707,7 @@ def narration_matches(flow_file, script_file):
         with open(flow_file, encoding="utf-8-sig") as f:
             n_flow = sum(1 for ln in f if re.match(r"^\s*\d+\s*:", ln))
         with open(script_file, encoding="utf-8-sig") as f:
-            n_now = len(split_sentences(fix_script_sentences(script_body(f.read()))))
+            n_now = len(split_sentences(fix_script_sentences(script_body(f.read())), script_file))
         return n_flow == n_now
     except OSError:
         return False
@@ -1715,7 +1748,7 @@ def make_pipeline(job, req):
     existing_prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
     if steps.get("prompts", True) and req.get("reuse_prompts") and prompts_complete(existing_prompts, script):
         job.add(f"   이미지 프롬프트가 이미 있어 재사용: {existing_prompts}")
-        n_restyled = restyle_prompts(existing_prompts, req.get("style", ""), channel_of(script))
+        n_restyled = 0 if legacy_split(script) else restyle_prompts(existing_prompts, req.get("style", ""), channel_of(script))
         if n_restyled:
             job.add(f"   화풍을 '{화풍_별칭.get(req.get('style', ''), req.get('style', ''))}' 로 맞춤 ({n_restyled}장면)")
         steps = dict(steps, prompts=False)
@@ -1757,7 +1790,10 @@ def make_pipeline(job, req):
         os.makedirs(images_dir, exist_ok=True)
         result["images"] = os.path.abspath(images_dir)
         selected_style = req.get("style", "실사")
-        prefix = req.get("style_prefix") or image_style_lock(selected_style)
+        prefix = req.get("style_prefix") or image_style_lock(selected_style, channel_of(script))
+        if legacy_split(script):                    # 예전 방식으로 시작한 편: 프롬프트 안의 화풍 문구를 그대로 쓴다 (새 화풍을 덧붙이지 않음)
+            prefix = ""
+            job.add("   예전 방식으로 시작한 편이라 화풍·문장 나누기를 그대로 둡니다 (새 규칙은 다음 편부터)")
         run_image_generation(job, result["prompts"], images_dir, prefix)
     check_cancelled()
     # 5) 후킹 영상

@@ -38,14 +38,16 @@ def find_ffmpeg(name="ffmpeg"):
 _붙임 = "⁠"     # 따옴표 안 문장 사이에 잠시 넣는 표시 (word joiner) — 여기서는 문장을 자르지 않는다
 
 
-def split_sentences(body):
+def split_sentences(body, quotes=True):
     """문장 나누기 (나레이션·자막·이미지 번호가 모두 여기서 나온 번호를 쓴다).
-    따옴표 안의 대사는 마침표가 여러 개여도 한 문장으로 묶고, 따옴표 자체("“”‘’)는 자막·나레이션에 넣지 않는다."""
+    quotes=True: 따옴표 안의 대사는 마침표가 여러 개여도 한 문장으로 묶고, 따옴표 자체("“”‘’)는 자막·나레이션에 넣지 않는다.
+    quotes=False: 예전 방식 (따옴표를 그대로 두고 마침표마다 자른다) — 예전 방식으로 만들던 편을 끝까지 같은 번호로 만들 때."""
     body = re.sub(r"[?!？！]+", ".", body)
     body = re.sub(r"(\.{2,}|…+)", ".", body)
     body = re.sub(r"\s+", " ", body.strip())
-    body = re.sub(r'["“]([^"“”]{1,400})["”]', lambda m: re.sub(r"([.。])\s+", "\\1" + _붙임, m.group(0)), body)
-    body = re.sub(r'["“”‘’]', "", body)
+    if quotes:
+        body = re.sub(r'["“]([^"“”]{1,400})["”]', lambda m: re.sub(r"([.。])\s+", "\\1" + _붙임, m.group(0)), body)
+        body = re.sub(r'["“”‘’]', "", body)
     parts = re.split(r"(?<=[.。])\s+", body)
     return [p.replace(_붙임, " ").strip() for p in parts if p.strip() and re.search(r"[가-힣a-zA-Z0-9]", p)]
 

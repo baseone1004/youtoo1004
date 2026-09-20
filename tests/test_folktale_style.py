@@ -39,5 +39,26 @@ class StyleTest(unittest.TestCase):
             self.assertEqual(app.restyle_prompts(p, "수채 사극", "mindam"), 0)          # 이미 맞춰져 있으면 손대지 않는다
 
 
+
+class LegacySplitTest(unittest.TestCase):
+    def test_episode_made_with_old_split_keeps_old_numbering(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = os.path.join(tmp, "대본", "민담", "2026-01-01_옛 편"); os.makedirs(d)
+            f = os.path.join(d, "final.txt")
+            open(f, "w", encoding="utf-8").write('"하나. 둘. 셋." 넷입니다.')            # 예전 방식 3문장, 새 방식 2문장
+            body = app.fix_script_sentences(app.script_body(open(f, encoding="utf-8").read()))
+            old, new = 나레이션.split_sentences(body, quotes=False), 나레이션.split_sentences(body, quotes=True)
+            self.assertNotEqual(len(old), len(new))
+            open(os.path.join(d, "플로우.txt"), "w", encoding="utf-8").write("".join(f"{i}: {i}\n" for i in range(1, len(old) + 1)))
+            self.assertTrue(app.legacy_split(f))                                   # 예전 방식으로 나레이션을 만든 편
+            self.assertTrue(os.path.isfile(os.path.join(d, app.예전_나누기_표시)))
+            self.assertEqual(app.split_sentences(body, f), old)
+            self.assertTrue(app.narration_matches(os.path.join(d, "플로우.txt"), f))
+            g = os.path.join(tmp, "대본", "민담", "2026-01-02_새 편"); os.makedirs(g)
+            f2 = os.path.join(g, "final.txt"); open(f2, "w", encoding="utf-8").write('"하나. 둘. 셋." 넷입니다.')
+            self.assertFalse(app.legacy_split(f2))                                 # 새 편은 새 방식
+            self.assertEqual(app.split_sentences(body, f2), new)
+
+
 if __name__ == "__main__":
     unittest.main()
