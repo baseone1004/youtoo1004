@@ -26,7 +26,7 @@ async function checkVersion() {
   try { const v = await api('/api/version'); $('restartBtn').classList.toggle('hidden', v.version === v.current); } catch (e) {}
 }
 async function restartProgram() {
-  if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업이 끝난 뒤 다시 시작하세요.', true);
+  if (STATE && STATE.job && STATE.job.status === 'running') return toast('지금 만드는 편이 끝난 뒤에 다시 시작할 수 있습니다. 바로 하려면 [■ 중단]을 먼저 누르세요.', true);
   if (!confirm('프로그램을 다시 시작할까요? (5초 정도 걸립니다)')) return;
   try { await api('/api/restart', {}); } catch (e) { return toast(e.message, true); }
   toast('다시 시작하는 중…');
@@ -308,14 +308,19 @@ async function startProduction() {
   if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 영상변환 → 썸네일 → 최종 영상 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
   try {
     const q = await api('/api/queue/start', {items: [...selection.values()], options});
-    selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); startPolling(true); window.scrollTo({top: 0, behavior: 'smooth'}); toast('제작을 시작했습니다.');
+    selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); startPolling(true); window.scrollTo({top: 0, behavior: 'smooth'});
+    const wasRunning = STATE && STATE.queue && ['running', 'paused'].includes(STATE.queue.status);
+    if (!wasRunning) toast('제작을 시작했습니다.');
+    else if (!q.appended) toast('이미 대기열에 있는 주제입니다.', true);
+    else toast(q.paused ? `${q.appended}편을 대기열에 추가했습니다. 대기열이 일시정지 상태라 [계속]을 누르면 만듭니다.` : `${q.appended}편을 대기열 뒤에 추가했습니다. 지금 편이 끝나면 이어서 만듭니다.`);
   } catch (e) { toast(e.message, true); }
 }
 async function continuePipeline() {
   const file = $('contFile').value; if (!file) return toast('이어서 만들 대본을 고르세요.', true);
   const o = productionOptions(); const steps = {...o.steps, optimize: false};
   try {
-    await api('/api/pipeline', {reuse_prompts: true, script_file: file, channel: file.endsWith('final.txt') ? 'mindam' : 'person', style: o.style, img_guideline: o.img_guideline, chunk: o.chunk, steps, thumb_position: 'auto'});
+    const r = await api('/api/pipeline', {reuse_prompts: true, script_file: file, channel: file.endsWith('final.txt') ? 'mindam' : 'person', style: o.style, img_guideline: o.img_guideline, chunk: o.chunk, steps, thumb_position: 'auto'});
+    if (r && r.queued) { renderQueue(r); toast(r.paused ? '대기열에 추가했습니다. 대기열이 일시정지 상태라 [계속]을 누르면 만듭니다.' : '지금 다른 작업이 돌고 있어 대기열 뒤에 붙였습니다. 끝나면 이 대본을 이어서 만듭니다.'); startPolling(true); return; }
     goStep(3); startPolling(true);
   } catch (e) { toast(e.message, true); }
 }
@@ -544,7 +549,7 @@ async function emptyTrash() {
   try { const r = await api('/api/trash/empty', {}); toast(`휴지통 ${r.removed}개 항목을 지웠습니다.`); loadTrash(); } catch (e) { toast(e.message, true); }
 }
 async function resetEverything() {
-  if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업을 먼저 중단하세요.', true);
+  if (STATE && STATE.job && STATE.job.status === 'running') return toast('만드는 중에는 전체 초기화를 할 수 없습니다. 먼저 [■ 중단]을 누르세요.', true);
   if (!confirm('작업했던 것을 전부 지울까요?\n대본·이미지·나레이션·썸네일·최종 영상·업로드 폴더·대기열이 모두 휴지통(대본/_휴지통)으로 옮겨집니다.\n설정(API 키·목소리·좌표)은 남습니다.')) return;
   if (!confirm('정말 전체 초기화할까요? (되돌리려면 _휴지통 폴더에서 꺼내야 합니다)')) return;
   try { const r = await api('/api/reset-all', {}); selection.clear(); await afterScriptsRemoved(); renderQueue({items: [], status: 'idle'}); toast(`${r.count}개 항목을 휴지통으로 옮겼습니다. 새로 시작할 수 있습니다.`); window.scrollTo({top: 0, behavior: 'smooth'}); }
@@ -806,7 +811,7 @@ async function loadBench() {
   } catch (e) {}
 }
 async function runBenchmark() {
-  if (STATE && STATE.job && STATE.job.status === 'running') return toast('진행 중인 작업이 끝난 뒤 실행하세요.', true);
+  if (STATE && STATE.job && STATE.job.status === 'running') return toast('벤치마킹은 지금 만드는 편이 끝난 뒤에 할 수 있습니다. (주제 추천은 그대로 쓸 수 있습니다)', true);
   if (!confirm(`${pname(channel)}와 비슷한 채널을 찾아 터진 영상을 모읍니다` + ' (1~3분). 지금 실행할까요?')) return;
   try { await api('/api/bench/run', {channel}); startPolling(true); toast('벤치마킹을 시작했습니다. 끝나면 추천 주제가 새로 채워집니다.'); } catch (e) { toast(e.message, true); }
 }

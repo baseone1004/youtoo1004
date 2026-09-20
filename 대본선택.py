@@ -122,10 +122,15 @@ def shutdown_program(server):
     server.shutdown()
 
 
+KIND_LABEL = {"bench": "채널 벤치마킹", "script": "대본 만들기", "mindam": "이야기 대본 만들기", "images": "이미지 프롬프트", "variations": "제목 변형",
+              "optimize": "제목·설명·태그", "tts": "나레이션", "pipeline": "한 편 자동 제작", "queue_pipeline": "연속 제작", "thumbnail": "썸네일"}
+
+
 def run_job(kind, fn):
     with LOCK:
         if STATE["job"] and STATE["job"].status == "running":
-            raise RuntimeError("이미 진행 중인 작업이 있습니다. 끝난 뒤 다시 시도하세요.")
+            raise RuntimeError(f"지금 '{KIND_LABEL.get(STATE['job'].kind, STATE['job'].kind)}' 작업이 돌고 있습니다 ({STATE['job'].stage or '준비 중'}). "
+                               "끝난 뒤 다시 누르거나, 바로 하려면 [■ 중단]을 먼저 누르세요.")
         job = Job(kind); STATE["job"] = job
     def _t():
         sys.stdout = job
@@ -1732,6 +1737,9 @@ def queue_snapshot():
     return data
 
 
+QUEUE_WAIT_SEC = 2          # 대기열 워커가 단독 작업이 끝나기를 기다리며 확인하는 간격(초)
+
+
 def start_queue_worker():
     global QUEUE_THREAD
     if QUEUE_THREAD and QUEUE_THREAD.is_alive():
@@ -1759,9 +1767,29 @@ def start_queue_worker():
             request = dict(options, channel=item["channel"], title=item["title"], topic=item.get("topic") or {})
             if item["channel"] == "mindam":
                 request["bench"] = item.get("topic") or {}
+            request.update(item.get("request") or {})          # [이어서 만들기] 로 붙인 항목은 그때의 옵션을 그대로 쓴다
             previous = item.get("result") or {}
             if previous.get("script") and os.path.isfile(previous["script"]):
                 request.update(script_file=previous["script"], reuse_prompts=True)
+            # 대기열 밖에서 시작한 작업(나레이션 다시 만들기 등)이 돌고 있으면 실패시키지 않고 끝나기를 기다린다
+            stopped_while_waiting = False
+            while True:
+                with LOCK:
+                    busy = bool(STATE["job"] and STATE["job"].status == "running")
+                if not busy:
+                    break
+                with QUEUE.lock:
+                    if QUEUE.data.get("status") != "running":                     # 기다리는 동안 중단·일시정지됨
+                        paused = QUEUE.data.get("status") == "paused"
+                        item.update(status="pending" if paused else "cancelled", stage="대기 중" if paused else "취소됨", progress=0.0)
+                        QUEUE.data["current_id"] = ""; QUEUE.save(); stopped_while_waiting = True
+                    else:
+                        item["stage"] = "앞 작업이 끝나기를 기다리는 중"; QUEUE.save()
+                if stopped_while_waiting:
+                    break
+                time.sleep(QUEUE_WAIT_SEC)
+            if stopped_while_waiting:
+                continue
             try:
                 job = run_job("queue_pipeline", lambda active: make_pipeline(active, request))
                 while job.status == "running":
@@ -1822,17 +1850,49 @@ def create_queue(body):
                            "progress": 0.0, "attempts": 0, "result": {}, "error": ""})
     if not unique:
         raise ValueError("연속 제작할 주제를 하나 이상 선택하세요.")
-    with LOCK:
-        if STATE["job"] and STATE["job"].status == "running":
-            raise ValueError("현재 작업이 끝난 뒤 연속 제작을 시작하세요.")
     with QUEUE.lock:
-        if QUEUE.data.get("status") == "running":
-            raise ValueError("이미 연속 제작이 진행 중입니다.")
-        QUEUE.data = {"status": "running", "items": unique, "options": body.get("options") or {},
-                      "current_id": "", "updated": ""}
-        QUEUE.save()
+        if QUEUE.data.get("status") in ("running", "paused"):      # 이미 만드는 중 → 거절하지 않고 뒤에 붙인다
+            have = {(x.get("channel"), x.get("title")) for x in QUEUE.data.get("items", []) if x.get("status") in ("pending", "working")}
+            added = [x for x in unique if (x["channel"], x["title"]) not in have]
+            QUEUE.data["items"].extend(added)
+            if not QUEUE.data.get("options"):
+                QUEUE.data["options"] = body.get("options") or {}
+            QUEUE.save()
+            paused = QUEUE.data.get("status") == "paused"
+        else:
+            added, paused = unique, False
+            QUEUE.data = {"status": "running", "items": unique, "options": body.get("options") or {},
+                          "current_id": "", "updated": ""}
+            QUEUE.save()
+    start_queue_worker()                          # 단독 작업이 돌고 있으면 워커가 끝나기를 기다렸다가 시작한다
+    snap = queue_snapshot()
+    snap.update(appended=len(added), paused=paused)
+    return snap
+
+
+def enqueue_pipeline(body):
+    """[이어서 만들기]: 다른 작업이 돌고 있으면 거절하지 않고 그 대본을 대기열 뒤에 붙인다 (지금 편이 끝나면 이어서 만든다)."""
+    script = body.get("script_file") or ""
+    if not os.path.isfile(script):
+        raise ValueError("이어서 만들 대본 파일을 찾지 못했습니다.")
+    channel = "mindam" if body.get("channel") == "mindam" or channel_of(script) == "mindam" else "person"
+    title = os.path.basename(os.path.dirname(script)) if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", os.path.basename(script))
+    request = {k: v for k, v in body.items() if k not in ("script_file", "channel", "title", "topic")}
+    item = {"id": uuid.uuid4().hex[:12], "channel": channel, "title": title, "topic": {}, "status": "pending",
+            "stage": "대기 중 (이어서 만들기)", "progress": 0.0, "attempts": 0, "result": {"script": script}, "error": "",
+            "request": request}
+    with QUEUE.lock:
+        if QUEUE.data.get("status") not in ("running", "paused"):
+            QUEUE.data = {"status": "running", "items": [], "options": {}, "current_id": "", "updated": ""}
+        if any(x.get("status") in ("pending", "working") and (x.get("result") or {}).get("script") == script
+               for x in QUEUE.data.get("items", [])):
+            raise ValueError("이 대본은 이미 대기열에 있습니다. 지금 편이 끝나면 이어서 만듭니다.")
+        QUEUE.data["items"].append(item); QUEUE.save()
+        paused = QUEUE.data.get("status") == "paused"
     start_queue_worker()
-    return queue_snapshot()
+    snap = queue_snapshot()
+    snap.update(queued=True, paused=paused)
+    return snap
 
 
 # ── HTTP ─────────────────────────────────────────────────────
@@ -1995,7 +2055,14 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/workspace/save":
                 self._json(save_workspace(body))
             elif u.path == "/api/pipeline":
-                run_job("pipeline", lambda job: make_pipeline(job, body)); self._json({"ok": True})
+                with LOCK:
+                    busy = bool(STATE["job"] and STATE["job"].status == "running")
+                with QUEUE.lock:
+                    busy = busy or QUEUE.data.get("status") == "running"
+                if busy:
+                    self._json(enqueue_pipeline(body))
+                else:
+                    run_job("pipeline", lambda job: make_pipeline(job, body)); self._json({"ok": True})
             elif u.path == "/api/queue/start":
                 self._json(create_queue(body))
             elif u.path == "/api/queue/pause":
@@ -2051,7 +2118,7 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": True, "stopped": stopped})
             elif u.path == "/api/restart":
                 if STATE["job"] and STATE["job"].status == "running":
-                    raise ValueError("진행 중인 작업이 끝난 뒤 다시 시작하세요.")
+                    raise ValueError("지금 만드는 편이 끝난 뒤에 다시 시작할 수 있습니다. 바로 하려면 [■ 중단]을 먼저 누르세요.")
                 self._json({"ok": True})
                 threading.Thread(target=restart_program, args=(self.server,), daemon=True).start()
             elif u.path == "/api/web/test":                  # 딥시크 웹이 실제로 답하는지 짧은 질문으로 확인 (최대 2분)
@@ -2109,9 +2176,10 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": True, "scenes": scenes})
             elif u.path == "/api/thumbnail":
                 run_job("thumbnail", lambda job: make_thumbnails(job, body)); self._json({"ok": True})
-            elif u.path == "/api/thumbnail/compose":            # raw 원본에 문구만 다시 얹기 (빠름, 비용 없음)
-                if STATE["job"] and STATE["job"].status == "running":
-                    raise ValueError("진행 중인 작업을 마친 뒤 실행하세요.")
+            elif u.path == "/api/thumbnail/compose":            # raw 원본에 문구만 다시 얹기 (빠름, 비용 없음 → 다른 작업 중에도 된다)
+                j = STATE["job"]
+                if j and j.status == "running" and (j.kind == "thumbnail" or "썸네일" in (j.stage or "")):
+                    raise ValueError("지금 썸네일을 만드는 중입니다. 잠시 뒤 다시 눌러 주세요.")
                 self._json(compose_thumbnails(body.get("script_file", "")))
             elif u.path == "/api/optimize":
                 run_job("optimize", lambda job: make_optimize_only(job, body)); self._json({"ok": True})
@@ -2120,8 +2188,9 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/images":
                 run_job("images", lambda job: make_image_prompts(job, body)); self._json({"ok": True})
             elif u.path == "/api/restyle-2d":
-                if STATE["job"] and STATE["job"].status == "running":
-                    raise ValueError("진행 중인 작업을 마친 뒤 변환하세요.")
+                j = STATE["job"]
+                if j and j.status == "running" and (j.kind in ("images", "pipeline", "queue_pipeline") and "프롬프트" in (j.stage or "")):
+                    raise ValueError("지금 이미지 프롬프트를 만드는 중입니다. 잠시 뒤 다시 눌러 주세요.")
                 self._json(restyle_script_prompts_2d(body.get("script_file", "")))
             elif u.path == "/api/guideline":
                 write_guideline(body["name"], body["text"]); self._json({"ok": True})
