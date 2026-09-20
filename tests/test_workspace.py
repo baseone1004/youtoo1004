@@ -95,12 +95,15 @@ class FolktaleWorkspaceTitleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = os.path.join(tmp, "대본", "민담", "2026-01-01_몰락한 아씨"); os.makedirs(d)
             f = os.path.join(d, "final.txt"); open(f, "w", encoding="utf-8").write("이야기 본문.")
-            open(os.path.join(d, "유튜브_설명.txt"), "w", encoding="utf-8").write("[제목]\n몰락한 아씨 | 야담\n\n[설명글]\n줄거리.\n\n[태그]\n야담, 민담\n")
+            open(os.path.join(d, "유튜브_설명.txt"), "w", encoding="utf-8").write("[제목]\n몰락한 아씨 | 야담\n\n[설명글]\n줄거리.\n\n※ 창작한 이야기입니다.\n\n#야담 #민담\n\n[태그]\n야담, 민담\n")
+            open(os.path.join(d, "기획.txt"), "w", encoding="utf-8").write("[제목]\n기획 제목\n\n[설명글]\n안내문 없는 기획 설명글.\n")
             with patch.object(app, "BASE", tmp), patch.object(app, "script_files", return_value=[{"path": f}]), patch.object(app, "assets_dir", return_value=d):
                 w = app.workspace_data(f)
             self.assertEqual(w["title"], "몰락한 아씨 | 야담")
             self.assertIn("줄거리.", w["description"]); self.assertEqual(w["tags"], "야담, 민담")
-            os.remove(os.path.join(d, "유튜브_설명.txt"))
+            self.assertIn("※ 창작한 이야기입니다.", w["description"])            # 안내문·해시태그까지 든 유튜브_설명.txt 가 기획.txt 보다 우선
+            self.assertNotIn("기획 설명글", w["description"])
+            os.remove(os.path.join(d, "유튜브_설명.txt")); os.remove(os.path.join(d, "기획.txt"))
             with patch.object(app, "BASE", tmp), patch.object(app, "script_files", return_value=[{"path": f}]), patch.object(app, "assets_dir", return_value=d):
                 self.assertEqual(app.workspace_data(f)["title"], "몰락한 아씨")     # 파일이 없으면 폴더 이름(날짜 뺀)
 
