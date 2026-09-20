@@ -469,6 +469,7 @@ async function loadWorkspace(showToast) {
     WORK = await api('/api/workspace?script=' + encodeURIComponent(file)); localStorage.setItem('workScript', file);
     $('workScript').value = WORK.script || ''; $('workSrt').value = WORK.srt || '';
     $('workTitle').value = WORK.title || ''; $('workDesc').value = WORK.description || '';
+    $('workDescHint').textContent = (WORK.script_file || '').endsWith('final.txt') ? '안내문·태그 포함 (이야기형은 출처 없음)' : '출처·태그 포함';
     renderThumbs();
     $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('작업을 불러왔습니다.');
     try { WORK.files = await api('/api/assets?script=' + encodeURIComponent(file)); } catch (e) { WORK.files = {}; }
