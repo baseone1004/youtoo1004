@@ -37,12 +37,21 @@ def ready(port):
 
 
 def open_log(name):
+    """로그는 이어 쓴다 (다시 켤 때 지난 오류가 사라지지 않도록). 3MB 를 넘으면 앞부분을 버리고 뒤 1MB 만 남긴다."""
     path = HERE / name
     try:
-        return path.open("w", encoding="utf-8")
+        if path.is_file() and path.stat().st_size > 3_000_000:
+            tail = path.read_bytes()[-1_000_000:]
+            path.write_bytes(tail[tail.find(b"\n") + 1:])
+    except OSError:
+        pass
+    try:
+        f = path.open("a", encoding="utf-8")
     except PermissionError:
         path = HERE / f"{path.stem}_{time.strftime('%Y%m%d_%H%M%S')}{path.suffix}"
-        return path.open("w", encoding="utf-8")
+        f = path.open("a", encoding="utf-8")
+    f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} 시작 =====\n"); f.flush()
+    return f
 
 
 def find_chrome():

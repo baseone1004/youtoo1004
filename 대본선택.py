@@ -769,15 +769,43 @@ def prompt_blocks(text):
     return out
 
 
+민담_장면_글자수 = 110       # 이야기형 한 장면(그림 한 장)에 묶는 글자 수 (약 25초 분량). 정보형은 문장 하나가 한 장면
+
+
+def scene_units(script_file, sents=None):
+    """대본을 그림 단위로 나눈다 → [(첫 문장 번호, 끝 문장 번호, 원문)]. 번호는 1부터, 자막(srt) 번호와 같다.
+    정보형: 문장 하나 = 장면 하나. 이야기형(민담): 1~2시간짜리라 연속 문장을 약 민담_장면_글자수 만큼 묶어 장면 하나로."""
+    if sents is None:
+        with open(script_file, encoding="utf-8-sig") as f:
+            sents = split_sentences(fix_script_sentences(script_body(f.read())))
+    if channel_of(script_file) != "mindam":
+        return [(i + 1, i + 1, t) for i, t in enumerate(sents)]
+    units, start, buf = [], 1, []
+    for i, t in enumerate(sents, 1):
+        buf.append(t)
+        if sum(len(x) for x in buf) >= 민담_장면_글자수:
+            units.append((start, i, " ".join(buf))); start, buf = i + 1, []
+    if buf:
+        if units and sum(len(x) for x in buf) < 민담_장면_글자수 // 3:   # 끝에 남은 짧은 꼬리는 앞 장면에 붙인다
+            a, _b, text = units[-1]; units[-1] = (a, len(sents), text + " " + " ".join(buf))
+        else:
+            units.append((start, len(sents), " ".join(buf)))
+    return units
+
+
+def _block_line(body):
+    m = re.search(r"^\s*대사\s*[:：]\s*(.+)$", body or "", flags=re.M)
+    return re.sub(r"\s+", "", m.group(1))[:24] if m else ""
+
+
 def prompts_complete(path, script_file):
-    """이미지 프롬프트 파일이 대본의 모든 문장을 덮는지 (없거나 모자라면 False → 모자란 범위만 다시 만든다)."""
+    """이미지 프롬프트 파일이 대본의 모든 장면을 덮는지 (없거나 모자라면 False → 모자란 범위만 다시 만든다)."""
     if not os.path.isfile(path):
         return False
-    with open(script_file, encoding="utf-8-sig") as f:
-        n = len(split_sentences(fix_script_sentences(script_body(f.read()))))
+    units = scene_units(script_file)
     with open(path, encoding="utf-8-sig") as f:
         have = prompt_blocks(f.read())
-    return n > 0 and all(i in have for i in range(1, n + 1))
+    return bool(units) and all(i in have and _block_line(have[i]) == re.sub(r"\s+", "", u[2])[:24] for i, u in enumerate(units, 1))
 
 
 def make_image_prompts(job, req):
@@ -792,12 +820,15 @@ def make_image_prompts(job, req):
     sents = split_sentences(body)
     if not sents:
         raise SystemExit("대본에서 문장을 찾지 못했습니다.")
+    units = scene_units(path, sents)              # 그림 단위 (정보형: 문장 하나 / 이야기형: 문장 묶음)
+    texts = [u[2] for u in units]
     guideline = image_guideline_for(path, req.get("guideline"))
     system = read_guideline(guideline, channel_of(path))
     job.add(f"   이미지 지침: {guideline}")
     style = image_style_lock(req.get("style", "2D 일러스트"), channel_of(path))
     chunk = int(req.get("chunk") or 25)
-    job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 · {chunk}문장씩 · 화풍 {req.get('style', '실사')}")
+    job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 → 장면 {len(units)}개 · {chunk}장면씩 · 화풍 {req.get('style', '실사')}"
+            + (f" · 이야기형은 약 {민담_장면_글자수}자마다 그림 한 장" if len(units) != len(sents) else ""))
     if path.endswith("final.txt"):
         out_path = os.path.join(os.path.dirname(path), "이미지프롬프트.txt")
     else:
@@ -805,17 +836,18 @@ def make_image_prompts(job, req):
     have = {}
     if os.path.isfile(out_path):                     # 지난번에 만들다 만 파일이 있으면 올바른 장면은 그대로 쓰고 모자란 묶음만 묻는다
         with open(out_path, encoding="utf-8-sig") as f:
-            have = {k: v for k, v in prompt_blocks(f.read()).items() if 1 <= k <= len(sents)}
+            have = {k: v for k, v in prompt_blocks(f.read()).items()
+                    if 1 <= k <= len(units) and _block_line(v) == re.sub(r"\s+", "", texts[k - 1])[:24]}   # 대사가 지금 장면과 같은 것만
         if have:
             job.add(f"   이미 만든 장면 {len(have)}개 재사용 · 모자란 범위만 다시 만듭니다")
     def save():
         with open(out_path, "w", encoding="utf-8") as f:
             f.write("\n\n".join(f"==={k:03d}===\n{have[k]}" for k in sorted(have)) + "\n")
-    for s in range(0, len(sents), chunk):
-        e = min(s + chunk, len(sents))
+    for s in range(0, len(units), chunk):
+        e = min(s + chunk, len(units))
         if all(i in have for i in range(s + 1, e + 1)):
             continue
-        lines = "\n".join(f"{i+1:03d}. {sents[i]}" for i in range(s, e))
+        lines = "\n".join(f"{i+1:03d}. {texts[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
                 + 채널_프로필.mascot_reference_note(channel_of(path))
                 + ("[레퍼런스] 드롭샷 References 패널에 업로드된 이미지를 반드시 참조한다. "
@@ -845,20 +877,20 @@ def make_image_prompts(job, req):
             job.add(f"   ! {s+1:03d}~{e:03d} 장면 {len(best)}/{e-s}개만 받음 — 빠진 장면은 다음 실행에서 다시 요청합니다")
         have.update(best)
         save()                                        # 묶음마다 저장 → 중간에 끊겨도 받은 만큼은 남는다
-    missing = [i for i in range(1, len(sents) + 1) if i not in have]
+    missing = [i for i in range(1, len(units) + 1) if i not in have]
     if missing:
         raise SystemExit("이미지 프롬프트가 모자랍니다 (빠진 장면 " + ", ".join(f"{i:03d}" for i in missing[:10]) + (" …" if len(missing) > 10 else "")
                          + "). 받은 만큼은 저장했으니 [이어서 만들기]를 다시 누르면 빠진 범위만 다시 요청합니다.")
     save()
-    # 플로우 txt (Auto-Image Placer 용: N번 이미지 = N번 문장)
+    # 플로우 txt (Auto-Image Placer 용: N번 이미지 = 자막 a~b번)
     flow_path = re.sub(r"\.txt$", "", out_path) + "_플로우.txt"
     with open(flow_path, "w", encoding="utf-8") as f:
-        f.write("# 이미지번호: 자막번호 (문장 1개 = 이미지 1장 기준)\n")
-        for i in range(len(sents)):
-            f.write(f"{i+1}: {i+1}\n")
+        f.write("# 이미지번호: 자막번호 (정보형은 문장 1개 = 이미지 1장, 이야기형은 문장 묶음 = 이미지 1장)\n")
+        for k, (a, b, _t) in enumerate(units, 1):
+            f.write(f"{k}: {a}\n" if a == b else f"{k}: {a}-{b}\n")
     job.add(f"✓ 저장: {out_path}")
     job.add("비용: " + ai.cost_text())
-    return dict(file=out_path, flow=flow_path, scenes=len(sents), cost=ai.cost_text())
+    return dict(file=out_path, flow=flow_path, scenes=len(units), cost=ai.cost_text())
 
 
 def restyle_script_prompts_2d(script_file):

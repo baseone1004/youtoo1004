@@ -29,7 +29,7 @@ GUIDE_ECHO = """심리해독소 | 정보형 롱폼 | 이미지 프롬프트 지�
 
 
 def block(no, text="scene"):
-    return f"==={no:03d}===\n유형: D\n대사: 문장 {no}\n감정: 담담\n행동: 걷는다\n프롬프트: STYLE, {text} {no}, 16:9 aspect ratio\n"
+    return f"==={no:03d}===\n유형: D\n대사: 문장 {no}입니다.\n감정: 담담\n행동: 걷는다\n프롬프트: STYLE, {text} {no}, 16:9 aspect ratio\n"
 
 
 class PromptBlocksTest(unittest.TestCase):
