@@ -55,11 +55,14 @@ class Job:
     def add(self, s): self.write(s + "\n")
     def to_dict(self):
         return dict(kind=self.kind, status=self.status, log=self.log[-3000:], result=self.result, error=self.error,
-                    started=self.started, partial=self._buf[-60:], stage=self.stage, progress=round(self.progress, 3))
+                    started=self.started, partial=self._buf[-60:], stage=self.stage, progress=round(self.progress, 3),
+                    cancel_requested=self.cancel_requested)
 
 REAL = sys.stdout
 STATE = {"job": None}
 LOCK = threading.Lock()
+import 공통_api as _공통
+_공통.cancel_hook = lambda: bool(STATE.get("job") and STATE["job"].cancel_requested)   # AI 응답을 기다리는 중에도 [■ 중단] 이 바로 먹는다
 QUEUE = QueueStore(os.path.join(대본_폴더, "_상태", "제작대기열.json"))
 QUEUE_THREAD = None
 
@@ -923,6 +926,8 @@ def make_image_prompts(job, req):
         job.add(f"   {s+1:03d}~{e:03d} 변환 ")
         best = {}
         for attempt in range(3):
+            if job.cancel_requested:
+                raise RuntimeError("사용자가 중단했습니다. (받은 프롬프트는 저장되어 있어 [이어서 만들기]로 계속할 수 있습니다)")
             out = ai.ask(system, user).replace("```", "").strip()
             if any(m in out for m in ECHO_MARKS):    # 딥시크 웹이 보낸 질문(지침)을 답변으로 돌려준 경우
                 job.add(f"   ! 답변 대신 보낸 질문이 돌아옴 → 다시 요청 ({attempt + 1}/3)")
@@ -2189,7 +2194,7 @@ class H(BaseHTTPRequestHandler):
                         pass
                 self._json({"ok": True, "stopped": stopped})
             elif u.path == "/api/restart":
-                if STATE["job"] and STATE["job"].status == "running":
+                if STATE["job"] and STATE["job"].status == "running" and not STATE["job"].cancel_requested:
                     raise ValueError("지금 만드는 편이 끝난 뒤에 다시 시작할 수 있습니다. 바로 하려면 [■ 중단]을 먼저 누르세요.")
                 self._json({"ok": True})
                 threading.Thread(target=restart_program, args=(self.server,), daemon=True).start()

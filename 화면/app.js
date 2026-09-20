@@ -26,7 +26,7 @@ async function checkVersion() {
   try { const v = await api('/api/version'); $('restartBtn').classList.toggle('hidden', v.version === v.current); } catch (e) {}
 }
 async function restartProgram() {
-  if (STATE && STATE.job && STATE.job.status === 'running') return toast('지금 만드는 편이 끝난 뒤에 다시 시작할 수 있습니다. 바로 하려면 [■ 중단]을 먼저 누르세요.', true);
+  if (STATE && STATE.job && STATE.job.status === 'running' && !STATE.job.cancel_requested) return toast('지금 만드는 편이 끝난 뒤에 다시 시작할 수 있습니다. 바로 하려면 [■ 중단]을 먼저 누르세요.', true);
   if (!confirm('프로그램을 다시 시작할까요? (5초 정도 걸립니다)')) return;
   try { await api('/api/restart', {}); } catch (e) { return toast(e.message, true); }
   toast('다시 시작하는 중…');
@@ -361,7 +361,7 @@ async function poll() {
   const log = $('pgLog'); const txt = j.log.join('\n') + (j.partial ? '\n' + j.partial : '');
   if (log.textContent !== txt) { log.textContent = txt; if ($('pgFollow').checked) log.scrollTop = log.scrollHeight; }
   $('pgLines').textContent = `(${j.log.length}줄)`;
-  $('pgStage').textContent = j.status === 'running' ? humanStage(j) : j.status === 'done' ? '✅ 완료' : '❌ 중단됨';
+  $('pgStage').textContent = j.status === 'running' ? (j.cancel_requested ? '⏹ 중단하는 중… (AI 응답을 기다리던 중이면 몇 초 안에 멈춥니다)' : humanStage(j)) : j.status === 'done' ? '✅ 완료' : '❌ 중단됨';
   // 썸네일 단계에서는 원본이 내려받아지는 대로, 문구가 얹히는 대로 바로 보이게 3초마다 작업 폴더를 다시 읽는다
   if (j.status === 'running' && (j.kind === 'thumbnail' || /썸네일/.test(String(j.stage || '')))) {
     const sf = (j.result || {}).script || (j.result || {}).file;      // 연속 제작 중이면 지금 만드는 대본을 '보고 있는 작업'으로 맞춘다

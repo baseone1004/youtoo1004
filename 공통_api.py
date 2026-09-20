@@ -47,6 +47,13 @@ def is_echo(answer, sent):
     return bool(a) and (("=" * 30 + " [요청]") in a or "(위 지침을 그대로 따른다." in a or (len(head) > 60 and head in a))
 
 
+class Cancelled(RuntimeError):
+    """사용자가 [■ 중단] 을 눌러 멈춘 것. 예비 AI 로 넘어가거나 다시 시도하지 않는다."""
+
+
+cancel_hook = None      # 대본선택 이 지정: 지금 작업이 중단 요청됐는지 돌려주는 함수
+
+
 class AI:
     def __init__(self, cfg, _is_fallback=False):
         name = (cfg.get("AI") or "deepseek").strip().lower()
@@ -57,7 +64,7 @@ class AI:
         self.cfg, self.fallback, self._is_fallback = cfg, None, _is_fallback
         self.model = (cfg.get("모델") or "").strip() or p["model"]
         self.usage = {"in": 0, "out": 0}
-        self.cancel_check = None
+        self.cancel_check = None                   # 호출자가 따로 주는 중단 확인. 없으면 모듈의 cancel_hook (화면의 [■ 중단]) 을 본다
         if name == "deepseek-web":
             import 웹큐
             self.key, self.client = "", None
@@ -94,7 +101,19 @@ class AI:
                 print(f"\n   ! 예비 AI {name} 준비 실패: {str(exc)[:100]}", flush=True)
         return None
 
+    def _cancelled(self):
+        check = self.cancel_check or cancel_hook
+        try:
+            return bool(check and check())
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _raise_if_cancelled(self):
+        if self._cancelled():
+            raise Cancelled("사용자가 중단했습니다.")
+
     def ask(self, system, user, max_tokens=None, retries=2):
+        self._raise_if_cancelled()
         if self.fallback is not None:                 # 이미 예비로 넘어갔으면 계속 예비를 쓴다
             return self.fallback.ask(system, user, max_tokens)
         if self.name == "deepseek-web" and retries > 0:
@@ -108,7 +127,11 @@ class AI:
                 if self.name == "claude":
                     return self._ask_claude(system, user, max_tokens)
                 return self._ask_openai(system, user, max_tokens)
+            except Cancelled:
+                raise
             except Exception as e:
+                if self._cancelled():                 # 기다리다 중단된 것 → 예비 AI 로 넘어가지 않고 바로 멈춘다
+                    raise Cancelled("사용자가 중단했습니다.") from e
                 if attempt >= retries:
                     spare = self._make_fallback(f"{self.name} 가 {retries + 1}번 실패 ({str(e)[:80]})")
                     if spare is None:
@@ -117,7 +140,8 @@ class AI:
                     return spare.ask(system, user, max_tokens)
                 wait = 8 * (attempt + 1)
                 print(f"\n   ! 호출 실패({e.__class__.__name__}: {str(e)[:120]}) — {wait}초 뒤 다시 시도")
-                time.sleep(wait)
+                for _ in range(wait):                 # 기다리는 동안에도 [■ 중단] 을 본다
+                    self._raise_if_cancelled(); time.sleep(1)
 
     def _ask_web(self, system, user):
         """딥시크 웹: 지침 + 요청을 한 메시지로 새 대화에 보내고, 확장이 답변을 가져올 때까지 기다린다."""
@@ -126,7 +150,7 @@ class AI:
                 + "\n\n(위 지침을 그대로 따른다. 설명·확인 질문·머리말 없이 결과물만 출력한다.)")
         jid = 웹큐.submit(text, {"new_chat": True})
         print(" [딥시크 웹 대기]", end="", flush=True)
-        out = 웹큐.wait(jid, cancel_check=self.cancel_check)
+        out = 웹큐.wait(jid, cancel_check=self._cancelled)
         self.usage["in"] += len(text) // 2; self.usage["out"] += len(out) // 2
         print()
         if is_echo(out, text):                        # 확장이 답변 대신 내가 보낸 메시지를 읽어 온 경우 → 실패로 보고 다시 시도
