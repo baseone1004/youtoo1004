@@ -693,6 +693,9 @@ def make_variations(job, req):
 
 
 # ── 작업 3: 대본 → 이미지 프롬프트 ─────────────────────────────
+전체화면 = ("full-bleed composition that fills the entire 16:9 frame edge to edge, no border, no frame, no paper margin, "
+        "no rounded corners, no vignette, no picture-in-picture")
+
 화풍 = {
     # ── 공통
     "실사": "photorealistic cinematic photography, natural lighting, 16:9 aspect ratio",
@@ -706,33 +709,69 @@ def make_variations(job, req):
                   "Do not copy its pose or background. No watercolor texture, pastel wash, photorealism, 3D render, text or watermark.",
     "파스텔": "hand-drawn 2D pastel illustration, soft colored-pencil and watercolor textures, clean illustrated faces and outlines, warm muted palette, 16:9 aspect ratio",
     "수묵": "traditional Korean ink wash painting style with subtle color, hanji paper texture, 16:9 aspect ratio",
-    # ── 야담·민담·옛이야기용 (조선 배경 고정, 아동풍 금지)
-    "민화": "Korean minhwa folk painting style, flat vivid mineral pigments, bold outlines, decorative flattened perspective, "
-           "tigers magpies peonies motifs where fitting, Joseon-era figures in hanbok, hanji paper texture, 16:9 aspect ratio",
-    "한지 동화": "warm storybook illustration for adults printed on textured hanji paper, soft gouache colors, gentle rounded shapes, "
-              "Joseon-era village and hanbok, cozy oil-lamp glow at night, refined faces not childish, 16:9 aspect ratio",
+    # ── 야담·민담·옛이야기용 (조선 배경 고정, 아동풍 금지, 테두리 없이 화면 가득)
+    "수채 사극": "Korean historical drama illustration in a soft webtoon-watercolor style: delicate clean ink line art with a gentle watercolor wash, "
+              "muted natural palette with soft light, refined East Asian faces drawn in a light anime-like manner (clear eyes, small nose, smooth skin), "
+              "detailed Joseon hanbok, gat and hanok, painterly backgrounds with atmosphere such as snow, rain or lamplight, "
+              + 전체화면 + ", 16:9 aspect ratio",
+    "한지 동화": "warm storybook illustration for adults, soft gouache colors, gentle rounded shapes, "
+              "Joseon-era village and hanbok, cozy oil-lamp glow at night, refined faces not childish, " + 전체화면 + ", 16:9 aspect ratio",
     "괴담 극화": "dark dramatic Korean gekiga-style illustration for ghost and folklore tales, heavy ink shadows, cold moonlight with a single warm lantern, "
-              "Joseon-era hanok and forest, eerie but non-graphic, faces clearly visible, 16:9 aspect ratio",
+              "Joseon-era hanok and forest, eerie but non-graphic, faces clearly visible, " + 전체화면 + ", 16:9 aspect ratio",
 }
+화풍_별칭 = {"민화": "수채 사극"}          # 예전 이름으로 저장된 설정·프롬프트를 새 화풍으로
 화풍_설명 = {
     "실사": "사진 같은 시네마틱", "애니": "웹툰·셀 채색", "2D 일러스트": "선명한 성인용 2D·레퍼런스 유지", "파스텔": "부드러운 수채", "수묵": "한지·먹 느낌",
-    "한지 동화": "따뜻한 한지 그림책 (어른용)", "민화": "호랑이·까치 민화풍 평면 채색", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
+    "수채 사극": "맑은 선 + 수채 웹툰풍 (기본)", "한지 동화": "따뜻한 그림책 (어른용)", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
 }
 화풍_그룹 = {"공통": ["실사", "애니", "2D 일러스트", "파스텔", "수묵"],
-          "야담·민담·옛이야기": ["한지 동화", "민화", "괴담 극화"]}
+          "야담·민담·옛이야기": ["수채 사극", "한지 동화", "괴담 극화"]}
 
 def image_style_lock(style, channel=None):
     """선택한 화풍이 뒤의 장면 설명과 충돌해도 사진풍으로 바뀌지 않게 고정한다. 채널을 주면 그 채널의 색감 문구(화풍_접미)를 덧붙인다."""
-    base = 화풍.get(style, 화풍["2D 일러스트"])
+    style = 화풍_별칭.get(style, style)
+    if style not in 화풍:
+        style = "수채 사극" if channel == "mindam" else "2D 일러스트"
+    base = 화풍[style]
     tail = (" " + 채널_프로필.style_tail(channel) + ".") if channel and 채널_프로필.style_tail(channel) else ""
     if style == "실사":
         return base + tail + " Every person shown is Korean with East Asian facial features; never Western faces."
+    age = ("AGE LOCK: draw every character at exactly the age written for them — a person in their 20s or 30s looks young "
+           "(smooth skin, black hair, no wrinkles, upright posture); only a character explicitly described as old gets grey hair and wrinkles. "
+           "FRAME LOCK: the picture fills the whole frame edge to edge with no border, frame, paper margin or vignette. "
+           if channel == "mindam" else "")
     return (f"STRICT STYLE LOCK: every image must be {style} style. {base}{tail} "
             "PEOPLE LOCK: every person shown is Korean with East Asian facial features, dark hair and Korean clothing and setting; "
-            "never Western, Caucasian, Black, South Asian or Southeast Asian faces. "
+            "never Western, Caucasian, Black, South Asian or Southeast Asian faces. " + age +
             "Keep the same linework, character design, proportions and color palette as the uploaded Dropshot reference image. "
             "If a later scene description conflicts, this style lock takes priority. "
             "Never generate a photo, photorealistic face, live-action still, realistic skin texture, 3D render or mixed-media image.")
+
+
+def restyle_prompts(prompts_file, style, channel):
+    """이미 만든 이미지 프롬프트 파일의 화풍 고정 문구를 지금 고른 화풍으로 바꾼다 (장면 설명은 그대로). 바뀐 블록 수를 돌려준다."""
+    if not os.path.isfile(prompts_file):
+        return 0
+    new_lock = image_style_lock(style, channel)
+    with open(prompts_file, encoding="utf-8-sig") as f:
+        text = f.read()
+    changed = [0]
+
+    def fix(m):
+        head, body = m.group(1), m.group(2)
+        if new_lock in body:
+            return m.group(0)
+        stripped = re.sub(r"STRICT STYLE LOCK:.*?(?:consistent channel look\.?|mixed-media image\.)\s*", "", body, count=1, flags=re.S)
+        if stripped == body and "STRICT STYLE LOCK:" in body:
+            return m.group(0)                      # 어디까지가 화풍 문구인지 모르면 손대지 않는다
+        changed[0] += 1
+        return head + new_lock + " " + stripped.strip()
+
+    text2 = re.sub(r"^(프롬프트\s*[:：]\s*)(.+)$", fix, text, flags=re.M)
+    if changed[0]:
+        with open(prompts_file, "w", encoding="utf-8") as f:
+            f.write(text2)
+    return changed[0]
 
 def split_sentences(body):
     return 나레이션.split_sentences(body)      # 이미지 프롬프트·나레이션·자막이 같은 문장 번호를 쓰도록 한 곳에서 나눔
@@ -1547,7 +1586,7 @@ def make_thumbnails(job, req):
     # 썸네일 화풍·구도는 채널 프로필에서 온다 (화풍을 비워 두면 장면 화풍을 그대로 쓴다)
     profile = 채널_프로필.get("mindam" if is_mindam else "person")
     tp = profile.get("썸네일") or {}
-    style = (tp.get("화풍") or "").strip() or 화풍.get(req.get("style", "실사"), 화풍["실사"])
+    style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "실사"), req.get("style", "실사")), 화풍["수채 사극" if is_mindam else "실사"])
     if 채널_프로필.style_tail("mindam" if is_mindam else "person"):
         style = style.rstrip(". ") + ", " + 채널_프로필.style_tail("mindam" if is_mindam else "person")
     position = "bottom"
@@ -1629,6 +1668,18 @@ def make_upload_package(script_file, result):
 
 
 # ── 작업 5: 원클릭 파이프라인 ─────────────────────────────────
+def narration_matches(flow_file, script_file):
+    """나레이션 플로우(문장 → 자막 번호)의 문장 수가 지금 대본의 문장 수와 같은지 — 다르면 번호가 밀려 그림·자막이 어긋난다."""
+    try:
+        with open(flow_file, encoding="utf-8-sig") as f:
+            n_flow = sum(1 for ln in f if re.match(r"^\s*\d+\s*:", ln))
+        with open(script_file, encoding="utf-8-sig") as f:
+            n_now = len(split_sentences(fix_script_sentences(script_body(f.read()))))
+        return n_flow == n_now
+    except OSError:
+        return False
+
+
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
     def check_cancelled():
@@ -1664,6 +1715,9 @@ def make_pipeline(job, req):
     existing_prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
     if steps.get("prompts", True) and req.get("reuse_prompts") and prompts_complete(existing_prompts, script):
         job.add(f"   이미지 프롬프트가 이미 있어 재사용: {existing_prompts}")
+        n_restyled = restyle_prompts(existing_prompts, req.get("style", ""), channel_of(script))
+        if n_restyled:
+            job.add(f"   화풍을 '{화풍_별칭.get(req.get('style', ''), req.get('style', ''))}' 로 맞춤 ({n_restyled}장면)")
         steps = dict(steps, prompts=False)
     if steps.get("prompts", True):
         job.stage = "② 이미지 프롬프트"
@@ -1678,6 +1732,11 @@ def make_pipeline(job, req):
     if steps.get("tts", True):
         job.stage = "③ 나레이션"
         existing_tts = {k: os.path.join(assets, n) for k, n in (("mp3", "나레이션.mp3"), ("srt", "나레이션.srt"), ("flow", "플로우.txt"))}
+        if req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values()) and not narration_matches(existing_tts["flow"], script):
+            job.add("   문장 나누기가 달라져 나레이션·자막을 다시 만듭니다 (같은 문장의 음성은 재사용)")
+            for v in existing_tts.values():
+                try: os.remove(v)
+                except OSError: pass
         if req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values()):
             try:
                 duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), existing_tts["mp3"])
@@ -2033,7 +2092,7 @@ class H(BaseHTTPRequestHandler):
                                             인월드_목소리_민담=cfg.get("인월드_목소리_민담", ""),
                                             인월드_속도_사람=cfg.get("인월드_속도_사람", cfg.get("인월드_속도", 1.0)),
                                             인월드_속도_민담=cfg.get("인월드_속도_민담", cfg.get("인월드_속도", 1.0)),
-                                            분당_글자수=cfg.get("분당_글자수", 270), 화풍=cfg.get("화풍", "실사"),
+                                            분당_글자수=cfg.get("분당_글자수", 270), 화풍=화풍_별칭.get(cfg.get("화풍", "실사"), cfg.get("화풍", "실사")),
                                             후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
                                             텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),

@@ -35,12 +35,19 @@ def find_ffmpeg(name="ffmpeg"):
     raise FileNotFoundError(f"{name} 을 찾을 수 없습니다. ffmpeg 를 설치하거나 PATH 에 넣어주세요.")
 
 
+_붙임 = "⁠"     # 따옴표 안 문장 사이에 잠시 넣는 표시 (word joiner) — 여기서는 문장을 자르지 않는다
+
+
 def split_sentences(body):
+    """문장 나누기 (나레이션·자막·이미지 번호가 모두 여기서 나온 번호를 쓴다).
+    따옴표 안의 대사는 마침표가 여러 개여도 한 문장으로 묶고, 따옴표 자체("“”‘’)는 자막·나레이션에 넣지 않는다."""
     body = re.sub(r"[?!？！]+", ".", body)
     body = re.sub(r"(\.{2,}|…+)", ".", body)
     body = re.sub(r"\s+", " ", body.strip())
+    body = re.sub(r'["“]([^"“”]{1,400})["”]', lambda m: re.sub(r"([.。])\s+", "\\1" + _붙임, m.group(0)), body)
+    body = re.sub(r'["“”‘’]', "", body)
     parts = re.split(r"(?<=[.。])\s+", body)
-    return [p.strip() for p in parts if p.strip() and re.search(r"[가-힣a-zA-Z0-9]", p)]
+    return [p.replace(_붙임, " ").strip() for p in parts if p.strip() and re.search(r"[가-힣a-zA-Z0-9]", p)]
 
 
 def script_body(text):
@@ -162,15 +169,24 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
     log(f"   인월드 TTS · 목소리 {voice_id} · {model} · 문장 {n}개")
     done = [0]
     errors = []
+    # 예전에 만든 부분 파일에는 문장 텍스트(.txt)가 없다 → 개수가 지금 문장 수와 같을 때만 번호가 안 밀린 것으로 보고 재사용
+    legacy_ok = len([f for f in os.listdir(part_dir) if re.fullmatch(r"\d{4}\.mp3", f)]) == n
 
     def work(i):
         if cancel and cancel():
             return
         p = os.path.join(part_dir, f"{i + 1:04d}.mp3")
-        if os.path.exists(p) and os.path.getsize(p) > 500:
+        txt = p[:-4] + ".txt"                    # 이 번호의 mp3 가 어떤 문장을 읽은 것인지 — 문장 나누기가 바뀌어 번호가 밀리면 다시 만든다
+        try:
+            same_text = (open(txt, encoding="utf-8").read().strip() == sentences[i].strip()) if os.path.isfile(txt) else legacy_ok
+        except OSError:
+            same_text = False
+        if os.path.exists(p) and os.path.getsize(p) > 500 and same_text:
             done[0] += 1; return
         try:
             tts.synth(sentences[i], p)
+            with open(txt, "w", encoding="utf-8") as f:
+                f.write(sentences[i].strip())
         except SystemExit as e:
             errors.append(str(e)); raise
         except Exception as e:  # noqa: BLE001

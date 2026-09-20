@@ -70,7 +70,7 @@ _lock = threading.Lock()
         "면책": "※ 본 영상은 옛이야기를 바탕으로 한 창작 이야기입니다.",
         "마스코트": {"이름": "", "이미지": "", "설명": "", "프롬프트": ""},
         "브랜드": {"주색": "#1C120A", "강조색": "#FFD54A", "바탕색": "#F3E9D2", "보조색": "#B3261E", "배지": "옛날서재", "사진_톤": "sepia"},
-        "화풍_접미": "aged sepia ink-wash tone, hanji paper texture feel, muted earthy palette, consistent channel look",
+        "화풍_접미": "soft muted natural colors, gentle warm lamplight or daylight, clean full-frame composition, consistent channel look",
         "썸네일": {
             "레이아웃": "hanji_seal",
             "화풍": "",
