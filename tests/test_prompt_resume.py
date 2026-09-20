@@ -105,5 +105,40 @@ class ResumeTest(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(tmp, "t_이미지프롬프트.txt")))
 
 
+
+class TruncatedReplyTest(unittest.TestCase):
+    def test_truncated_reply_shrinks_chunk_and_continues(self):
+        """답이 잘려 절반만 오면 같은 크기로 세 번 되묻지 않고, 받은 만큼 저장한 뒤 묶음을 줄여 이어서 묻는다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "t.txt")
+            with open(script, "w", encoding="utf-8") as f:
+                f.write("[대본]\n" + " ".join(f"문장 {i}입니다." for i in range(1, 21)))
+            asked = []
+
+            class FakeAI:                         # 묻는 범위의 앞 4개만 돌려준다 (출력이 잘린 딥시크 웹 흉내)
+                name, model = "fake", "fake"
+                def __init__(self, cfg): pass
+                def ask(self, system, user):
+                    import re as _re
+                    a, b = map(int, _re.search(r"\[이번 범위\] (\d+) ~ (\d+)", user).groups())
+                    asked.append((a, b)); return "".join(block(i) for i in range(a, min(a + 4, b + 1)))
+                def cost_text(self): return "0"
+
+            class Job:
+                log = []
+                def add(self, s): self.log.append(s)
+
+            with patch.object(app, "AI", FakeAI), patch.object(app.대본생성, "load_cfg", return_value={}), \
+                 patch.object(app, "read_guideline", return_value="지침"), patch.object(app, "image_guideline_for", return_value="x.txt"), \
+                 patch.object(app, "프롬프트_최소_묶음", 4):
+                r = app.make_image_prompts(Job(), dict(script_file=script, chunk=10, style="실사"))
+            self.assertEqual(r["scenes"], 20)
+            self.assertTrue(app.prompts_complete(r["file"], script))
+            self.assertEqual(asked[0], (1, 10))                              # 처음 10개를 물어 4개만 받음
+            self.assertEqual(asked[1][0], 5)                                 # 되묻지 않고 5번부터 이어서, 묶음은 줄어든다
+            self.assertLessEqual(asked[1][1] - asked[1][0] + 1, 4)
+            self.assertEqual(len(asked), 5)                                  # 4개씩 다섯 번이면 끝 (같은 범위 되묻기 없음)
+
+
 if __name__ == "__main__":
     unittest.main()

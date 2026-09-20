@@ -775,6 +775,8 @@ def prompt_blocks(text):
 
 
 민담_장면_글자수 = 110       # 이야기형 한 장면(그림 한 장)에 묶는 글자 수 (약 25초 분량). 정보형은 문장 하나가 한 장면
+민담_프롬프트_묶음 = 12       # 이야기형 이미지 프롬프트를 한 번에 묻는 장면 수 (블록이 길어 30개를 물으면 딥시크 웹 답이 절반에서 잘린다)
+프롬프트_최소_묶음 = 6        # 답이 잘려 묶음을 줄일 때의 하한
 
 
 def scene_units(script_file, sents=None):
@@ -882,6 +884,8 @@ def make_image_prompts(job, req):
     job.add(f"   이미지 지침: {guideline}")
     style = image_style_lock(req.get("style", "2D 일러스트"), channel_of(path))
     chunk = int(req.get("chunk") or 25)
+    if channel_of(path) == "mindam":               # 이야기형 블록은 정보형의 서너 배 길이 → 한 번에 적게 묻는다 (답이 잘리는 것을 막는다)
+        chunk = min(chunk, 민담_프롬프트_묶음)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 → 장면 {len(units)}개 · {chunk}장면씩 · 화풍 {req.get('style', '실사')}"
             + (f" · 이야기형은 약 {민담_장면_글자수}자마다 그림 한 장" if len(units) != len(sents) else ""))
     if path.endswith("final.txt"):
@@ -899,10 +903,11 @@ def make_image_prompts(job, req):
     def save():
         with open(out_path, "w", encoding="utf-8") as f:
             f.write("\n\n".join(f"==={k:03d}===\n{have[k]}" for k in sorted(have)) + "\n")
-    for s in range(0, len(units), chunk):
+    s, stuck = 0, {}
+    while s < len(units):
+        if s + 1 in have:                             # 이미 있는 장면은 건너뛰고 첫 빈 장면부터 묻는다
+            s += 1; continue
         e = min(s + chunk, len(units))
-        if all(i in have for i in range(s + 1, e + 1)):
-            continue
         lines = "\n".join(f"{i+1:03d}. {texts[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
                 + sheet_note(sheet)
@@ -925,15 +930,25 @@ def make_image_prompts(job, req):
             got = {k: v for k, v in prompt_blocks(out).items() if s + 1 <= k <= e}
             if len(got) > len(best):
                 best = got
-            if len(best) >= e - s:
+            if len(best) >= e - s or len(best) >= 프롬프트_최소_묶음 // 2:    # 다 받았거나, 잘렸어도 쓸 만큼 받았으면 같은 크기로 다시 묻지 않는다
                 break
             job.add(f"   ! 장면 수 {len(got)}개 (기대 {e-s}개) → 다시 요청 ({attempt + 1}/3)")
         if not best:
             raise SystemExit(f"{s+1:03d}~{e:03d} 범위의 이미지 프롬프트를 받지 못했습니다. AI 연결(딥시크 웹 탭)을 확인하고 다시 시도하세요.")
-        if len(best) < e - s:
-            job.add(f"   ! {s+1:03d}~{e:03d} 장면 {len(best)}/{e-s}개만 받음 — 빠진 장면은 다음 실행에서 다시 요청합니다")
         have.update(best)
         save()                                        # 묶음마다 저장 → 중간에 끊겨도 받은 만큼은 남는다
+        got_run = 0                                   # 앞에서부터 빈틈없이 받은 장면 수 (여기까지는 넘어가고, 다음은 첫 빈 장면부터 다시 묻는다)
+        while s + got_run + 1 in have and s + got_run < e:
+            got_run += 1
+        if len(best) < e - s:
+            if chunk > 프롬프트_최소_묶음:               # 답이 잘린 것 → 다음부터는 받은 만큼만 묻는다
+                chunk = max(프롬프트_최소_묶음, min(chunk - 1, len(best)))
+                job.add(f"   ! {s+1:03d}~{e:03d} 장면 {len(best)}/{e-s}개만 받음 (답이 잘림) → 다음부터 {chunk}장면씩 묻습니다")
+            else:
+                job.add(f"   ! {s+1:03d}~{e:03d} 장면 {len(best)}/{e-s}개만 받음 — 빠진 장면은 이어서 다시 묻습니다")
+        if got_run == 0:                              # 첫 장면조차 못 받음 → 한 번 더 같은 자리에서 묻고, 그래도 없으면 넘어간다 (끝에 빠진 장면으로 보고)
+            stuck[s] = stuck.get(s, 0) + 1
+        s += got_run if got_run else (1 if stuck.get(s, 0) >= 2 else 0)
     missing = [i for i in range(1, len(units) + 1) if i not in have]
     if missing:
         raise SystemExit("이미지 프롬프트가 모자랍니다 (빠진 장면 " + ", ".join(f"{i:03d}" for i in missing[:10]) + (" …" if len(missing) > 10 else "")
@@ -1282,6 +1297,10 @@ def run_hook_videos_dropshot(job, images_dir, prompts_file, scenes):
         st = aip("/api/vgen/status")
         n = len(st.get("done", [])) + len(st.get("failed", []))
         job.stage = f"후킹 영상(드롭샷): {st.get('current', 0):03d} ({n}/{st.get('total') or len(scenes)})"
+        if st.get("waiting"):                          # 다운로드는 사람이 누른다 → 무엇을 해야 하는지 진행 줄에 보여 준다
+            job.stage += " · ⬇ " + st["waiting"]
+            if getattr(job, "_vgen_waiting_for", None) != st.get("current"):
+                job._vgen_waiting_for = st.get("current"); job.add("   ⬇ " + st["waiting"])
         if st.get("status") in ("done", "error", "stopped"):
             if st.get("status") != "done":
                 raise RuntimeError("드롭샷 영상 변환이 끝나지 않음: " + (st.get("error") or st.get("status")))
