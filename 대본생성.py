@@ -175,8 +175,7 @@ def compose_description(head):
         src_lines.append(f"• {label}")                   # 설명란에는 기관·자료 이름만. 링크는 대본 파일의 [출처] 블록에 남는다
     tags = re.findall(r"#\S+", b.get("태그", ""))
     parts = [b["설명글"].strip(), "", 구분선, ""]
-    if src_lines:
-        parts += ["📚 참고 자료"] + src_lines + [""]
+    # 참고 자료(출처) 목록은 설명란에 넣지 않는다 — 대본 파일의 [출처] 블록에만 남긴다
     parts += [면책문(), "", 구분선, ""]
     if tags:
         parts.append(" ".join(tags))

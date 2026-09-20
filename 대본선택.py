@@ -932,7 +932,9 @@ def _block(text, name):
 def upload_description(description, tags=""):
     """유튜브 설명란에 한 번에 붙여 넣을 덩어리: 링크 주소는 빼고, 해시태그가 없으면 태그를 끝에 붙인다."""
     text = (description or "").strip()
-    text = re.sub(r"\s*/?\s*https?://\S+", "", text)                          # 출처 줄의 주소 제거 (자료 이름만 남김)
+    text = re.sub(r"\s*/?\s*https?://\S+", "", text)                          # 출처 줄의 주소 제거
+    text = re.sub(r"(?:^|\n)📚 참고 자료\n(?:•[^\n]*\n?)+", "\n", text)        # 예전에 만든 설명의 참고 자료 목록도 뺀다
+    text = re.sub(r"(?:^|\n)\[?출처\]?\s*[:：]?\s*\n(?:[-•·][^\n]*\n?)+", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     if "#" not in text and (tags or "").strip():
         words = [t.strip().lstrip("#") for t in re.split(r"[,\s]+", tags) if t.strip()]
