@@ -1209,7 +1209,7 @@ def make_tts(job, req):
         raise SystemExit(f"{채널_프로필.name(channel)} 채널 목소리 ID 가 없습니다. [설정] 탭의 인월드 목소리에 넣어주세요.")
     job.add(f"   목소리: {채널_프로필.name(channel)} 채널 → {voice} · 속도 {speed}")
     job.stage = "나레이션 합성"
-    groups = None if legacy_split(path) else tts_groups(path, sents)    # 문장을 묶어 읽혀 억양이 이어지게 (예전 방식 편은 그대로)
+    groups = tts_groups(path, sents)             # 문장을 묶어 읽혀 억양이 이어지게 (문장 번호는 그대로라 예전 방식 편도 된다)
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
                          req.get("model") or cfg.get("인월드_모델", "inworld-tts-1.5-max"), speed,
                          log=job.add, cancel=lambda: job.cancel_requested,

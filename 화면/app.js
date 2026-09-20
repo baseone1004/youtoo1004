@@ -542,6 +542,7 @@ async function copyField(id) {
 }
 async function rerunTTS() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
+  if (!confirm('이 대본의 나레이션과 자막을 처음부터 다시 만들까요?\n(문장을 묶어 자연스럽게 읽습니다 · 인월드 사용량이 듭니다 · 그림 번호는 그대로)')) return;
   try { await saveWorkspaceText('script'); await api('/api/tts', {script_file: WORK.script_file}); startPolling(true); toast('고친 대본으로 나레이션을 다시 만듭니다.'); } catch (e) { toast(e.message, true); }
 }
 async function loadTrash() {
