@@ -813,6 +813,56 @@ def prompts_complete(path, script_file):
     return bool(units) and all(i in have and _block_line(have[i]) == re.sub(r"\s+", "", u[2])[:24] for i, u in enumerate(units, 1))
 
 
+인물표_지시 = ("너는 사극 삽화 감독이다. 아래 [등장인물] 을 읽고, 이 편의 모든 그림 프롬프트에서 똑같이 되풀이할 인물별 영어 생김새 구절을 정한다.\n"
+            "형식: 한 줄에 한 명, 다른 말 없이.\n"
+            "이름 / 성별·나이 / 역할 한 구절 / clothing: 영어 두에서 여섯 단어 / hair: 영어 두에서 여섯 단어 / face & build: 영어 두에서 여섯 단어\n"
+            "규칙: 대본의 묘사(옷 색과 감, 머리 모양, 흉터, 체형, 키)를 그대로 옮긴다. 지어내지 않는다. 옷은 조선 시대 한복 명칭을 영어로(jeogori, chima, dopo, gat, straw sandals).\n"
+            "아이(열일곱 살 아래)는 나이를 적고 beard, topknot, wrinkles 같은 어른 표현을 쓰지 않는다. 주요 인물부터 순서대로 최대 여덟 명. "
+            "같은 인물의 다른 시기(거지였다가 벼슬을 얻은 경우)는 '이름 (뒤)' 로 한 줄 더 쓴다.")
+
+
+def character_sheet(script_file, ai, log=print):
+    """이야기형(민담) 한 편의 '인물 고정표'. 기획.txt 의 [등장인물] 을 영어 생김새 세 구절(옷·머리·얼굴)로 정리해 인물표.txt 에 저장하고,
+    이미지 프롬프트·썸네일 요청마다 같은 표를 넣어 묶음(30장면)마다 인물 생김새가 달라지지 않게 한다. 정보형이거나 기획.txt 가 없으면 빈 문자열."""
+    if channel_of(script_file) != "mindam":
+        return ""
+    workdir = os.path.dirname(script_file)
+    sheet_path = os.path.join(workdir, "인물표.txt")
+    if os.path.isfile(sheet_path):
+        with open(sheet_path, encoding="utf-8-sig") as f:
+            text = f.read().strip()
+        if text:
+            log(f"   인물 고정표 재사용: {sheet_path}")
+            return text
+    plan_path = os.path.join(workdir, "기획.txt")
+    if not os.path.isfile(plan_path):
+        return ""
+    with open(plan_path, encoding="utf-8-sig") as f:
+        chars = 민담_대본.block_of(f.read(), "등장인물")
+    if not chars.strip():
+        return ""
+    log("   인물 고정표 만드는 중 (한 편에 한 번) ")
+    text = ai.ask(인물표_지시, f"[등장인물]\n{chars}").replace("```", "").strip()
+    lines = [ln.strip() for ln in text.splitlines() if ln.count("/") >= 4 and "clothing" in ln.lower()]
+    if not lines:
+        log("   ! 인물 고정표를 읽지 못해 이번 편은 지침의 생김새 규칙만으로 만듭니다")
+        return ""
+    text = "\n".join(lines)
+    with open(sheet_path, "w", encoding="utf-8") as f:
+        f.write(text + "\n")
+    log(f"   ✓ 인물 고정표 {len(lines)}명 → {sheet_path}")
+    return text
+
+
+def sheet_note(sheet):
+    """요청 메시지에 붙이는 [인물 고정표] 안내."""
+    if not sheet:
+        return ""
+    return ("[인물 고정표 — 이 편의 모든 장면에서 같은 낱말로]\n" + sheet + "\n"
+            "위 인물이 나오는 프롬프트마다 clothing·hair·face & build 세 구절을 이 표의 영어 그대로 되풀이한다. 새로 정하거나 바꾸지 않는다. "
+            "장소나 때가 바뀔 때만 겉옷이나 소품을 더한다.\n\n")
+
+
 def make_image_prompts(job, req):
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
@@ -838,6 +888,7 @@ def make_image_prompts(job, req):
         out_path = os.path.join(os.path.dirname(path), "이미지프롬프트.txt")
     else:
         out_path = re.sub(r"\.txt$", "", path) + "_이미지프롬프트.txt"
+    sheet = character_sheet(path, ai, job.add)     # 이야기형: 인물 생김새를 한 편 안에서 고정 (묶음마다 같은 표를 보낸다)
     have = {}
     if os.path.isfile(out_path):                     # 지난번에 만들다 만 파일이 있으면 올바른 장면은 그대로 쓰고 모자란 묶음만 묻는다
         with open(out_path, encoding="utf-8-sig") as f:
@@ -854,6 +905,7 @@ def make_image_prompts(job, req):
             continue
         lines = "\n".join(f"{i+1:03d}. {texts[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
+                + sheet_note(sheet)
                 + 채널_프로필.mascot_reference_note(channel_of(path))
                 + ("[레퍼런스] 드롭샷 References 패널에 업로드된 이미지를 반드시 참조한다. "
                    "C형의 동일 인물은 얼굴형·눈·머리·체형·의상을 유지하고, "
@@ -1474,7 +1526,8 @@ def make_thumbnails(job, req):
             f"[채널] {profile['이름']} ({profile['유형']})\n[구도] {layout}. 유튜브 썸네일용 강한 명암과 스마트폰에서도 즉시 읽히는 단순한 장면\n\n[썸네일 문구]\n"
             + "\n".join(f"{i}. 상단: {t.replace('*', '')} / 하단: {b.replace('*', '')}" + (f" / 이미지: {d}" if d else "") for i, (t, b, d) in enumerate(copies, 1))
             + f"\n\n[영상별 SEO 정보]\n{seo_context}"
-            + (f"\n\n[브리프]\n{brief}" if brief else ""))
+            + (f"\n\n[브리프]\n{brief}" if brief else "")
+            + (("\n\n" + sheet_note(character_sheet(script, ai, job.add)).rstrip()) if is_mindam else ""))
     job.stage = "썸네일 프롬프트"
     job.add("   썸네일 프롬프트 3개 ")
     text = ai.ask(read_guideline("썸네일_지침.txt", "mindam" if is_mindam else "person"), user).replace("```", "")
