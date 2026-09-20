@@ -11,6 +11,7 @@ VIDEOGEN = r'''"""이미지 → 움직이는 영상 자동 변환 — 드롭샷 
 """
 from __future__ import annotations
 
+import re
 import shutil
 import threading
 import time
@@ -214,14 +215,48 @@ class VideoRunner:
         return None
 
     def find_prompt_input(self, s: VideoSettings):
-        """움직임 프롬프트 입력창 — 페이지 안의 넓은 입력 칸(Edit) 중 생성 버튼 바로 위의 것."""
+        """움직임 프롬프트 입력창 — 드롭샷 영상 화면은 이 칸을 ComboBox(때로 Edit) 로 내놓는다: '프롬프트' 글자 아래, 생성 버튼 위의 넓은 칸."""
         items = self._page_items(s.window_keyword)
         gen = self.find_generate_button(s)
-        edits = [r for (n, r, t) in items if t in ("Edit", "Document") and r.width() > 250 and 20 <= r.height() <= 600 and (not gen or r.top < gen[1])]
-        if not edits:
+        labels = [r for (n, r, t) in items if t == "Text" and n.strip() == "프롬프트"]
+        boxes = [r for (n, r, t) in items if t in ("ComboBox", "Edit", "Document") and r.width() > 250 and 40 <= r.height() <= 600
+                 and (not gen or r.top < gen[1]) and (not labels or any(0 <= r.top - lb.bottom <= 60 for lb in labels))]
+        if not boxes:
             return None
-        r = max(edits, key=lambda r: r.bottom) if gen else max(edits, key=lambda r: r.width())
+        r = max(boxes, key=lambda r: r.bottom) if gen else max(boxes, key=lambda r: r.width())
         return self._center(r)
+
+    def prompt_char_count(self, s: VideoSettings):
+        """입력창 아래 'N자' 글자 수 표시. 못 읽으면 None."""
+        try:
+            for (n, r, t) in self._page_items(s.window_keyword):
+                m = re.fullmatch(r"\s*([\d,]+)\s*자\s*", n or "")
+                if t == "Text" and m:
+                    return int(m.group(1).replace(",", ""))
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    def _enter_prompt(self, s: VideoSettings, prompt: str) -> bool:
+        """입력창을 눌러 프롬프트를 넣고, 'N자' 표시로 실제로 들어갔는지 확인한다. 붙여넣기가 안 먹으면 한 번 더, 그래도 안 되면 직접 타이핑."""
+        for attempt in range(3):
+            self._focus_window(s.window_keyword)
+            pxy = self.find_prompt_input(s) or tuple(s.prompt_xy)
+            self._click(pxy)
+            time.sleep(0.4)
+            self._hotkey(s.clear_key)
+            self._press("backspace")
+            time.sleep(0.2)
+            if attempt < 2:
+                self._paste(prompt)
+            else:
+                pyautogui.write(prompt.encode("ascii", "ignore").decode(), interval=0.005)   # 한글이 아니면 직접 친다
+            time.sleep(0.8)
+            count = self.prompt_char_count(s)
+            if count is None or count > 0:
+                return True
+            self.state.add(f"프롬프트가 입력되지 않음 (0자) → 다시 시도 ({attempt + 1}/3)")
+        return False
 
     def find_download_button(self, s: VideoSettings, near=None):
         """결과 카드의 다운로드 버튼. 드롭샷은 이름 없는 아이콘 버튼('icon')을 ♥ 즐겨찾기 버튼 바로 오른쪽에 둔다.
@@ -331,15 +366,9 @@ class VideoRunner:
         # 2) 움직임 프롬프트
         prompt = (s.prompts.get(no) or "").strip()
         prompt = (prompt + " " if prompt else "") + s.motion_prompt.strip()
-        self._focus_window(s.window_keyword)
-        pxy = self.find_prompt_input(s) or tuple(s.prompt_xy)
-        self._click(pxy)
-        time.sleep(0.3)
-        self._hotkey(s.clear_key)
-        self._press("backspace")
-        time.sleep(0.2)
-        self._paste(prompt)
-        time.sleep(0.8)
+        if not self._enter_prompt(s, prompt):
+            raise WrongPage("움직임 프롬프트가 입력창에 들어가지 않았습니다 (0자). 드롭샷 '영상 생성' 화면의 프롬프트 칸 위치를 [설정]의 영상 변환 좌표에서 다시 잡으세요.")
+        st.add(f"{no:03d} 프롬프트 입력 완료")
         # 3) 생성 → 최소 대기 → 다운로드를 주기적으로 시도
         before = self._snapshot(dl)
         gxy = self.find_generate_button(s)

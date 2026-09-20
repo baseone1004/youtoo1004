@@ -409,9 +409,11 @@ async function poll() {
       + ((r.issues || []).length ? `<div class="hint" style="margin-top:6px">확인: ${r.issues.map(esc).join(' · ')}</div>` : '')
       + `<div class="hint">${esc(r.cost || '')}</div>`;
     refresh();
-  } else if (j.status === 'error') { const e = $('pgErr'); e.classList.remove('hidden'); e.className = 'errwrap'; e.innerHTML = explainError(j.error); }
+  } else if (j.status === 'error' && isCancelMessage(j.error)) { $('pgErr').classList.add('hidden'); $('pgStage').textContent = '⏹ 중단됨 — 이어서 만들려면 대본을 고르고 [이어서 만들기]를 누르세요'; }
+  else if (j.status === 'error') { const e = $('pgErr'); e.classList.remove('hidden'); e.className = 'errwrap'; e.innerHTML = explainError(j.error); }
 }
 // ── 친절한 오류 안내: 원인별 제목·설명·해결 버튼 ──
+function isCancelMessage(message) { const raw = String(message || ''); return /중단|취소|cancel/i.test(raw) && !/편집프로그램|이미지 생성/.test(raw); }   // 사용자가 [■ 중단]을 누른 것 — 오류 카드를 띄우지 않는다
 function explainError(message, opts) {
   const raw = String(message || '알 수 없는 오류'); opts = opts || {};
   const retry = opts.retry !== false && STATE && STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status));
@@ -454,7 +456,7 @@ function renderQueue(q) {
   if (!q) return; const items = q.items || [], done = items.filter(x => x.status === 'done').length, failed = items.filter(x => x.status === 'error').length;
   $('queueManage').classList.toggle('hidden', !items.length || !['running', 'paused'].includes(q.status));
   $('queueSummary').textContent = items.length ? `${q.status_text || ''} · 전체 ${items.length}편 · 완료 ${done}편${failed ? ` · 실패 ${failed}편` : ''}` : '대기열 없음';
-  $('queueList').innerHTML = items.map((x, i) => `<div class="qitem ${x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(x.status_text || '대기 중')}${x.stage ? ' · ' + esc(x.stage) : ''}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${x.error ? explainError(x.error, {retry: x.status === 'error'}) : ''}</div>`).join('');
+  $('queueList').innerHTML = items.map((x, i) => `<div class="qitem ${x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(x.status_text || '대기 중')}${x.stage ? ' · ' + esc(x.stage) : ''}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${x.error && !isCancelMessage(x.error) && x.status !== 'cancelled' ? explainError(x.error, {retry: x.status === 'error'}) : ''}</div>`).join('');
 }
 async function refreshQueue() { try { const q = await api('/api/queue'); if (STATE) STATE.queue = q; renderQueue(q); renderStepBar(); } catch (e) {} }
 
