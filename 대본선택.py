@@ -1384,8 +1384,26 @@ def dropshot_video_xy(info=None):
     return None
 
 
+움직임_프롬프트 = ("Animate this exact illustration. Keep the input image's 2D illustrated art style, colors, linework and character design completely unchanged — "
+            "do not make it photorealistic, do not add realistic skin, lighting or 3D depth. Only subtle natural motion: a slow gentle camera drift, "
+            "small movements of hair, cloth, eyes and breath. Same composition, same characters, nothing new appears.")
+
+
+def motion_prompt_for(prompts_file=None):
+    """영상 변환에 붙일 움직임 프롬프트. 프롬프트 파일의 화풍 이름을 읽어 '그 화풍 그대로'를 앞에 못 박는다 (실사로 바뀌는 것을 막는다)."""
+    style = ""
+    try:
+        with open(prompts_file, encoding="utf-8-sig") as f:
+            m = re.search(r"every image must be (.+?) style\.\s*(.*?)(?=\s+(?:PEOPLE LOCK|AGE LOCK|FRAME LOCK|Keep the same)|$)", f.read(200000), flags=re.S)
+        if m:
+            style = f"STYLE: {m.group(1)} — {m.group(2).strip()[:300]} "
+    except (OSError, TypeError):
+        pass
+    return style + 움직임_프롬프트
+
+
 def scene_motion_prompts(prompts_file, scenes):
-    """장면별 영어 프롬프트에서 화풍 고정 문구를 떼고 움직임 프롬프트 앞에 붙일 장면 설명을 만든다."""
+    """장면별 영어 프롬프트에서 화풍 고정 문구를 떼고 움직임 프롬프트 앞에 붙일 장면 설명을 만든다 (화풍 자체는 motion_prompt 가 다시 못 박는다)."""
     out = {}
     if not prompts_file or not os.path.isfile(prompts_file):
         return out
@@ -1396,7 +1414,8 @@ def scene_motion_prompts(prompts_file, scenes):
         if not m:
             continue
         text = re.sub(r"^STRICT STYLE LOCK:.*?mixed-media image\.\s*", "", m.group(1).strip(), flags=re.S)
-        out[no] = text[:600]
+        text = re.sub(r"REFERENCE FACE: @image \d+ [^\n]*?in every scene\.\s*", "", text)
+        out[no] = text.lstrip(" ,;.").strip()[:500]
     return out
 
 
@@ -1410,7 +1429,7 @@ def start_dropshot_videos(images_dir, prompts_file, scenes):
     dl = (ui.get("P") or {}).get("download") or info.get("downloads_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
     body = dict(images_dir=os.path.abspath(images_dir), download_dir=dl, scenes=list(scenes), prompts=scene_motion_prompts(prompts_file, scenes),
                 upload_xy=v["upload"], prompt_xy=v["prompt"], generate_xy=v["generate"], download_xy=v["download"],
-                motion_prompt=ui.get("motion_prompt") or "Cinematic slow camera movement, subtle natural motion, keep the same style and composition.",
+                motion_prompt=motion_prompt_for(prompts_file),
                 wait_min=float(ui.get("video_wait_min") or 60), wait_max=float(ui.get("video_wait_max") or 360),
                 manual_download=ui.get("video_manual_download", True) is not False,
                 window_keyword=ui.get("video_window_keyword") or "드롭샷")   # 드롭샷 창 (우리 프로그램 창은 제외된다)
@@ -1445,7 +1464,7 @@ def run_hook_videos_dropshot(job, images_dir, prompts_file, scenes):
 
 def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
     body = dict(images_dir=os.path.abspath(images_dir), prompts_file=os.path.abspath(prompts_file), scenes=scenes,
-                output_dir=os.path.abspath(out_dir) if out_dir else "")
+                output_dir=os.path.abspath(out_dir) if out_dir else "", motion_prompt=motion_prompt_for(prompts_file))
     j = aip("/api/hook/start", body)
     while True:
         if job.cancel_requested:
