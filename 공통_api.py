@@ -90,11 +90,13 @@ class AI:
             self.client = OpenAI(api_key=self.key, base_url=p["base_url"])
 
     # ── 한 번 묻고 전체 답을 받는다 (스트리밍, 진행 표시) ──────────────
-    def _make_fallback(self, reason):
-        """키가 저장된 예비 AI 를 만든다. 없으면 None."""
+    def _make_fallback(self, reason, exclude=()):
+        """키가 저장된 예비 AI 를 만든다 (exclude 에 든 것은 건너뜀). 없으면 None."""
         if self._is_fallback:
             return None
         for name in fallback_candidates(self.cfg, self.name):
+            if name in exclude:
+                continue
             try:
                 spare_cfg = dict(self.cfg, AI=name, API_키=self.cfg.get("API_키_" + name, ""), 모델="")
                 spare = AI(spare_cfg, _is_fallback=True)
@@ -137,11 +139,21 @@ class AI:
                 if self._cancelled():                 # 기다리다 중단된 것 → 예비 AI 로 넘어가지 않고 바로 멈춘다
                     raise Cancelled("사용자가 중단했습니다.") from e
                 if attempt >= retries:
-                    spare = self._make_fallback(f"{self.name} 가 {retries + 1}번 실패 ({str(e)[:80]})")
-                    if spare is None:
-                        raise
-                    self.fallback = spare
-                    return spare.ask(system, user, max_tokens)
+                    tried, last = set(), e
+                    while True:                       # 예비 AI 가 한도 초과 등으로 실패하면 그 다음 예비 AI 로 넘어간다 (gemini → deepseek → claude)
+                        spare = self._make_fallback(f"{self.name} 가 {retries + 1}번 실패 ({str(last)[:80]})", exclude=tried)
+                        if spare is None:
+                            raise last
+                        tried.add(spare.name)
+                        try:
+                            out = spare.ask(system, user, max_tokens)
+                            self.fallback = spare
+                            return out
+                        except Cancelled:
+                            raise
+                        except Exception as e2:  # noqa: BLE001
+                            print(f"\n   ! 예비 AI {spare.name} 실패: {str(e2)[:100]}", flush=True)
+                            last = e2
                 wait = 8 * (attempt + 1)
                 print(f"\n   ! 호출 실패({e.__class__.__name__}: {str(e)[:120]}) — {wait}초 뒤 다시 시도")
                 for _ in range(wait):                 # 기다리는 동안에도 [■ 중단] 을 본다
@@ -152,7 +164,7 @@ class AI:
         import 웹큐
         text = (system.strip() + "\n\n" + "=" * 30 + "\n[요청]\n" + user.strip()
                 + "\n\n(위 지침을 그대로 따른다. 설명·확인 질문·머리말 없이 결과물만 출력한다.)")
-        for attempt in range(7):                     # 딥시크 웹이 "Messages too frequent" 로 막으면 5분씩 기다렸다 다시 (최대 30분)
+        for attempt in range(13):                    # 딥시크 웹이 "Messages too frequent" 로 막으면 5분씩 기다렸다 다시 (최대 1시간, 그 뒤 예비 AI)
             jid = 웹큐.submit(text, {"new_chat": True})
             print(" [딥시크 웹 대기]", end="", flush=True)
             try:
@@ -160,9 +172,9 @@ class AI:
                 break
             except RuntimeError as e:
                 throttled = any(k in str(e) for k in ("too frequent", "사용량 제한", "답변이 시작되지 않았습니다"))   # 답이 아예 안 오는 것도 대개 사용량 제한
-                if not throttled or attempt >= 6:
+                if not throttled or attempt >= 12:
                     raise
-                print(f"\n   ! 딥시크 웹 사용량 제한 → 5분 뒤 다시 시도 ({attempt + 1}/6)", flush=True)
+                print(f"\n   ! 딥시크 웹 사용량 제한 → 5분 뒤 다시 시도 ({attempt + 1}/12)", flush=True)
                 for _ in range(300):
                     self._raise_if_cancelled(); time.sleep(1)
         self.usage["in"] += len(text) // 2; self.usage["out"] += len(out) // 2
