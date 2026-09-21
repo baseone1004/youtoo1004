@@ -19,7 +19,7 @@ INWORLD_URL = "https://api.inworld.ai/tts/v1/voice"
 FFMPEG_후보 = [os.path.join(BASE, "bin", "ffmpeg.exe"),
             os.path.join(BASE, "편집프로그램", "bin", "ffmpeg.exe"),
             os.path.join(os.path.expanduser("~"), "Downloads", "편집프로그램", "bin", "ffmpeg.exe")]
-문장_간격 = 0.35          # 문장 사이 무음(초)
+문장_간격 = 0.28          # 묶음 사이 무음(초) — 묶음 안의 쉼은 목소리가 알아서 두고, 긴 쉼은 쉼_최대 로 줄인다
 동시_요청 = 3
 자막_최대_글자 = 18     # 화면에 한 번에 보여줄 자막 길이(공백 제외)
 
@@ -163,10 +163,43 @@ def detect_silences(ffmpeg, path, noise_db=-35, min_len=0.15):
     """음성 파일 안의 조용한 구간 [(시작, 끝)] — 문장 사이의 자연스러운 쉼을 찾는 데 쓴다."""
     out = subprocess.run([ffmpeg, "-hide_banner", "-nostats", "-i", path, "-af", f"silencedetect=noise={noise_db}dB:d={min_len}", "-f", "null", "-"],
                          capture_output=True, text=True, errors="replace")
-    text = out.stderr or ""
+    text = out.stderr if isinstance(getattr(out, "stderr", None), str) else ""
     starts = [float(x) for x in re.findall(r"silence_start:\s*([\d.]+)", text)]
     ends = [float(x) for x in re.findall(r"silence_end:\s*([\d.]+)", text)]
     return list(zip(starts, ends))
+
+
+쉼_최대 = 0.45            # 읽힌 음성 안의 쉼(무음)이 이보다 길면 이 길이로 줄인다 (문장마다 길게 쉬어 뚝뚝 끊기는 느낌을 없앤다)
+앞뒤_무음 = 0.08          # 묶음 파일 앞뒤에 남겨 두는 무음
+
+
+def tighten_pauses(ffmpeg, ffprobe, src, dst, max_pause=쉼_최대, edge=앞뒤_무음):
+    """묶음 음성의 앞뒤 무음을 잘라 내고, 안쪽의 긴 쉼은 max_pause 로 줄인다. 실패하면 원본을 그대로 복사."""
+    import shutil as _sh
+    total = probe_duration(ffprobe, src)
+    sil = detect_silences(ffmpeg, src, noise_db=-40, min_len=0.12)
+    if total <= 0:
+        _sh.copy(src, dst); return dst
+    start, end = 0.0, total
+    if sil and sil[0][0] <= 0.02:
+        start = max(0.0, sil[0][1] - edge); sil = sil[1:]
+    if sil and sil[-1][1] >= total - 0.05:
+        end = min(total, sil[-1][0] + edge * 1.5); sil = sil[:-1]
+    segs, cur = [], start
+    for a, b in sil:
+        if b - a > max_pause and a > cur:
+            segs.append((cur, a + max_pause)); cur = b          # 쉼의 앞 max_pause 만 남기고 나머지는 건너뛴다
+    segs.append((cur, end))
+    segs = [(a, b) for a, b in segs if b - a > 0.02]
+    if not segs:
+        _sh.copy(src, dst); return dst
+    parts = "".join(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[s{i}];" for i, (a, b) in enumerate(segs))
+    filt = parts + "".join(f"[s{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1[out]"
+    r = subprocess.run([ffmpeg, "-y", "-v", "error", "-i", src, "-filter_complex", filt, "-map", "[out]", "-c:a", "libmp3lame", "-b:a", "160k", dst],
+                       capture_output=True, text=True, errors="replace")
+    if r.returncode != 0 or not os.path.exists(dst):
+        _sh.copy(src, dst)
+    return dst
 
 
 def sentence_boundaries(ffmpeg, path, total, texts):
@@ -267,6 +300,10 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
         p = part_path(a, b)
         if not os.path.exists(p):
             continue
+        tp = p[:-4] + "_t.mp3"                    # 앞뒤 무음을 자르고 긴 쉼을 줄인 파일로 합친다 (원본은 그대로 둔다)
+        if not os.path.exists(tp) or os.path.getmtime(tp) < os.path.getmtime(p):
+            tighten_pauses(ffmpeg, ffprobe, p, tp)
+        p = tp
         total = probe_duration(ffprobe, p)
         texts = sentences[a - 1:b]
         bounds = [0.0] + sentence_boundaries(ffmpeg, p, total, texts) + [total]

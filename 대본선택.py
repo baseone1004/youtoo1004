@@ -1217,7 +1217,8 @@ def make_tts(job, req):
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
                          req.get("model") or cfg.get("인월드_모델", "inworld-tts-1.5-max"), speed,
                          log=job.add, cancel=lambda: job.cancel_requested,
-                         subtitle_lines=2 if channel == "mindam" else 1, groups=groups)
+                         subtitle_lines=2 if channel == "mindam" else 1, groups=groups,
+                         temperature=(float(cfg["인월드_온도"]) if cfg.get("인월드_온도") not in (None, "", 0) else None))   # 감정 변화폭 (비우면 인월드 기본)
     return r
 
 
@@ -2400,7 +2401,7 @@ class H(BaseHTTPRequestHandler):
                 cfg = load_json("설정.json", {})
                 prev_ai = (cfg.get("AI") or "").strip().lower()
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
-                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "분당_글자수", "화풍", "후킹_장면수",
+                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감
