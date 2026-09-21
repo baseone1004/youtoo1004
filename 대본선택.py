@@ -2033,12 +2033,8 @@ def make_pipeline(job, req):
             else:
                 ensure_mascot_reference(job)
         else:
-            try:
-                n = aip("/api/ref/count").get("count")
-                job.add(f"   드롭샷 레퍼런스: 패널에 있는 그림 {n}장을 그대로 참고합니다 (직접 바꾸면 바뀐 대로 씁니다)" if n else
-                        "   드롭샷 레퍼런스 패널이 비어 있습니다 — 캐릭터를 쓰려면 드롭샷 [추가하기]로 그림을 올려 두세요")
-            except Exception:  # noqa: BLE001
-                pass
+            # 레퍼런스 개수 확인(접근성 트리 읽기)을 이미지 생성 직전에 하면 편집프로그램이 두 스레드에서 동시에 창을 읽다가 죽는다(_ctypes 0xC0000005) → 읽지 않는다
+            job.add("   드롭샷 레퍼런스 패널에 올려 둔 캐릭터(@image 1)를 그대로 참고합니다 (직접 바꾸면 바뀐 대로 씁니다)")
         run_image_generation(job, result["prompts"], images_dir, prefix)
     check_cancelled()
     # 5) 후킹 영상
