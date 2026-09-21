@@ -2216,7 +2216,10 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/state":
                 cfg = 대본생성.load_cfg()
                 job = STATE["job"]
-                self._json(dict(topics=topics(), guidelines=guideline_files(), scripts=script_files(),
+                hide_mindam = bool(cfg.get("이야기형_숨김"))          # 이야기형(민담) 채널을 당분간 쓰지 않을 때: 화면·목록에서 감춘다 (파일은 그대로)
+                self._json(dict(topics=topics(), guidelines=guideline_files(),
+                                scripts=[x for x in script_files() if not (hide_mindam and os.path.basename(x["path"]) == "final.txt")],
+                                hidden_channels=(["mindam"] if hide_mindam else []),
                                 keys={"deepseek": mask(cfg.get("API_키_deepseek") or (cfg.get("API_키") if cfg["AI"] in ("deepseek", "deepseek-web") else "")),
                                       "gemini": mask(cfg.get("API_키_gemini") or (cfg.get("API_키") if cfg["AI"] == "gemini" else "")),
                                       "claude": mask(cfg.get("API_키_claude") or (cfg.get("API_키") if cfg["AI"] == "claude" else "")),
@@ -2478,7 +2481,7 @@ class H(BaseHTTPRequestHandler):
                 cfg = load_json("설정.json", {})
                 prev_ai = (cfg.get("AI") or "").strip().lower()
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
-                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "분당_글자수", "화풍", "후킹_장면수",
+                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감

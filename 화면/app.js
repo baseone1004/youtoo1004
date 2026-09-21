@@ -127,6 +127,11 @@ async function checkReady() {
 async function refresh() {
   STATE = await api('/api/state');
   const c = STATE.config;
+  // 이야기형(민담) 채널 숨김: 설정.json "이야기형_숨김": true — 버튼·줄·목록을 감추고 정보형만 쓴다 (다시 쓰려면 false)
+  const hideM = (STATE.hidden_channels || []).includes('mindam');
+  document.querySelectorAll('[data-ch="mindam"],[data-slot="mindam"],[data-ach="mindam"],#genreChips,#mindamLenRow').forEach(el => el.classList.toggle('hidden', hideM));
+  document.querySelectorAll('.pname-mindam').forEach(el => { const row = el.closest('.keyrow,.row'); if (row) row.classList.toggle('hidden', hideM); });
+  if (hideM && channel === 'mindam') channel = 'person';
   // 1단계
   renderTopics();
   // 2단계
