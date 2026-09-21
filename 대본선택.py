@@ -763,13 +763,17 @@ def restyle_prompts(prompts_file, style, channel):
 
     def fix(m):
         head, body = m.group(1), m.group(2)
-        if new_lock in body:
-            return m.group(0)
-        stripped = re.sub(r"STRICT STYLE LOCK:.*?(?:consistent channel look\.?|mixed-media image\.)\s*", "", body, count=1, flags=re.S)
+        if "mixed-media image." in body:              # 화풍 문구 전체(끝 표시까지, 겹쳐 있으면 마지막 것까지)를 걷어 낸다
+            stripped = re.sub(r"STRICT STYLE LOCK:.*mixed-media image\.\s*", "", body, count=1, flags=re.S)
+        else:
+            stripped = re.sub(r"STRICT STYLE LOCK:.*?consistent channel look\.?\s*", "", body, count=1, flags=re.S)
         if stripped == body and "STRICT STYLE LOCK:" in body:
             return m.group(0)                      # 어디까지가 화풍 문구인지 모르면 손대지 않는다
+        rebuilt = head + new_lock + " " + stripped.strip()
+        if rebuilt == m.group(0):
+            return m.group(0)
         changed[0] += 1
-        return head + new_lock + " " + stripped.strip()
+        return rebuilt
 
     text2 = re.sub(r"^(프롬프트\s*[:：]\s*)(.+)$", fix, text, flags=re.M)
     if changed[0]:
