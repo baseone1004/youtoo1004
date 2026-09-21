@@ -710,6 +710,9 @@ def make_variations(job, req):
     "파스텔": "hand-drawn 2D pastel illustration, soft colored-pencil and watercolor textures, clean illustrated faces and outlines, warm muted palette, 16:9 aspect ratio",
     "수묵": "traditional Korean ink wash painting style with subtle color, hanji paper texture, 16:9 aspect ratio",
     # ── 야담·민담·옛이야기용 (조선 배경 고정, 아동풍 금지, 테두리 없이 화면 가득)
+    "밝은 애니 사극": "bright clean anime-style 2D illustration of a Joseon-era Korean folktale: large clear expressive eyes, smooth cel shading with soft gradients, "
+                "cheerful saturated yet gentle colors, sunny daylight with soft lens glow, lush flowers and greenery, detailed hanok village and hanbok, "
+                "youthful smooth faces, crisp clean outlines, " + 전체화면 + ", 16:9 aspect ratio",
     "웹툰 사극": "bright vivid Korean webtoon-style digital illustration of a Joseon-era folktale: clean confident linework, soft cel shading, "
               "saturated harmonious colors (pink, green, red, jade hanbok), warm sunny daylight or golden lamplight, "
               "expressive emotional faces with large clear eyes and smooth skin, detailed hanbok, gat and hanok, lively village backgrounds, "
@@ -726,16 +729,16 @@ def make_variations(job, req):
 화풍_별칭 = {"민화": "수채 사극"}          # 예전 이름으로 저장된 설정·프롬프트를 새 화풍으로
 화풍_설명 = {
     "실사": "사진 같은 시네마틱", "애니": "웹툰·셀 채색", "2D 일러스트": "선명한 성인용 2D·레퍼런스 유지", "파스텔": "부드러운 수채", "수묵": "한지·먹 느낌",
-    "웹툰 사극": "밝고 선명한 웹툰풍 (요즘 야담 채널식 · 기본)", "수채 사극": "맑은 선 + 수채 웹툰풍", "한지 동화": "따뜻한 그림책 (어른용)", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
+    "밝은 애니 사극": "밝고 맑은 애니풍 · 큰 눈 · 꽃과 햇살 (기본)", "웹툰 사극": "밝고 선명한 웹툰풍 (요즘 야담 채널식)", "수채 사극": "맑은 선 + 수채 웹툰풍", "한지 동화": "따뜻한 그림책 (어른용)", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
 }
 화풍_그룹 = {"공통": ["실사", "애니", "2D 일러스트", "파스텔", "수묵"],
-          "야담·민담·옛이야기": ["웹툰 사극", "수채 사극", "한지 동화", "괴담 극화"]}
+          "야담·민담·옛이야기": ["밝은 애니 사극", "웹툰 사극", "수채 사극", "한지 동화", "괴담 극화"]}
 
 def image_style_lock(style, channel=None):
     """선택한 화풍이 뒤의 장면 설명과 충돌해도 사진풍으로 바뀌지 않게 고정한다. 채널을 주면 그 채널의 색감 문구(화풍_접미)를 덧붙인다."""
     style = 화풍_별칭.get(style, style)
     if style not in 화풍:
-        style = "웹툰 사극" if channel == "mindam" else "2D 일러스트"
+        style = "밝은 애니 사극" if channel == "mindam" else "2D 일러스트"
     base = 화풍[style]
     tail = (" " + 채널_프로필.style_tail(channel) + ".") if channel and 채널_프로필.style_tail(channel) else ""
     if style == "실사":
@@ -1647,7 +1650,7 @@ def make_thumbnails(job, req):
     # 썸네일 화풍·구도는 채널 프로필에서 온다 (화풍을 비워 두면 장면 화풍을 그대로 쓴다)
     profile = 채널_프로필.get("mindam" if is_mindam else "person")
     tp = profile.get("썸네일") or {}
-    style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "실사"), req.get("style", "실사")), 화풍["웹툰 사극" if is_mindam else "실사"])
+    style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "실사"), req.get("style", "실사")), 화풍["밝은 애니 사극" if is_mindam else "실사"])
     if 채널_프로필.style_tail("mindam" if is_mindam else "person"):
         style = style.rstrip(". ") + ", " + 채널_프로필.style_tail("mindam" if is_mindam else "person")
     position = "bottom"
@@ -1741,6 +1744,71 @@ def narration_matches(flow_file, script_file):
         return False
 
 
+def main_character_line(assets):
+    """인물표.txt 의 첫 인물(주인공) 줄 → (이름, 나이·성별, 생김새 영어 구절)."""
+    sheet = os.path.join(assets, "인물표.txt")
+    if not os.path.isfile(sheet):
+        return None
+    for line in open(sheet, encoding="utf-8-sig").read().splitlines():
+        if line.count("/") >= 4 and "(뒤)" not in line:
+            parts = [x.strip() for x in line.split("/")]
+            desc = ", ".join(x.split(":", 1)[1].strip() for x in parts[3:6] if ":" in x and "not specified" not in x)
+            return parts[0], parts[1], desc
+    return None
+
+
+def ensure_face_reference(job, script, assets, prompts_file, style):
+    """이야기형: 주인공 정면 초상(인물/주인공.jpg)을 만들어 드롭샷 레퍼런스 패널에 올리고, 프롬프트마다 '@image 1 = 주인공 얼굴' 을 적어 둔다.
+    실패해도 제작은 계속한다 (얼굴 고정만 빠짐)."""
+    who = main_character_line(assets)
+    if not who:
+        job.add("   인물표가 없어 얼굴 고정(레퍼런스)은 건너뜁니다"); return
+    name, age, desc = who
+    face_dir = os.path.join(assets, "인물"); os.makedirs(face_dir, exist_ok=True)
+    face = os.path.join(face_dir, "주인공.jpg")
+    if not os.path.isfile(face):
+        job.add(f"   주인공({name}) 얼굴 기준 그림을 먼저 만듭니다")
+        pf = os.path.join(face_dir, "인물_프롬프트.txt")
+        lock = image_style_lock(style, "mindam")
+        prompt = (f"{lock} CHARACTER DESIGN REFERENCE: front-facing bust portrait of a Korean Joseon {age} ({desc}), "
+                  "calm neutral expression, looking straight at the viewer, even soft lighting, plain light background, no other people, no text, 16:9 aspect ratio")
+        with open(pf, "w", encoding="utf-8") as f:
+            f.write(f"===001===\n유형: C\n대사: {name} 얼굴 기준\n프롬프트: {prompt}\n")
+        try:
+            run_image_generation(job, pf, face_dir, "", retries_left=1)
+        except Exception as e:  # noqa: BLE001
+            job.add(f"   ! 얼굴 기준 그림 실패(얼굴 고정 없이 진행): {e}"); return
+        made = os.path.join(face_dir, "001.jpg")
+        if os.path.isfile(made):
+            shutil.move(made, face)
+    if not os.path.isfile(face):
+        job.add("   ! 얼굴 기준 그림이 없어 얼굴 고정 없이 진행"); return
+    try:
+        aip("/api/ref/clear", {"window_keyword": "드롭샷"})
+        r = aip("/api/ref/add", {"image": os.path.abspath(face), "window_keyword": "드롭샷"})
+    except Exception as e:  # noqa: BLE001
+        job.add(f"   ! 레퍼런스 올리기 실패(얼굴 고정 없이 진행): {e}"); return
+    if not r.get("ok"):
+        job.add("   ! 드롭샷 레퍼런스 패널에 올리지 못함 (얼굴 고정 없이 진행)"); return
+    note = f"REFERENCE FACE: @image 1 is {name}'s face and hairstyle — draw {name} with exactly this face, hair and age in every scene."
+    with open(prompts_file, encoding="utf-8-sig") as f:
+        text = f.read()
+    if "REFERENCE FACE: @image 1" not in text:
+        text = re.sub(r"^(프롬프트\s*[:：]\s*)", lambda m: m.group(1) + note + " ", text, flags=re.M)
+        with open(prompts_file, "w", encoding="utf-8") as f:
+            f.write(text)
+    job.add(f"   ✓ 주인공 얼굴 레퍼런스 올림 (@image 1 = {name}) · 모든 장면에 같은 얼굴 지시")
+
+
+def clear_face_reference(job):
+    try:
+        r = aip("/api/ref/clear", {"window_keyword": "드롭샷"})
+        if r.get("removed"):
+            job.add(f"   레퍼런스 비움 ({r['removed']}장)")
+    except Exception as e:  # noqa: BLE001
+        job.add(f"   ! 레퍼런스 비우기 실패: {e}")
+
+
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
     def check_cancelled():
@@ -1822,6 +1890,8 @@ def make_pipeline(job, req):
         if legacy_split(script):                    # 예전 방식으로 시작한 편: 프롬프트 안의 화풍 문구를 그대로 쓴다 (새 화풍을 덧붙이지 않음)
             prefix = ""
             job.add("   예전 방식으로 시작한 편이라 화풍·문장 나누기를 그대로 둡니다 (새 규칙은 다음 편부터)")
+        if channel_of(script) == "mindam" and not legacy_split(script):
+            ensure_face_reference(job, script, assets, result["prompts"], selected_style)   # 주인공 얼굴을 드롭샷 레퍼런스에 올려 모든 장면에서 같은 얼굴로
         run_image_generation(job, result["prompts"], images_dir, prefix)
     check_cancelled()
     # 5) 후킹 영상
@@ -1885,6 +1955,8 @@ def make_pipeline(job, req):
         except Exception as e:  # noqa: BLE001
             render_error = e
             job.add(f"   ! 최종 영상 합치기 실패: {e}")
+    if channel_of(script) == "mindam":
+        clear_face_reference(job)                 # 다음 편은 다른 주인공이므로 레퍼런스를 비운다
     job.stage = "⑦ 업로드 폴더 정리"
     result["upload_dir"] = make_upload_package(script, result)
     job.add("   ✓ 업로드 폴더: " + result["upload_dir"])

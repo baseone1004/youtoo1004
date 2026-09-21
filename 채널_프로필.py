@@ -73,7 +73,7 @@ _lock = threading.Lock()
         "화풍_접미": "soft muted natural colors, gentle warm lamplight or daylight, clean full-frame composition, consistent channel look",
         "썸네일": {
             "레이아웃": "pop_bold",
-            "화풍": ("bright vivid Korean webtoon-style digital illustration for a YouTube thumbnail, clean confident linework, soft cel shading, "
+            "화풍": ("bright clean anime-style 2D illustration for a YouTube thumbnail, large clear expressive eyes, smooth cel shading, cheerful saturated colors, sunny daylight, "
                    "saturated colors (pink, green, red and jade hanbok), warm sunny daylight, expressive emotional faces with large clear eyes, "
                    "Joseon village or hanok background, full-bleed 16:9, no text, no watermark"),
             "구도": ("감정이 터지는 순간 한 컷 — 두 인물이 마주 보거나 한 사람이 손가락으로 가리키며 다그치는 장면, 또는 놀라 입을 가린 얼굴 클로즈업. "

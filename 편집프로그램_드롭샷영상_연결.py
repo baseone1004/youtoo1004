@@ -320,6 +320,53 @@ class VideoRunner:
         self._press("escape")
         return False
 
+    # -- 레퍼런스 이미지 패널 (이미지 생성 화면 왼쪽 '레퍼런스 이미지 n/14 · 인물 선택 · 추가하기')
+    def reference_count(self, keyword: str):
+        """'레퍼런스 이미지 n/14' 의 n. 못 읽으면 None."""
+        items = self._page_items(keyword)
+        label = next((r for (n, r, t) in items if t == "Text" and "레퍼런스" in n), None)
+        if not label:
+            return None
+        nums = [(n, r) for (n, r, t) in items if t == "Text" and re.fullmatch(r"\d+", n or "") and abs(r.top - label.top) <= 6 and r.left > label.right]
+        nums.sort(key=lambda x: x[1].left)
+        return int(nums[0][0]) if nums else None
+
+    def add_reference(self, keyword: str, image: Path) -> bool:
+        """[추가하기] → 파일 선택 창 → 경로 붙여넣기 → Enter. 개수가 늘면 성공."""
+        self._focus_window(keyword)
+        before = self.reference_count(keyword)
+        items = self._page_items(keyword)
+        btn = next((r for (n, r, t) in items if t == "Button" and "추가하기" in n), None)
+        if not btn:
+            return False
+        s = VideoSettings(images_dir="", download_dir="", scenes=[], prompts={}, upload_xy=self._center(btn), prompt_xy=(0, 0), generate_xy=(0, 0), download_xy=(0, 0), window_keyword=keyword)
+        if not self._upload_image(s, image):
+            return False
+        for _ in range(30):                          # 올라가는 데 몇 초 걸린다
+            time.sleep(0.5)
+            after = self.reference_count(keyword)
+            if after is not None and (before is None or after > before):
+                return True
+        return False
+
+    def clear_references(self, keyword: str) -> int:
+        """레퍼런스 패널의 그림들을 모두 지운다 (각 그림의 close 버튼). 지운 개수를 돌려준다."""
+        self._focus_window(keyword)
+        removed = 0
+        for _ in range(16):
+            items = self._page_items(keyword)
+            label = next((r for (n, r, t) in items if t == "Text" and "레퍼런스" in n), None)
+            prompt = next((r for (n, r, t) in items if t == "Text" and n.strip() == "프롬프트"), None)
+            if not label:
+                break
+            top, bottom = label.top, (prompt.top if prompt else label.top + 400)
+            closes = [r for (n, r, t) in items if t == "Button" and "close" in n.lower() and top < r.top < bottom and r.width() <= 40]
+            if not closes:
+                break
+            self._click(self._center(closes[0])); removed += 1
+            time.sleep(0.6)
+        return removed
+
     def _wait_new_video(self, folder: Path, before: set[str], timeout: float) -> Path | None:
         end = time.time() + timeout
         while time.time() < end:
@@ -580,6 +627,41 @@ def api_vgen_find_download(req: VideoFindDownload):
     return {"x": xy[0], "y": xy[1]}
 
 
+class RefAdd(BaseModel):
+    image: str
+    window_keyword: str = "드롭샷"
+
+
+@app.post("/api/ref/add")
+def api_ref_add(req: RefAdd):
+    """드롭샷 이미지 화면의 레퍼런스 패널에 그림을 올린다 (주인공 얼굴 고정용)."""
+    if videogen.runner.busy() or imagegen.runner.state.status in ("running", "paused"):
+        raise HTTPException(400, "지금 생성이 돌아가는 중입니다.")
+    if not Path(req.image).is_file():
+        raise HTTPException(400, "레퍼런스 이미지 파일이 없습니다.")
+    r = videogen.runner
+    ok = r.add_reference(req.window_keyword, Path(req.image))
+    return {"ok": ok, "count": r.reference_count(req.window_keyword)}
+
+
+class RefClear(BaseModel):
+    window_keyword: str = "드롭샷"
+
+
+@app.post("/api/ref/clear")
+def api_ref_clear(req: RefClear):
+    if videogen.runner.busy() or imagegen.runner.state.status in ("running", "paused"):
+        raise HTTPException(400, "지금 생성이 돌아가는 중입니다.")
+    r = videogen.runner
+    n = r.clear_references(req.window_keyword)
+    return {"ok": True, "removed": n, "count": r.reference_count(req.window_keyword)}
+
+
+@app.get("/api/ref/count")
+def api_ref_count(window_keyword: str = "드롭샷"):
+    return {"count": videogen.runner.reference_count(window_keyword)}
+
+
 @app.get("/api/vgen/status")
 def api_vgen_status():
     return videogen.runner.state.to_dict()
@@ -603,11 +685,12 @@ def apply(editor_dir):
     app_file = editor / "app.py"
     text = app_file.read_text(encoding="utf-8")
     if "/api/vgen/start" in text:                          # 먼저 붙인 버전에 빠진 경로 블록만 더한다
-        for start_marker, route in (("class VideoUploadTest", "/api/vgen/upload_test"), ("class VideoFindDownload", "/api/vgen/find_download")):
+        for start_marker, route in (("class VideoUploadTest", "/api/vgen/upload_test"), ("class VideoFindDownload", "/api/vgen/find_download"),
+                                    ("class RefAdd", "/api/ref/add")):
             if route in text:
                 continue
             a = APP_ADDITION.index(start_marker)
-            ends = [APP_ADDITION.find(m, a + 1) for m in ("class VideoUploadTest", "class VideoFindDownload", '@app.get("/api/vgen/status")')]
+            ends = [APP_ADDITION.find(m, a + 1) for m in ("class VideoUploadTest", "class VideoFindDownload", "class RefAdd", '@app.get("/api/vgen/status")')]
             b = min(k for k in ends if k > 0)                  # 그 블록의 끝 = 다음 정의가 시작하는 곳
             block = APP_ADDITION[a:b]
             text = text.replace('@app.get("/api/vgen/status")', block + '@app.get("/api/vgen/status")', 1)
