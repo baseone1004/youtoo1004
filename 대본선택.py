@@ -1790,14 +1790,15 @@ def ensure_face_reference(job, script, assets, prompts_file, style):
         job.add(f"   ! 레퍼런스 올리기 실패(얼굴 고정 없이 진행): {e}"); return
     if not r.get("ok"):
         job.add("   ! 드롭샷 레퍼런스 패널에 올리지 못함 (얼굴 고정 없이 진행)"); return
-    note = f"REFERENCE FACE: @image 1 is {name}'s face and hairstyle — draw {name} with exactly this face, hair and age in every scene."
+    idx = int(r.get("count") or 1)                # 패널에 다른 그림이 남아 있으면 우리 그림은 마지막 번호다
+    note = f"REFERENCE FACE: @image {idx} is {name}'s face and hairstyle — draw {name} with exactly this face, hair and age in every scene."
     with open(prompts_file, encoding="utf-8-sig") as f:
         text = f.read()
-    if "REFERENCE FACE: @image 1" not in text:
-        text = re.sub(r"^(프롬프트\s*[:：]\s*)", lambda m: m.group(1) + note + " ", text, flags=re.M)
-        with open(prompts_file, "w", encoding="utf-8") as f:
-            f.write(text)
-    job.add(f"   ✓ 주인공 얼굴 레퍼런스 올림 (@image 1 = {name}) · 모든 장면에 같은 얼굴 지시")
+    text = re.sub(r"REFERENCE FACE: @image \d+ [^\n]*?in every scene\.\s*", "", text)   # 지난번 지시는 지우고 다시 쓴다
+    text = re.sub(r"^(프롬프트\s*[:：]\s*)", lambda m: m.group(1) + note + " ", text, flags=re.M)
+    with open(prompts_file, "w", encoding="utf-8") as f:
+        f.write(text)
+    job.add(f"   ✓ 주인공 얼굴 레퍼런스 올림 (@image {idx} = {name}) · 모든 장면에 같은 얼굴 지시")
 
 
 def clear_face_reference(job):
