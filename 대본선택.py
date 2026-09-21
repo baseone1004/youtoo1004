@@ -1583,7 +1583,7 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
                 raise
             job._render_retried = True
             job.add("   ✓ 편집프로그램이 다시 켜졌습니다 → 렌더를 다시 시작합니다")
-            return run_render(job, srt, flow, images_dir, narration, output, ken_burns, width, height)
+            return run_render(job, srt, flow, images_dir, narration, output, ken_burns)
         prog = float(st.get("progress") or 0)
         if prog != last_progress:
             last_progress, since = prog, time.time()
