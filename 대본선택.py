@@ -782,7 +782,7 @@ def restyle_prompts(prompts_file, style, channel):
     def fix(m):
         head, body = m.group(1), m.group(2)
         if "mixed-media image." in body:              # 화풍 문구 전체(끝 표시까지, 겹쳐 있으면 마지막 것까지)를 걷어 낸다
-            stripped = re.sub(r"STRICT STYLE LOCK:.*mixed-media image\.\s*", "", body, count=1, flags=re.S)
+            stripped = re.sub(r"STRICT STYLE LOCK:.*mixed-media image[.,]?\s*", "", body, count=1, flags=re.S)
         else:
             stripped = re.sub(r"STRICT STYLE LOCK:.*?consistent channel look\.?\s*", "", body, count=1, flags=re.S)
         if stripped == body and "STRICT STYLE LOCK:" in body:
@@ -1419,7 +1419,7 @@ def scene_motion_prompts(prompts_file, scenes):
         m = re.search(r"^\s*(?:프롬프트|prompt)\s*[:：]\s*(.+)$", blocks.get(no, ""), flags=re.M | re.I)
         if not m:
             continue
-        text = re.sub(r"^STRICT STYLE LOCK:.*?mixed-media image\.\s*", "", m.group(1).strip(), flags=re.S)
+        text = re.sub(r"^STRICT STYLE LOCK:.*?mixed-media image[.,]?\s*", "", m.group(1).strip(), flags=re.S)
         text = re.sub(r"REFERENCE FACE: @image \d+ [^\n]*?in every scene\.\s*", "", text)
         out[no] = text.lstrip(" ,;.").strip()[:500]
     return out
@@ -1487,7 +1487,7 @@ def pick_hook_scenes(prompts_file, n):
     for k in window:
         body = blocks[k]
         m = re.search(r"^\s*(?:프롬프트|prompt)\s*[:：]\s*(.+)$", body, flags=re.M | re.I)
-        text = re.sub(r"^STRICT STYLE LOCK:.*?mixed-media image\.\s*", "", (m.group(1) if m else ""), flags=re.S).lower()
+        text = re.sub(r"^STRICT STYLE LOCK:.*?mixed-media image[.,]?\s*", "", (m.group(1) if m else ""), flags=re.S).lower()
         kind = (re.search(r"^유형:\s*([A-D])", body, flags=re.M) or [None, ""])[1]
         score = 0
         score += 2 if kind in ("C", "D") else (-3 if kind == "A" else 0)
