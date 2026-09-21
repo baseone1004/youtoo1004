@@ -1295,9 +1295,34 @@ def kie_credit():
     return dict(ok=True, credit=float(j.get("data") or 0))
 
 
+def wait_editor(job=None, timeout=180):
+    """편집프로그램이 응답할 때까지 기다린다 (죽었다가 자동 재시작되는 동안). 돌아오면 True."""
+    t0 = time.time(); told = False
+    while time.time() - t0 < timeout:
+        try:
+            _rq.get(AIP + "/api/info", timeout=5).raise_for_status(); return True
+        except _rq.RequestException:
+            if job and not told:
+                job.add("   ! 편집프로그램이 응답하지 않음 → 다시 켜지기를 기다립니다 (최대 3분)"); told = True
+            time.sleep(5)
+    return False
+
+
+def aip_wait(path, body=None, job=None, retries=3):
+    """aip() 인데, 연결이 끊기면 편집프로그램이 돌아올 때까지 기다렸다가 다시 부른다."""
+    for attempt in range(retries + 1):
+        try:
+            return aip(path, body)
+        except SystemExit as e:
+            if "연결할 수 없습니다" not in str(e) or attempt >= retries or not wait_editor(job):
+                raise
+            if job:
+                job.add("   ✓ 편집프로그램이 다시 켜졌습니다 → 이어서")
+
+
 def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries_left=2):
     """편집프로그램의 좌표 자동화로 이미지를 전부 만들 때까지 기다린다. 좌표·다운로드 폴더는 편집프로그램에 저장된 값을 쓴다."""
-    info = aip("/api/info")
+    info = aip_wait("/api/info", job=job)
     ui = (info.get("config") or {}).get("gen_ui") or {}
     xy = ui.get("XY") or {}
     if not (xy.get("prompt") and xy.get("download")):
@@ -1331,7 +1356,18 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
     while True:
         if job.cancel_requested:
             aip("/api/gen/stop", {}); raise RuntimeError("취소됨")
-        st = aip("/api/gen/status")
+        try:
+            st = aip("/api/gen/status")
+        except SystemExit as e:                       # 편집프로그램이 죽음 → 자동 재시작을 기다렸다가 빠진 장면부터 다시 요청
+            if "연결할 수 없습니다" not in str(e) or not wait_editor(job):
+                raise
+            job.add("   ✓ 편집프로그램이 다시 켜졌습니다 → 빠진 장면부터 이어서")
+            time.sleep(3)
+            return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left)
+        if st.get("status") == "idle" and last >= 0:   # 재시작된 편집프로그램은 아무것도 안 하는 상태 → 다시 요청
+            job.add("   편집프로그램이 새로 켜져 이미지 생성을 다시 요청합니다 (만든 장면은 건너뜀)")
+            time.sleep(3)
+            return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left)
         n = len(st.get("done", [])) + len(st.get("failed", []))
         if n != last:
             last = n
@@ -1451,7 +1487,7 @@ def run_hook_videos_dropshot(job, images_dir, prompts_file, scenes):
     while True:
         if job.cancel_requested:
             aip("/api/vgen/stop", {}); raise RuntimeError("취소됨")
-        st = aip("/api/vgen/status")
+        st = aip_wait("/api/vgen/status", job=job)
         n = len(st.get("done", [])) + len(st.get("failed", []))
         job.stage = f"후킹 영상(드롭샷): {st.get('current', 0):03d} ({n}/{st.get('total') or len(scenes)})"
         if st.get("waiting"):                          # 다운로드는 사람이 누른다 → 무엇을 해야 하는지 진행 줄에 보여 준다
@@ -1535,12 +1571,19 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
                 fit="cover", ken_burns=ken_burns, kb_zoom=0.12, transition="none", transition_duration=0.5, burn_srt=True,
                 srt_font="Malgun Gothic", srt_font_size=22, srt_bold=True, srt_outline=3.5, crf=18, preset="medium")
     body.update(keep); body["burn_srt"] = True
-    j = aip("/api/render", body, timeout=120)
+    j = aip_wait("/api/render", body, job=job)
     last_progress, since = -1.0, time.time()
     while True:
         if job.cancel_requested:
             aip(f"/api/jobs/{j['job_id']}/cancel", {}); raise RuntimeError("취소됨")
-        st = aip(f"/api/jobs/{j['job_id']}")
+        try:
+            st = aip(f"/api/jobs/{j['job_id']}")
+        except SystemExit as e:                       # 렌더 중 편집프로그램이 죽음 → 다시 켜지면 렌더를 처음부터 다시 건다 (한 번)
+            if "연결할 수 없습니다" not in str(e) or not wait_editor(job) or getattr(job, "_render_retried", False):
+                raise
+            job._render_retried = True
+            job.add("   ✓ 편집프로그램이 다시 켜졌습니다 → 렌더를 다시 시작합니다")
+            return run_render(job, srt, flow, images_dir, narration, output, ken_burns, width, height)
         prog = float(st.get("progress") or 0)
         if prog != last_progress:
             last_progress, since = prog, time.time()
