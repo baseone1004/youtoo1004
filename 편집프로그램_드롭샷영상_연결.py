@@ -360,7 +360,8 @@ class VideoRunner:
             if not label:
                 break
             top, bottom = label.top, (prompt.top if prompt else label.top + 400)
-            closes = [r for (n, r, t) in items if t == "Button" and "close" in n.lower() and top < r.top < bottom and r.width() <= 40]
+            closes = [r for (n, r, t) in items if t == "Button" and n.strip().lower() in ("close", "close button", "delete", "삭제", "remove")
+                      and top < r.top < bottom and r.width() <= 40]
             if not closes:
                 break
             self._click(self._center(closes[0])); removed += 1
