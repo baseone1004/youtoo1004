@@ -1778,7 +1778,10 @@ def make_thumbnails(job, req):
             + "\n".join(f"{i}. 상단: {t.replace('*', '')} / 하단: {b.replace('*', '')}" + (f" / 이미지: {d}" if d else "") for i, (t, b, d) in enumerate(copies, 1))
             + f"\n\n[영상별 SEO 정보]\n{seo_context}"
             + (f"\n\n[브리프]\n{brief}" if brief else "")
-            + (("\n\n" + sheet_note(character_sheet(script, ai, job.add)).rstrip()) if is_mindam else ""))
+            + (("\n\n" + sheet_note(character_sheet(script, ai, job.add)).rstrip()) if is_mindam else "")
+            + (("\n\n[캐릭터 규칙 — 반드시] 주인공은 드롭샷 레퍼런스의 채널 마스코트(@image 1)다. 세 장 모두 '@image 1 character (exactly the same face, body and colors as @image 1)' 로 시작한다. "
+                "사람 얼굴을 그리지 않는다. 함께 나오는 다른 인물도 'an @image 1-type character (same head shape, body and face style as @image 1 — not a human) dressed as ...' 로 쓴다. "
+                "'a Korean woman/man' 처럼 사람을 쓰지 않는다.") if (not is_mindam and (profile.get("인물_표현") or "캐릭터") == "캐릭터") else ""))
     job.stage = "썸네일 프롬프트"
     job.add("   썸네일 프롬프트 3개 ")
     text = ai.ask(read_guideline("썸네일_지침.txt", "mindam" if is_mindam else "person"), user).replace("```", "")
@@ -1786,6 +1789,11 @@ def make_thumbnails(job, req):
     prompts = [p for p in prompts if p]
     if not prompts:
         raise RuntimeError("썸네일 프롬프트를 읽지 못했습니다:\n" + text[:300])
+    if not is_mindam and (profile.get("인물_표현") or "캐릭터") == "캐릭터":     # 썸네일도 장면과 같은 캐릭터 고정 (편집프로그램의 옛 화풍 접두어가 붙지 않게 잠금 문구를 넣는다)
+        thumb_lock = ("STRICT STYLE LOCK: " + style.rstrip(". ") + ". CHARACTER LOCK: the main figure is exactly the uploaded reference @image 1 "
+                      "(same face, body and colors); every other figure is the same kind of creature as @image 1 — never a human, no human faces. "
+                      "Never generate a photo, photorealistic face, 3D render or mixed-media image.")
+        prompts = [thumb_lock + " " + re.sub(r"^\s*" + re.escape(style.rstrip(". ")) + r"[.,]?\s*", "", p) for p in prompts]
     tdir = os.path.abspath(os.path.join(assets, "썸네일")); os.makedirs(tdir, exist_ok=True)
     if req.get("regenerate"):
         old_files = glob.glob(os.path.join(tdir, "썸네일_*.jpg")) + glob.glob(os.path.join(tdir, "raw", "*"))
