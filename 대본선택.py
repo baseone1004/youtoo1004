@@ -1364,9 +1364,14 @@ def kie_usable():
 
 
 def video_engine(info=None):
-    """영상 변환 방식: auto(KIE 먼저, 안 되면 드롭샷) | kie | dropshot. 편집프로그램 설정 gen_ui.video_engine 에 저장."""
-    info = info or aip("/api/info")
-    v = str(((info.get("config") or {}).get("gen_ui") or {}).get("video_engine") or "auto").lower()
+    """영상 변환 방식: auto(KIE 먼저, 안 되면 드롭샷) | kie | dropshot. 설정.json 의 영상변환_방식 을 먼저 보고, 없으면 편집프로그램 설정 gen_ui.video_engine."""
+    v = str(load_json("설정.json", {}).get("영상변환_방식") or "").lower()
+    if v not in ("auto", "kie", "dropshot"):
+        try:
+            info = info or aip("/api/info")
+            v = str(((info.get("config") or {}).get("gen_ui") or {}).get("video_engine") or "auto").lower()
+        except Exception:  # noqa: BLE001
+            v = "auto"
     return v if v in ("auto", "kie", "dropshot") else "auto"
 
 
@@ -2273,6 +2278,7 @@ class H(BaseHTTPRequestHandler):
                                             인월드_속도_사람=cfg.get("인월드_속도_사람", cfg.get("인월드_속도", 1.0)),
                                             인월드_속도_민담=cfg.get("인월드_속도_민담", cfg.get("인월드_속도", 1.0)),
                                             분당_글자수=cfg.get("분당_글자수", 270), 화풍=화풍_별칭.get(cfg.get("화풍", "실사"), cfg.get("화풍", "실사")),
+                                            영상변환_방식=cfg.get("영상변환_방식", ""),
                                             후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
                                             텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
@@ -2521,7 +2527,7 @@ class H(BaseHTTPRequestHandler):
                 cfg = load_json("설정.json", {})
                 prev_ai = (cfg.get("AI") or "").strip().lower()
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
-                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "분당_글자수", "화풍", "후킹_장면수",
+                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "영상변환_방식", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감

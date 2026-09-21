@@ -729,7 +729,9 @@ function renderVideoEngine() {
   document.querySelectorAll('.videoEngineHint').forEach(h => h.textContent = {auto: 'KIE 키·크레딧이 있으면 KIE, 없으면 드롭샷 좌표로', kie: 'KIE 만 씁니다 (크레딧이 없으면 실패)', dropshot: '드롭샷 AI 화면을 좌표로 자동 클릭해서 만듭니다'}[videoEngine]);
 }
 async function loadVideoEngine() {
-  try { const info = await get8765('/api/info'); const v = ((info.config || {}).gen_ui || {}).video_engine; videoEngine = ['auto', 'kie', 'dropshot'].includes(v) ? v : 'auto'; } catch (e) {}
+  const saved = STATE && STATE.config && STATE.config.영상변환_방식;          // 설정.json 이 기준 (편집프로그램이 꺼져 있어도 남는다)
+  if (['auto', 'kie', 'dropshot'].includes(saved)) videoEngine = saved;
+  else { try { const info = await get8765('/api/info'); const v = ((info.config || {}).gen_ui || {}).video_engine; videoEngine = ['auto', 'kie', 'dropshot'].includes(v) ? v : 'auto'; } catch (e) {} }
   renderVideoEngine();
 }
 async function detectVideoDownload() {
@@ -748,7 +750,10 @@ async function testVideoUpload() {
   catch (e) { $('sVxyStatus').textContent = '✗ ' + e.message; toast(e.message, true); }
 }
 async function setVideoEngine(v) {
-  try { const info = await get8765('/api/info'); const ui = (info.config || {}).gen_ui || {}; await post8765('/api/config', {gen_ui: {...ui, video_engine: v}}); videoEngine = v; renderVideoEngine(); toast('영상 변환 방식: ' + {auto: '자동', kie: 'KIE', dropshot: '드롭샷 AI'}[v]); }
+  videoEngine = v; renderVideoEngine();
+  try { await api('/api/config', {영상변환_방식: v}); if (STATE && STATE.config) STATE.config.영상변환_방식 = v; } catch (e) { return toast('저장 실패: ' + e.message, true); }
+  try { const info = await get8765('/api/info'); const ui = (info.config || {}).gen_ui || {}; await post8765('/api/config', {gen_ui: {...ui, video_engine: v}}); } catch (e) { toast('편집프로그램이 꺼져 있어 거기에는 나중에 반영됩니다 (설정은 저장됨)'); }
+  try { toast('영상 변환 방식: ' + {auto: '자동', kie: 'KIE', dropshot: '드롭샷 AI'}[v]); }
   catch (e) { toast('저장 실패: ' + e.message, true); }
 }
 async function vgenStatus() { try { return await get8765('/api/vgen/status'); } catch (e) { return {status: 'idle', done: [], failed: [], total: 0}; } }
