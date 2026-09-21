@@ -202,14 +202,33 @@ def discover_channels(keywords, exclude_ids, exclude_words, want):
     for cid, a in agg.items():
         if any(w.lower() in (a["name"] or "").lower() for w in exclude_words):
             continue
+        if a["titles"] and sum(관련있음(t) for t in a["titles"]) < max(1, len(a["titles"]) // 2):   # 검색에 걸린 영상 절반 이상이 우리 소재여야
+            continue
         avg = statistics.mean(a["views"]) if a["views"] else 0
         score = a["hits"] * math.log10(avg + 10)
         ranked.append((score, cid, a))
     ranked.sort(key=lambda x: -x[0])
     return [(cid, a["name"], a["url"], a["hits"]) for _, cid, a in ranked[:want]]
 
+# 우리 채널(사람 심리·관계) 과 관련 있는 제목만 벤치마킹 근거로 쓴다 — 큰 종합 채널의 요리·주식 영상이 섞이지 않게
+관련_낱말 = ("심리", "마음", "관계", "사람", "이유", "성격", "감정", "친구", "부모", "자식", "부부", "가족", "말투", "말을", "말이", "표정", "습관", "상처",
+          "눈치", "손절", "나이", "인생", "후회", "외로", "불안", "자존감", "대화", "거절", "배려", "예의", "태도", "행동", "생각", "우울", "화가", "분노",
+          "질투", "열등", "착한", "이기적", "무시", "존중", "위로", "공감", "고독", "중년", "노년", "은퇴", "가스라이팅", "나르시", "회피", "집착", "기억",
+          "뇌", "호르몬", "스트레스", "번아웃", "연락", "이별", "싸움", "다툼", "믿음", "신뢰", "배신", "거짓말", "칭찬", "비난", "험담", "험한", "진짜")
+무관_낱말 = ("레시피", "요리", "먹방", "맛집", "메뉴", "안주", "치킨", "볶음", "찌개", "밥상", "장사", "사장님", "매출", "주식", "코인", "부동산", "투자",
+          "수익", "다이어트", "운동", "근육", "헬스", "게임", "드라마", "영화", "예능", "축구", "야구", "골프", "정치", "대통령", "선거", "뉴스", "화장",
+          "패션", "여행", "캠핑", "낚시", "자동차", "아이폰", "갤럭시", "PC", "코딩", "영어", "수능", "공부법")
+
+
+def 관련있음(title):
+    t = (title or "")
+    if any(w in t for w in 무관_낱말):
+        return False
+    return any(w in t for w in 관련_낱말)
+
+
 def analyze_channel(ch):
-    """중앙값 대비 몇 배 터졌는지로 '히트 영상'을 가려낸다 (채널 크기와 무관한 신호)."""
+    """중앙값 대비 몇 배 터졌는지로 '히트 영상'을 가려낸다 (채널 크기와 무관한 신호). 우리 소재와 관련 있는 제목만 남긴다."""
     vids = [v for v in ch["videos"] if v["views"] > 0]
     if not vids:
         ch["median"] = 0
@@ -219,9 +238,10 @@ def analyze_channel(ch):
     ch["median"] = med
     for v in vids:
         v["ratio"] = round(v["views"] / med, 1) if med else 0
-    hits = [v for v in vids if v["ratio"] >= 2.0 and v["views"] >= 3000 and is_korean(v["title"])]
+    hits = [v for v in vids if v["ratio"] >= 2.0 and v["views"] >= 3000 and is_korean(v["title"]) and 관련있음(v["title"])]
     hits.sort(key=lambda v: -v["ratio"])
     ch["hits"] = hits[:12]
+    ch["relevance"] = round(sum(관련있음(v["title"]) for v in vids) / len(vids), 2)   # 채널 영상 중 우리 소재 비율
     ch["top"] = sorted(vids, key=lambda v: -v["views"])[:5]
     return ch
 
@@ -1193,7 +1213,11 @@ def main():
             continue
         if mine and ch.get("id") == mine.get("id"):
             continue
-        bench.append(analyze_channel(ch))
+        ch = analyze_channel(ch)
+        if ch.get("relevance", 0) < 0.3 and len(ch.get("hits", [])) < 2:     # 요리·재테크 등 다른 소재가 대부분인 종합 채널은 뺀다
+            print(f"   (건너뜀 · 우리 소재 아님) {ch['name']} — 관련 영상 {int(ch.get('relevance', 0) * 100)}%")
+            continue
+        bench.append(ch)
 
     print("④ 7일치 14편 고르는 중...")
     top, rest, dups, trends = build_recommendations(mine, bench, used)

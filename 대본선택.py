@@ -389,6 +389,16 @@ def run_benchmark(job, req):
         s.clear()
     hits = 주제_추천.bench_hits(60)
     job.add(f"   ✓ 벤치마킹 완료 · 히트 영상 {len(hits)}개")
+    if not mindam and hits:                          # 터진 영상을 근거로 새 주제 6개를 바로 만들어 추천 맨 위에 올린다
+        try:
+            job.stage = "새 주제 만들기"
+            cfg = load_json("설정.json", {})
+            channel = "person"
+            exclude = [t.get("제목", "") for t in load_json("계획.json", []) + load_json("후보.json", [])] + list(채널_연동.titles(cfg, channel) or [])
+            fresh = 주제_추천.generate(cfg, channel, 6, list(dict.fromkeys(x for x in exclude if x)), None, log=job.add)
+            job.add(f"   ✓ 터진 영상을 참고한 새 주제 {len(fresh)}개")
+        except Exception as e:  # noqa: BLE001
+            job.add(f"   ! 새 주제 만들기 실패(추천 목록은 그대로): {e}")
     return dict(hits=len(hits), file=os.path.abspath("벤치_히트.json"))
 
 
