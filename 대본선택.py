@@ -759,8 +759,9 @@ def image_style_lock(style, channel=None):
            "FRAME LOCK: the picture fills the whole frame edge to edge with no border, frame, paper margin or vignette. "
            if channel == "mindam" else "")
     if channel == "person" and (채널_프로필.get("person").get("인물_표현") or "캐릭터") == "캐릭터":
-        people = ("CHARACTER LOCK: every person is drawn as a character in the same design language as the uploaded reference @image 1 "
-                  "(same body proportions, line weight, eye style and flat clean coloring), set in modern Korea; never a photorealistic human. ")
+        people = ("CHARACTER LOCK: every person in the scene is the same kind of creature as the uploaded reference @image 1 — identical head shape, "
+                  "body type, limbs, face style and rendering — distinguished only by clothing, hair accessories, colors and props. "
+                  "Never draw a human: no human faces, no human anatomy, no realistic or anime people. Modern Korean setting. ")
     else:
         people = ("PEOPLE LOCK: every person shown is Korean with East Asian facial features, dark hair and Korean clothing and setting; "
                   "never Western, Caucasian, Black, South Asian or Southeast Asian faces. ")

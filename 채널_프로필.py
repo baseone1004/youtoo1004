@@ -189,11 +189,12 @@ def placeholders(slot):
 def 인물_표현_규칙(p):
     """사람 장면(D형)의 인물을 어떻게 그릴지. '캐릭터': 마스코트(@image 1)와 같은 디자인 언어의 캐릭터로 / '사람': 현대 한국 성인 그대로."""
     if (p.get("인물_표현") or "캐릭터") == "캐릭터":
-        return ("사람 장면의 인물도 채널 마스코트(@image 1)와 같은 디자인 언어의 캐릭터로 그린다: 같은 몸 비율(둥근 머리, 짧은 몸), 같은 선 굵기와 눈 모양, 같은 채색 방식. "
+        return ("사람 장면의 인물은 사람이 아니라 채널 마스코트(@image 1)와 같은 종류의 캐릭터다: 같은 머리 모양·몸통·팔다리·얼굴 스타일·채색 그대로. "
+                "프롬프트에 'a Korean man/woman' 처럼 사람을 먼저 쓰지 말고 'an @image 1-type character (same head shape, body, limbs and face style as @image 1 — not a human, no human face) dressed as a Korean office worker in his forties, ...' 처럼 캐릭터를 먼저 쓴다. "
                 "사람마다 색·머리 모양·옷·소품(안경, 넥타이, 앞치마, 가방, 지팡이)으로 구분하고, 같은 인물이 이어지면 그 특징을 그대로 유지한다. "
                 "나이와 역할은 소품과 자세로 보여 준다(직장인은 넥타이와 서류, 어머니는 앞치마, 노년은 흰 머리와 지팡이). "
                 "마스코트의 상징 소품(리본·배지·열쇠 등)은 다른 인물에게 주지 않아 마스코트와 헷갈리지 않게 한다. 배경은 현대 한국(사무실·집·카페·버스)이되 캐릭터와 어울리게 단순하게. "
-                "프롬프트는 'a character drawn in the same design language as @image 1 (same body proportions, line weight and eye style), representing a Korean office worker in his forties, ...' 처럼 쓴다. "
+                "장면마다 프롬프트 끝에 'not a human, no human face' 를 한 번 더 적는다. "
                 "실존 인물 장면(B형)도 같은 디자인 언어로 그리되 그 사람의 특징(머리 모양·안경·복장)만 소품으로 살린다.")
     return "사십 대에서 육십 대 현대 한국 성인이 나온다."
 
