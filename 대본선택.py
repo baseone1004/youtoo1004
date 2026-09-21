@@ -758,9 +758,13 @@ def image_style_lock(style, channel=None):
            "(smooth skin, black hair, no wrinkles, upright posture); only a character explicitly described as old gets grey hair and wrinkles. "
            "FRAME LOCK: the picture fills the whole frame edge to edge with no border, frame, paper margin or vignette. "
            if channel == "mindam" else "")
-    return (f"STRICT STYLE LOCK: every image must be {style} style. {base}{tail} "
-            "PEOPLE LOCK: every person shown is Korean with East Asian facial features, dark hair and Korean clothing and setting; "
-            "never Western, Caucasian, Black, South Asian or Southeast Asian faces. " + age +
+    if channel == "person" and (채널_프로필.get("person").get("인물_표현") or "캐릭터") == "캐릭터":
+        people = ("CHARACTER LOCK: every person is drawn as a character in the same design language as the uploaded reference @image 1 "
+                  "(same body proportions, line weight, eye style and flat clean coloring), set in modern Korea; never a photorealistic human. ")
+    else:
+        people = ("PEOPLE LOCK: every person shown is Korean with East Asian facial features, dark hair and Korean clothing and setting; "
+                  "never Western, Caucasian, Black, South Asian or Southeast Asian faces. ")
+    return (f"STRICT STYLE LOCK: every image must be {style} style. {base}{tail} " + people + age +
             "Keep the same linework, character design, proportions and color palette as the uploaded Dropshot reference image. "
             "If a later scene description conflicts, this style lock takes priority. "
             "Never generate a photo, photorealistic face, live-action still, realistic skin texture, 3D render or mixed-media image.")
