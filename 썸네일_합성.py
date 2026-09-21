@@ -21,6 +21,7 @@ FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "f
 FONT = os.path.join(FONT_DIR, "BlackHanSans-Regular.ttf")
 BRUSH = os.path.join(FONT_DIR, "NanumBrushScript-Regular.ttf")
 LABEL = os.path.join(FONT_DIR, "DoHyeon-Regular.ttf")
+JALNAN = os.path.join(FONT_DIR, "Jalnan2.ttf")          # 여기어때 잘난체 2 (상업용 무료) — 둥글고 굵은 썸네일 글씨
 YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#000000"
 
 레이아웃_이름 = {
@@ -33,6 +34,7 @@ YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#
     "scroll": "왼쪽 세로쓰기 두루마리",
     "band": "먹빛 띠 + 붓글씨 + 빨간 태그 (예전 방식)",
     "pop_bold": "굵은 고딕 큰 글씨 · 낱말마다 노랑·흰색·초록·분홍 · 검정 테두리 (요즘 야담 채널식, 이야기형 추천)",
+    "jalnan_pop": "잘난체 큰 글씨 두 줄 · 윗줄 하늘색 · 아랫줄 노랑 · 굵은 검정 테두리 (정보형 추천)",
 }
 기본_브랜드 = {
     "person": {"주색": "#0F1B3D", "강조색": "#4BE3C4", "바탕색": "#FFF4DC", "보조색": "#E6543C", "배지": "", "사진_톤": "warm"},
@@ -289,6 +291,28 @@ def layout_bottom_two(im, top, bottom, b=None):
     return im
 
 
+def layout_jalnan_pop(im, top, bottom, b=None):
+    """잘난체 두 줄: 윗줄 하늘색, 아랫줄 노랑, 굵은 검정 테두리 + 그림자. 그림은 가득 채우고 아래를 살짝 어둡게."""
+    im = _shade_bottom(im, 0.45, 0.55)
+    d = ImageDraw.Draw(im)
+    top, bottom = _clean_marks(top), _clean_marks(bottom)
+    if not bottom:
+        top, bottom = "", top
+    max_w = W - 80
+    lines = ([top] if top else []) + _wrap(bottom, 13)
+    colors = (["#7DDCFF"] if top else []) + ["#FFE23A"] * (len(lines) - (1 if top else 0))
+    fonts = [_fit(d, ln, 124 if i == 0 and top else 136, max_w, 60, JALNAN) for i, ln in enumerate(lines)]
+    total_h = sum(int(f.size * 1.12) for f in fonts)
+    y = H - 40 - total_h
+    for ln, f, c in zip(lines, fonts, colors):
+        x = (W - d.textlength(ln, font=f)) / 2
+        sw = max(10, f.size // 9)
+        d.text((x + 5, y + 7), ln, font=f, fill=BLACK, stroke_width=sw, stroke_fill=BLACK)      # 그림자
+        d.text((x, y), ln, font=f, fill=c, stroke_width=sw, stroke_fill=BLACK)
+        y += int(f.size * 1.12)
+    return im
+
+
 # ── 이야기형 레이아웃 ─────────────────────────────────────
 # 요즘 조회수 높은 야담 채널 썸네일 공통점: 밝은 웹툰풍 그림 위에 굵은 고딕 큰 글씨 두세 줄, 어절 덩어리마다 노랑·흰색·초록·분홍, 굵은 검정 테두리와 그림자
 POP_COLORS = ("#FFE83D", "#FFFFFF", "#5BFF6A", "#FF5CE1", "#7DE3FF")
@@ -448,7 +472,7 @@ def layout_band(im, top, bottom, tag_text="옛이야기", b=None):
 LAYOUTS = {
     "navy_mint": (0.6, layout_navy_mint), "cream_card": (0.5, layout_cream_card), "coral_ribbon": (0.6, layout_coral_ribbon),
     "bottom_two": (0.5, layout_bottom_two), "hanji_seal": (0.5, layout_hanji_seal), "ink_gold": (0.5, layout_ink_gold),
-    "scroll": (0.7, layout_scroll), "band": (0.55, layout_band), "pop_bold": (0.5, layout_pop_bold),
+    "scroll": (0.7, layout_scroll), "band": (0.55, layout_band), "pop_bold": (0.5, layout_pop_bold), "jalnan_pop": (0.5, layout_jalnan_pop),
 }
 
 

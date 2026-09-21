@@ -46,7 +46,7 @@ _lock = threading.Lock()
         "브랜드": {"주색": "#0F1B3D", "강조색": "#4BE3C4", "바탕색": "#FFF4DC", "보조색": "#E6543C", "배지": "심리해독소", "사진_톤": "warm"},
         "화풍_접미": "warm soft watercolor-like tones with gentle cream highlights, calm cozy lighting, consistent channel look",
         "썸네일": {
-            "레이아웃": "navy_mint",
+            "레이아웃": "jalnan_pop",
             "화풍": ("bright flat 2D chibi sticker illustration for a YouTube thumbnail, thick clean dark outlines, big expressive eyes, "
                    "vivid high-contrast pastel colors, simple background, exaggerated emotion, 16:9 aspect ratio"),
             "구도": ("채널 마스코트를 화면 위쪽·가운데에 크게, 과장된 감정과 상징 하나, 밝고 단순한 배경, "
