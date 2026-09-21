@@ -1801,6 +1801,25 @@ def ensure_face_reference(job, script, assets, prompts_file, style):
     job.add(f"   ✓ 주인공 얼굴 레퍼런스 올림 (@image {idx} = {name}) · 모든 장면에 같은 얼굴 지시")
 
 
+def ensure_mascot_reference(job):
+    """정보형: 드롭샷 레퍼런스 패널을 비우고, 채널 마스코트 그림(채널_프로필 마스코트.이미지)이 있으면 그것만 올린다.
+    (이야기형 주인공 얼굴이 남아 있으면 정보형 그림에 한복·사극이 섞여 나온다.)"""
+    m = (채널_프로필.get("person") or {}).get("마스코트") or {}
+    img = (m.get("이미지") or "").strip()
+    img = os.path.abspath(os.path.join(BASE, img)) if img and not os.path.isabs(img) else img
+    try:
+        r = aip("/api/ref/clear", {"window_keyword": "드롭샷"})
+        if r.get("removed"):
+            job.add(f"   레퍼런스 패널 비움 ({r['removed']}장 · 다른 편 것)")
+        if img and os.path.isfile(img):
+            r = aip("/api/ref/add", {"image": img, "window_keyword": "드롭샷"})
+            job.add(f"   ✓ 마스코트 '{m.get('이름', '')}' 레퍼런스 올림" if r.get("ok") else "   ! 마스코트 레퍼런스를 올리지 못함 (마스코트 없이 진행)")
+        elif img:
+            job.add(f"   마스코트 그림 파일이 없음: {img}")
+    except Exception as e:  # noqa: BLE001
+        job.add(f"   ! 레퍼런스 패널 정리 실패(그대로 진행): {e}")
+
+
 def clear_face_reference(job):
     try:
         r = aip("/api/ref/clear", {"window_keyword": "드롭샷"})
@@ -1893,6 +1912,8 @@ def make_pipeline(job, req):
             job.add("   예전 방식으로 시작한 편이라 화풍·문장 나누기를 그대로 둡니다 (새 규칙은 다음 편부터)")
         if channel_of(script) == "mindam" and not legacy_split(script):
             ensure_face_reference(job, script, assets, result["prompts"], selected_style)   # 주인공 얼굴을 드롭샷 레퍼런스에 올려 모든 장면에서 같은 얼굴로
+        else:
+            ensure_mascot_reference(job)              # 정보형: 다른 편(사극 얼굴 등)의 레퍼런스가 남아 있으면 비우고 마스코트만 올린다
         run_image_generation(job, result["prompts"], images_dir, prefix)
     check_cancelled()
     # 5) 후킹 영상
