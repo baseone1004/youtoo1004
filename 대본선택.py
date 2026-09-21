@@ -1386,7 +1386,9 @@ def dropshot_video_xy(info=None):
 
 움직임_프롬프트 = ("Animate this exact illustration. Keep the input image's 2D illustrated art style, colors, linework and character design completely unchanged — "
             "do not make it photorealistic, do not add realistic skin, lighting or 3D depth. Only subtle natural motion: a slow gentle camera drift, "
-            "small movements of hair, cloth, eyes and breath. Same composition, same characters, nothing new appears.")
+            "small movements of hair, cloth, eyes and breath. Same composition, same characters, nothing new appears. "
+            "Every body part stays attached and anchored to the body — no floating, detached or drifting heads, hands or objects; "
+            "phone screens, pictures and text stay flat and static.")
 
 
 def motion_prompt_for(prompts_file=None):
@@ -1460,6 +1462,38 @@ def run_hook_videos_dropshot(job, images_dir, prompts_file, scenes):
             job.add(f"   ✓ 드롭샷 영상 {len(st.get('done', []))}개")
             return st
         time.sleep(4)
+
+
+움직임_부적합 = ("phone", "screen", "split", "collage", "diagram", "chart", "arrow", "text overlay", "extreme close-up", "close-up of", "hands holding",
+           "hands typing", "'s hands", "hand holding", "picture frame", "photo frame", "framed photo", "reflection", "mirror",
+           "top-down", "overhead", "bird's-eye", "flat lay", "empty", "no people", "nobody")
+움직임_적합 = ("medium shot", "medium close-up", "waist-up", "full shot", "wide shot", "over-the-shoulder", "sitting", "standing", "walking", "talking", "looking")
+
+
+def pick_hook_scenes(prompts_file, n):
+    """앞부분 장면 가운데 영상으로 바꿔도 이상하지 않은 장면 n 개를 고른다 (머리만 떠다니는 식의 실패를 줄인다).
+    후보는 앞 2n+3 장면. 화면 속 얼굴·분할·도표·손 클로즈업·빈 장면은 뒤로 밀고, 인물 상반신·전신 샷을 앞으로. 그래도 모자라면 순서대로 채운다."""
+    try:
+        with open(prompts_file, encoding="utf-8-sig") as f:
+            blocks = prompt_blocks(f.read())
+    except OSError:
+        return list(range(1, n + 1))
+    window = [k for k in sorted(blocks) if k <= 2 * n + 3]
+    scored = []
+    for k in window:
+        body = blocks[k]
+        m = re.search(r"^\s*(?:프롬프트|prompt)\s*[:：]\s*(.+)$", body, flags=re.M | re.I)
+        text = re.sub(r"^STRICT STYLE LOCK:.*?mixed-media image\.\s*", "", (m.group(1) if m else ""), flags=re.S).lower()
+        kind = (re.search(r"^유형:\s*([A-D])", body, flags=re.M) or [None, ""])[1]
+        score = 0
+        score += 2 if kind in ("C", "D") else (-3 if kind == "A" else 0)
+        score += sum(1 for w in 움직임_적합 if w in text)
+        score -= sum(3 for w in 움직임_부적합 if w in text)
+        score += max(0, (2 * n + 3 - k)) * 0.4       # 앞 장면일수록 조금 우선 (도입부 후킹이 목적)
+        scored.append((-score, k))
+    scored.sort()
+    chosen = sorted(k for _, k in scored[:n])
+    return chosen or list(range(1, n + 1))
 
 
 def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
@@ -1964,7 +1998,8 @@ def make_pipeline(job, req):
     if n_hook > 0 and result.get("prompts"):
         job.stage = "⑤ 후킹 영상"
         have = {int(m.group(1)) for m in (re.match(r"^(\d{1,4})\.mp4$", f, re.I) for f in os.listdir(images_dir)) if m}
-        todo = [n for n in range(1, n_hook + 1) if n not in have]
+        picked = pick_hook_scenes(result["prompts"], n_hook)        # 앞쪽 장면 중 움직여도 무리 없는 장면(인물 상반신·단일 피사체)만 고른다
+        todo = [n for n in picked if n not in have]
         if not todo:
             job.add(f"   앞 {n_hook}장 움직이는 영상이 이미 있어 건너뜀")
             result["hook"] = images_dir
