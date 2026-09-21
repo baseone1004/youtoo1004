@@ -710,6 +710,10 @@ def make_variations(job, req):
     "파스텔": "hand-drawn 2D pastel illustration, soft colored-pencil and watercolor textures, clean illustrated faces and outlines, warm muted palette, 16:9 aspect ratio",
     "수묵": "traditional Korean ink wash painting style with subtle color, hanji paper texture, 16:9 aspect ratio",
     # ── 야담·민담·옛이야기용 (조선 배경 고정, 아동풍 금지, 테두리 없이 화면 가득)
+    "웹툰 사극": "bright vivid Korean webtoon-style digital illustration of a Joseon-era folktale: clean confident linework, soft cel shading, "
+              "saturated harmonious colors (pink, green, red, jade hanbok), warm sunny daylight or golden lamplight, "
+              "expressive emotional faces with large clear eyes and smooth skin, detailed hanbok, gat and hanok, lively village backgrounds, "
+              + 전체화면 + ", 16:9 aspect ratio",
     "수채 사극": "Korean historical drama illustration in a soft webtoon-watercolor style: delicate clean ink line art with a gentle watercolor wash, "
               "muted natural palette with soft light, refined East Asian faces drawn in a light anime-like manner (clear eyes, small nose, smooth skin), "
               "detailed Joseon hanbok, gat and hanok, painterly backgrounds with atmosphere such as snow, rain or lamplight, "
@@ -722,16 +726,16 @@ def make_variations(job, req):
 화풍_별칭 = {"민화": "수채 사극"}          # 예전 이름으로 저장된 설정·프롬프트를 새 화풍으로
 화풍_설명 = {
     "실사": "사진 같은 시네마틱", "애니": "웹툰·셀 채색", "2D 일러스트": "선명한 성인용 2D·레퍼런스 유지", "파스텔": "부드러운 수채", "수묵": "한지·먹 느낌",
-    "수채 사극": "맑은 선 + 수채 웹툰풍 (기본)", "한지 동화": "따뜻한 그림책 (어른용)", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
+    "웹툰 사극": "밝고 선명한 웹툰풍 (요즘 야담 채널식 · 기본)", "수채 사극": "맑은 선 + 수채 웹툰풍", "한지 동화": "따뜻한 그림책 (어른용)", "괴담 극화": "귀신·도깨비 이야기용 어둡고 극적",
 }
 화풍_그룹 = {"공통": ["실사", "애니", "2D 일러스트", "파스텔", "수묵"],
-          "야담·민담·옛이야기": ["수채 사극", "한지 동화", "괴담 극화"]}
+          "야담·민담·옛이야기": ["웹툰 사극", "수채 사극", "한지 동화", "괴담 극화"]}
 
 def image_style_lock(style, channel=None):
     """선택한 화풍이 뒤의 장면 설명과 충돌해도 사진풍으로 바뀌지 않게 고정한다. 채널을 주면 그 채널의 색감 문구(화풍_접미)를 덧붙인다."""
     style = 화풍_별칭.get(style, style)
     if style not in 화풍:
-        style = "수채 사극" if channel == "mindam" else "2D 일러스트"
+        style = "웹툰 사극" if channel == "mindam" else "2D 일러스트"
     base = 화풍[style]
     tail = (" " + 채널_프로필.style_tail(channel) + ".") if channel and 채널_프로필.style_tail(channel) else ""
     if style == "실사":
@@ -1638,7 +1642,7 @@ def make_thumbnails(job, req):
     # 썸네일 화풍·구도는 채널 프로필에서 온다 (화풍을 비워 두면 장면 화풍을 그대로 쓴다)
     profile = 채널_프로필.get("mindam" if is_mindam else "person")
     tp = profile.get("썸네일") or {}
-    style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "실사"), req.get("style", "실사")), 화풍["수채 사극" if is_mindam else "실사"])
+    style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "실사"), req.get("style", "실사")), 화풍["웹툰 사극" if is_mindam else "실사"])
     if 채널_프로필.style_tail("mindam" if is_mindam else "person"):
         style = style.rstrip(". ") + ", " + 채널_프로필.style_tail("mindam" if is_mindam else "person")
     position = "bottom"

@@ -32,6 +32,7 @@ YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#
     "ink_gold": "먹빛 띠 + 금 글씨 + 두루마리 테두리 + 낙관",
     "scroll": "왼쪽 세로쓰기 두루마리",
     "band": "먹빛 띠 + 붓글씨 + 빨간 태그 (예전 방식)",
+    "pop_bold": "굵은 고딕 큰 글씨 · 낱말마다 노랑·흰색·초록·분홍 · 검정 테두리 (요즘 야담 채널식, 이야기형 추천)",
 }
 기본_브랜드 = {
     "person": {"주색": "#0F1B3D", "강조색": "#4BE3C4", "바탕색": "#FFF4DC", "보조색": "#E6543C", "배지": "", "사진_톤": "warm"},
@@ -289,6 +290,62 @@ def layout_bottom_two(im, top, bottom, b=None):
 
 
 # ── 이야기형 레이아웃 ─────────────────────────────────────
+# 요즘 조회수 높은 야담 채널 썸네일 공통점: 밝은 웹툰풍 그림 위에 굵은 고딕 큰 글씨 두세 줄, 어절 덩어리마다 노랑·흰색·초록·분홍, 굵은 검정 테두리와 그림자
+POP_COLORS = ("#FFE83D", "#FFFFFF", "#5BFF6A", "#FF5CE1", "#7DE3FF")
+POP_LINE_COLORS = (("#FFE83D", "#FFFFFF"), ("#5BFF6A", "#FF5CE1"), ("#FFFFFF", "#7DE3FF"))
+
+
+def pop_tokens(line, line_no=0):
+    """한 줄을 [(낱말, 색)] 로. 어절을 두 덩어리로 나눠 앞 덩어리·뒤 덩어리 색을 달리한다 (줄마다 다른 색 짝).
+    숫자가 든 낱말은 노랑, 따옴표 대사는 통째로 노랑."""
+    import re as _re
+    words = (line or "").replace("*", "").split()
+    if not words:
+        return []
+    a, b = POP_LINE_COLORS[line_no % len(POP_LINE_COLORS)]
+    if line.strip().startswith(('"', '“')):
+        return [(w, "#FFE83D") for w in words]
+    cut = max(1, (len(words) + 1) // 2)
+    out = []
+    for i, w in enumerate(words):
+        c = a if i < cut else b
+        if _re.search(r"\d", w):
+            c = "#FFE83D"
+        out.append((w, c))
+    return out
+
+
+def _pop_line(draw, y, tokens, font, align="center"):
+    """굵은 검정 테두리 + 오른쪽 아래 그림자로 한 줄."""
+    gap = draw.textlength(" ", font=font) * 0.6
+    widths = [draw.textlength(w, font=font) for w, _ in tokens]
+    total = sum(widths) + gap * (len(tokens) - 1)
+    x = (W - total) / 2 if align == "center" else 56
+    sw = max(10, font.size // 8)
+    for (w, c), tw in zip(tokens, widths):
+        draw.text((x + 6, y + 8), w, font=font, fill=BLACK, stroke_width=sw, stroke_fill=BLACK)   # 그림자
+        draw.text((x, y), w, font=font, fill=c, stroke_width=sw, stroke_fill=BLACK)
+        x += tw + gap
+
+
+def layout_pop_bold(im, top, bottom, b=None):
+    """밝은 그림 전체 화면 + 아래 두 줄 굵은 고딕 (첫 줄 조금 작게, 둘째 줄 크게). 낱말 덩어리마다 다른 색."""
+    im = _shade_bottom(im, 0.5, 0.62)
+    d = ImageDraw.Draw(im)
+    top, bottom = _clean_marks(top), _clean_marks(bottom)
+    if not bottom:
+        top, bottom = "", top
+    max_w = W - 90
+    lines = ([top] if top else []) + _wrap(bottom, 14)
+    sizes = [int(100 if i == 0 and top else 132) for i in range(len(lines))]
+    fonts = [_fit(d, ln, sz, max_w, 56) for ln, sz in zip(lines, sizes)]
+    y = H - 36 - sum(int(f.size * 1.08) for f in fonts)
+    for i, (ln, f) in enumerate(zip(lines, fonts)):
+        _pop_line(d, y, pop_tokens(ln, i), f)
+        y += int(f.size * 1.08)
+    return im
+
+
 def _band_texts(draw, top, bottom, band_top, color_top, color_bottom, stroke_fill=None, max_w=W - 140):
     f1 = _fit(draw, top, 96, max_w, 40, BRUSH) if top else None
     lines = _wrap(bottom, 12)
@@ -391,7 +448,7 @@ def layout_band(im, top, bottom, tag_text="옛이야기", b=None):
 LAYOUTS = {
     "navy_mint": (0.6, layout_navy_mint), "cream_card": (0.5, layout_cream_card), "coral_ribbon": (0.6, layout_coral_ribbon),
     "bottom_two": (0.5, layout_bottom_two), "hanji_seal": (0.5, layout_hanji_seal), "ink_gold": (0.5, layout_ink_gold),
-    "scroll": (0.7, layout_scroll), "band": (0.55, layout_band),
+    "scroll": (0.7, layout_scroll), "band": (0.55, layout_band), "pop_bold": (0.5, layout_pop_bold),
 }
 
 

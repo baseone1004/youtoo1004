@@ -72,10 +72,12 @@ _lock = threading.Lock()
         "브랜드": {"주색": "#1C120A", "강조색": "#FFD54A", "바탕색": "#F3E9D2", "보조색": "#B3261E", "배지": "옛날서재", "사진_톤": "sepia"},
         "화풍_접미": "soft muted natural colors, gentle warm lamplight or daylight, clean full-frame composition, consistent channel look",
         "썸네일": {
-            "레이아웃": "hanji_seal",
-            "화풍": "",
-            "구도": ("감정이 터지는 순간 한 컷 — 조선 시대 인물 얼굴 클로즈업, 두 인물의 시선 충돌, 또는 사건의 정점 중 하나. "
-                   "인물 최대 2명, 밤이어도 등잔불로 얼굴이 밝게, 문구가 들어갈 화면 아래쪽은 단순하고 조금 어둡게"),
+            "레이아웃": "pop_bold",
+            "화풍": ("bright vivid Korean webtoon-style digital illustration for a YouTube thumbnail, clean confident linework, soft cel shading, "
+                   "saturated colors (pink, green, red and jade hanbok), warm sunny daylight, expressive emotional faces with large clear eyes, "
+                   "Joseon village or hanok background, full-bleed 16:9, no text, no watermark"),
+            "구도": ("감정이 터지는 순간 한 컷 — 두 인물이 마주 보거나 한 사람이 손가락으로 가리키며 다그치는 장면, 또는 놀라 입을 가린 얼굴 클로즈업. "
+                   "인물 최대 2~3명, 얼굴이 크고 밝게, 표정이 과장될 만큼 또렷하게, 문구가 들어갈 화면 아래쪽 40%는 단순하게"),
             "띠_문구": "옛이야기",
         },
         "지침": {"대본": "", "이미지": "이미지지침_이야기형.txt"},
