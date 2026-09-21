@@ -291,6 +291,9 @@ def layout_bottom_two(im, top, bottom, b=None):
     return im
 
 
+JALNAN_COLORS = ("#7DDCFF", "#FFE23A", "#B4FF3A", "#FF3B3B")     # 하늘색 · 노랑 · 형광연두 · 빨강 — 윗줄·아랫줄에 서로 다른 둘을 랜덤으로
+
+
 def layout_jalnan_pop(im, top, bottom, b=None):
     """잘난체 두 줄: 윗줄 하늘색, 아랫줄 노랑, 굵은 검정 테두리 + 그림자. 그림은 가득 채우고 아래를 살짝 어둡게."""
     im = _shade_bottom(im, 0.45, 0.55)
@@ -300,7 +303,10 @@ def layout_jalnan_pop(im, top, bottom, b=None):
         top, bottom = "", top
     max_w = W - 80
     lines = ([top] if top else []) + _wrap(bottom, 13)
-    colors = (["#7DDCFF"] if top else []) + ["#FFE23A"] * (len(lines) - (1 if top else 0))
+    import random as _rd, zlib as _zl
+    rng = _rd.Random(_zl.crc32((top + "|" + bottom).encode("utf-8")))          # 문구마다 다른 색 짝 (같은 문구는 늘 같은 색)
+    pair = rng.sample(JALNAN_COLORS, 2)                                          # 하늘색·노랑·형광연두·빨강 중 둘
+    colors = ([pair[0]] if top else []) + [pair[1]] * (len(lines) - (1 if top else 0))
     fonts = [_fit(d, ln, 124 if i == 0 and top else 136, max_w, 60, JALNAN) for i, ln in enumerate(lines)]
     total_h = sum(int(f.size * 1.12) for f in fonts)
     y = H - 40 - total_h
