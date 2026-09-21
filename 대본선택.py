@@ -1910,10 +1910,18 @@ def make_pipeline(job, req):
         if legacy_split(script):                    # 예전 방식으로 시작한 편: 프롬프트 안의 화풍 문구를 그대로 쓴다 (새 화풍을 덧붙이지 않음)
             prefix = ""
             job.add("   예전 방식으로 시작한 편이라 화풍·문장 나누기를 그대로 둡니다 (새 규칙은 다음 편부터)")
-        if channel_of(script) == "mindam" and not legacy_split(script):
-            ensure_face_reference(job, script, assets, result["prompts"], selected_style)   # 주인공 얼굴을 드롭샷 레퍼런스에 올려 모든 장면에서 같은 얼굴로
+        if 대본생성.load_cfg().get("레퍼런스_자동관리"):      # 기본 꺼짐: 드롭샷 레퍼런스 패널은 사용자가 직접 넣은 그림을 그대로 쓴다 (바꾸면 바뀐 대로)
+            if channel_of(script) == "mindam" and not legacy_split(script):
+                ensure_face_reference(job, script, assets, result["prompts"], selected_style)
+            else:
+                ensure_mascot_reference(job)
         else:
-            ensure_mascot_reference(job)              # 정보형: 다른 편(사극 얼굴 등)의 레퍼런스가 남아 있으면 비우고 마스코트만 올린다
+            try:
+                n = aip("/api/ref/count").get("count")
+                job.add(f"   드롭샷 레퍼런스: 패널에 있는 그림 {n}장을 그대로 참고합니다 (직접 바꾸면 바뀐 대로 씁니다)" if n else
+                        "   드롭샷 레퍼런스 패널이 비어 있습니다 — 캐릭터를 쓰려면 드롭샷 [추가하기]로 그림을 올려 두세요")
+            except Exception:  # noqa: BLE001
+                pass
         run_image_generation(job, result["prompts"], images_dir, prefix)
     check_cancelled()
     # 5) 후킹 영상
@@ -1977,7 +1985,7 @@ def make_pipeline(job, req):
         except Exception as e:  # noqa: BLE001
             render_error = e
             job.add(f"   ! 최종 영상 합치기 실패: {e}")
-    if channel_of(script) == "mindam":
+    if channel_of(script) == "mindam" and 대본생성.load_cfg().get("레퍼런스_자동관리"):
         clear_face_reference(job)                 # 다음 편은 다른 주인공이므로 레퍼런스를 비운다
     job.stage = "⑦ 업로드 폴더 정리"
     result["upload_dir"] = make_upload_package(script, result)
@@ -2502,7 +2510,7 @@ class H(BaseHTTPRequestHandler):
                 cfg = load_json("설정.json", {})
                 prev_ai = (cfg.get("AI") or "").strip().lower()
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
-                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "분당_글자수", "화풍", "후킹_장면수",
+                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감
