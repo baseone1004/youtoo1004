@@ -113,7 +113,7 @@
   <div class="mini-bar"><i data-stage-bar="motion"></i></div>
   <div class="inner">
     <p class="hint">앞 7장 이미지를 움직이는 영상으로 바꿉니다. 제작 시작에서 자동으로 하지만, 여기서 따로 할 수도 있습니다.</p>
-    <div class="row"><label>변환 방식</label><div class="seg" id="videoEngineSeg"><button data-engine="auto" onclick="setVideoEngine('auto')">자동 (KIE → 드롭샷)</button><button data-engine="kie" onclick="setVideoEngine('kie')">KIE</button><button data-engine="dropshot" onclick="setVideoEngine('dropshot')">드롭샷 AI</button></div><span class="hint" id="videoEngineHint"></span></div>
+    <div class="row"><label>변환 방식</label><div class="seg videoEngineSeg"><button data-engine="auto" onclick="setVideoEngine('auto')">자동 (KIE → 드롭샷)</button><button data-engine="kie" onclick="setVideoEngine('kie')">KIE AI</button><button data-engine="dropshot" onclick="setVideoEngine('dropshot')">드롭샷 AI</button></div><span class="hint videoEngineHint"></span></div>
     <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><span class="hint">멈추려면 제작 현황의 [■ 중단]</span></div>
     <div id="kieProgress" style="font-weight:700;margin:8px 0"></div><div class="hint" id="kieScenes"></div>
   </div>
@@ -241,8 +241,9 @@
   </div>
 
   <div class="card">
-    <h2>5. 드롭샷 영상 변환 좌표 <span class="hint">(KIE 크레딧이 없을 때 대신 씀)</span></h2>
-    <p class="lead">앞 7장을 움직이는 영상으로 바꿀 때 KIE 크레딧이 모자라면, 드롭샷 AI의 <b>영상 생성</b> 화면을 자동으로 클릭해서 만듭니다. 아래 네 곳의 위치를 한 번만 잡아 두세요.</p>
+    <h2>5. 영상 변환 (앞 7장 움직이는 영상)</h2>
+    <div class="row"><label>변환 방식</label><div class="seg videoEngineSeg"><button data-engine="auto" onclick="setVideoEngine('auto')">자동 (KIE → 드롭샷)</button><button data-engine="kie" onclick="setVideoEngine('kie')">KIE AI</button><button data-engine="dropshot" onclick="setVideoEngine('dropshot')">드롭샷 AI</button></div><span class="hint videoEngineHint"></span></div>
+    <p class="lead">드롭샷 AI 를 고르면 드롭샷의 <b>영상 생성</b> 화면을 자동으로 클릭해서 만듭니다. 아래 네 곳의 위치를 한 번만 잡아 두세요. (자동은 KIE 키·크레딧이 있으면 KIE, 없으면 드롭샷)</p>
     <div class="row"><button class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board','_blank','noopener')">↗ 드롭샷 AI 열기</button><label>드롭샷 창 제목 <input type="text" id="sVideoWindowKeyword" value="드롭샷" style="width:120px"></label><span class="xy-countdown">6</span></div>
     <p class="hint"><b>드롭샷 창에 [영상 생성] 화면을 열어 두고</b> 그 화면에서 좌표 4개를 잡으세요 (모델·16:9·길이도 미리 골라 두기). 프로그램은 제목에 "드롭샷"이 들어간 창을 앞으로 가져와 클릭합니다. 드롭샷 창이 여러 개면 첫 번째 창을 쓰니, 영상 변환 중에는 드롭샷 창을 하나만 두세요.</p>
     <div class="keyrow"><b>이미지 업로드 버튼</b><label>X <input type="number" id="s_vupload_x" style="width:90px"></label><label>Y <input type="number" id="s_vupload_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vupload')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vupload')">위치 확인</button></div>

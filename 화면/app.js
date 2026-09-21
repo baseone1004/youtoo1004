@@ -725,8 +725,8 @@ async function pollKieJob() {
 }
 let vgenTimer = null, videoEngine = 'auto';           // 영상 변환 방식: auto | kie | dropshot (편집프로그램 설정 gen_ui.video_engine)
 function renderVideoEngine() {
-  document.querySelectorAll('#videoEngineSeg button').forEach(b => b.classList.toggle('on', b.dataset.engine === videoEngine));
-  $('videoEngineHint').textContent = {auto: 'KIE 키·크레딧이 있으면 KIE, 없으면 드롭샷 좌표로', kie: 'KIE 만 씁니다 (크레딧이 없으면 실패)', dropshot: '드롭샷 AI 화면을 좌표로 자동 클릭해서 만듭니다'}[videoEngine];
+  document.querySelectorAll('.videoEngineSeg button').forEach(b => b.classList.toggle('on', b.dataset.engine === videoEngine));
+  document.querySelectorAll('.videoEngineHint').forEach(h => h.textContent = {auto: 'KIE 키·크레딧이 있으면 KIE, 없으면 드롭샷 좌표로', kie: 'KIE 만 씁니다 (크레딧이 없으면 실패)', dropshot: '드롭샷 AI 화면을 좌표로 자동 클릭해서 만듭니다'}[videoEngine]);
 }
 async function loadVideoEngine() {
   try { const info = await get8765('/api/info'); const v = ((info.config || {}).gen_ui || {}).video_engine; videoEngine = ['auto', 'kie', 'dropshot'].includes(v) ? v : 'auto'; } catch (e) {}

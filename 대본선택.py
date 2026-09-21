@@ -359,7 +359,8 @@ def topics():
     # [새 주제] 를 누르면 이미 보여 준 것은 뒤로 미룬다 (계획+후보를 한 줄로 놓고 6개씩)
     def unseen(items, channel):
         return [t for t in items if t.get("제목", "").strip() not in SEEN_TOPICS[channel]]
-    person = unseen(plan + cands, "person")[:6]
+    fresh = sorted([t for t in cands if t.get("생성")], key=lambda t: t.get("생성", ""), reverse=True)   # [새 주제]·벤치마킹 뒤 AI 가 만든 것 — 가장 새것이 먼저
+    person = unseen(fresh + plan + [t for t in cands if not t.get("생성")], "person")[:6]
     plan_titles = {t.get("제목", "").strip() for t in plan}
     plan = [t for t in person if t.get("제목", "").strip() in plan_titles]
     cands = [t for t in person if t.get("제목", "").strip() not in plan_titles]
