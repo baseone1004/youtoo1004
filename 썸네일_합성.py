@@ -291,7 +291,8 @@ def layout_bottom_two(im, top, bottom, b=None):
     return im
 
 
-JALNAN_COLORS = ("#7DDCFF", "#FFE23A", "#B4FF3A", "#FF3B3B")     # 하늘색 · 노랑 · 형광연두 · 빨강 — 윗줄·아랫줄에 서로 다른 둘을 랜덤으로
+JALNAN_COLORS = ("#7DDCFF", "#FFE23A", "#B4FF3A", "#FF3B3B", "#FFFFFF")     # 하늘색 · 노랑 · 형광연두 · 빨강 · 흰색
+POP_STRONG_WORDS = ("소름", "충격", "절대", "손절", "경고", "거짓말", "배신", "위험", "함정", "무서운", "끔찍", "최악", "실체", "정체", "독", "가스라이팅")
 
 
 def layout_jalnan_pop(im, top, bottom, b=None):
@@ -304,9 +305,17 @@ def layout_jalnan_pop(im, top, bottom, b=None):
     max_w = W - 80
     lines = ([top] if top else []) + _wrap(bottom, 13)
     import random as _rd, zlib as _zl
-    rng = _rd.Random(_zl.crc32((top + "|" + bottom).encode("utf-8")))          # 문구마다 다른 색 짝 (같은 문구는 늘 같은 색)
-    pair = rng.sample(JALNAN_COLORS, 2)                                          # 하늘색·노랑·형광연두·빨강 중 둘
-    colors = ([pair[0]] if top else []) + [pair[1]] * (len(lines) - (1 if top else 0))
+    rng = _rd.Random(_zl.crc32((top + "|" + bottom).encode("utf-8")))          # 문구마다 다르게, 같은 문구는 늘 같은 색
+    # 규칙: 아랫줄(핵심)은 노랑 또는 형광연두 · 윗줄은 하늘색 또는 흰색 · 센 낱말이 든 줄만 빨강
+    strong = any(w in (top + bottom) for w in POP_STRONG_WORDS)
+    color_bottom = rng.choice(("#FFE23A", "#B4FF3A"))
+    color_top = rng.choice(("#7DDCFF", "#FFFFFF"))
+    if strong:
+        if any(w in bottom for w in POP_STRONG_WORDS):
+            color_bottom = "#FF3B3B"
+        elif top:
+            color_top = "#FF3B3B"
+    colors = ([color_top] if top else []) + [color_bottom] * (len(lines) - (1 if top else 0))
     fonts = [_fit(d, ln, 124 if i == 0 and top else 136, max_w, 60, JALNAN) for i, ln in enumerate(lines)]
     total_h = sum(int(f.size * 1.12) for f in fonts)
     y = H - 40 - total_h
