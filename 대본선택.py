@@ -2063,7 +2063,16 @@ def make_pipeline(job, req):
         else:
             # 레퍼런스 개수 확인(접근성 트리 읽기)을 이미지 생성 직전에 하면 편집프로그램이 두 스레드에서 동시에 창을 읽다가 죽는다(_ctypes 0xC0000005) → 읽지 않는다
             job.add("   드롭샷 레퍼런스 패널에 올려 둔 캐릭터(@image 1)를 그대로 참고합니다 (직접 바꾸면 바뀐 대로 씁니다)")
-        run_image_generation(job, result["prompts"], images_dir, prefix)
+        try:
+            with open(result["prompts"], encoding="utf-8-sig") as f:
+                wanted = sorted(prompt_blocks(f.read()))
+        except OSError:
+            wanted = []
+        have_imgs = {int(m.group(1)) for m in (re.match(r"^(\d{1,4})\.(?:jpg|jpeg|png|webp)$", f, re.I) for f in os.listdir(images_dir)) if m}
+        if wanted and all(k in have_imgs for k in wanted):
+            job.add(f"   이미지 {len(wanted)}장이 이미 다 있어 건너뜀")     # 편집프로그램이 다른 편을 만드는 중이어도 방해하지 않는다
+        else:
+            run_image_generation(job, result["prompts"], images_dir, prefix)
     check_cancelled()
     # 5) 후킹 영상
     n_hook = int(steps.get("hook", 0) or 0)
