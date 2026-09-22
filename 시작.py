@@ -69,6 +69,9 @@ def open_chrome(chrome, url):
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+DETACHED = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+
 def main():
     background = "--background" in sys.argv
     if background:
@@ -115,7 +118,7 @@ def main():
         log = open_log("로그_편집프로그램.txt")
         logs.append(log)
         children.append(subprocess.Popen([sys.executable, "app.py", "--no-browser"],
-                                         cwd=editor, env=env, stdout=log, stderr=subprocess.STDOUT))
+                                         cwd=editor, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=DETACHED))
     elif not editor:
         print("편집프로그램 폴더를 찾지 못했습니다. 영상 편집은 사용할 수 없습니다.")
         print("다른 위치에 있다면 YOUTUBE_EDITOR_DIR 환경 변수에 폴더 경로를 지정하세요.")
@@ -125,7 +128,7 @@ def main():
         log = open_log("로그_대본선택.txt")
         logs.append(log)
         script = subprocess.Popen([sys.executable, "대본선택.py", "--no-browser"],
-                                  cwd=HERE, env=env, stdout=log, stderr=subprocess.STDOUT)
+                                  cwd=HERE, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=DETACHED)
         children.append(script)
     try:
         for _ in range(120):
@@ -147,21 +150,13 @@ def main():
         if editor:
             print("편집프로그램 준비:", "완료" if ready(8765) else "시작 중")
         if not background:
-            print("작업 중에는 이 창을 열어 두세요. 종료하려면 Enter를 누르세요.")
+            print("이 창은 닫아도 됩니다 — 프로그램은 계속 돌아갑니다. 완전히 끝내려면 화면의 [종료] 버튼을 누르세요. (Enter: 이 창만 닫기)")
             try:
                 input()
             except EOFError:
                 pass
     finally:
-        if not background:
-            for child in children:
-                if child.poll() is None:
-                    child.terminate()
-            for child in children:
-                try:
-                    child.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    child.kill()
+        # 이 창을 닫아도 편집프로그램·대본선택은 살아 있어야 한다 (렌더·이미지 생성 중에 창을 닫아 죽는 일이 잦았다). 끝내는 건 화면의 [종료] 버튼.
         for handle in logs:
             handle.close()
 

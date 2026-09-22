@@ -1954,6 +1954,26 @@ def clear_face_reference(job):
         job.add(f"   ! 레퍼런스 비우기 실패: {e}")
 
 
+def final_video_is_current(video, images_dir, result):
+    """최종.mp4 가 있고, 그 뒤에 이미지·움직이는 영상·나레이션·자막이 하나도 바뀌지 않았으면 True (다시 렌더할 필요 없음)."""
+    if not os.path.isfile(video) or os.path.getsize(video) < 1_000_000:
+        return False
+    t = os.path.getmtime(video)
+    try:
+        verify_final_video(video)
+    except Exception:  # noqa: BLE001
+        return False
+    newest = 0.0
+    for f in os.listdir(images_dir):
+        if f.lower().endswith((".jpg", ".png", ".webp", ".mp4")):
+            newest = max(newest, os.path.getmtime(os.path.join(images_dir, f)))
+    for k in ("srt", "narration", "flow"):
+        p = result.get(k)
+        if p and os.path.isfile(p):
+            newest = max(newest, os.path.getmtime(p))
+    return newest <= t
+
+
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
     def check_cancelled():
@@ -2102,7 +2122,10 @@ def make_pipeline(job, req):
         job.stage = "⑥ 최종 렌더"
         out = os.path.join(assets, "최종.mp4")
         try:
-            run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out)
+            if final_video_is_current(out, images_dir, result) and not req.get("force_render"):
+                job.add(f"   최종 영상이 이미 있고 그 뒤 바뀐 재료가 없어 재사용: {out}")
+            else:
+                run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out)
             result["video"] = out
         except Exception as e:  # noqa: BLE001
             render_error = e
