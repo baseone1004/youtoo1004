@@ -1005,12 +1005,13 @@ function renderProfileNames() {
   document.querySelectorAll('.pname-person').forEach(el => el.textContent = pname('person'));
   document.querySelectorAll('.pname-mindam').forEach(el => el.textContent = pname('mindam'));
   document.querySelectorAll('#profSeg button').forEach(b => { b.textContent = `${pname(b.dataset.slot)} (${(P[b.dataset.slot] || {}).유형 || ''})`; });
-  const pf = P[channel] || {}; $('chHint').textContent = `${pf.이름 || ''} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
+  const pf = P[channel] || {}; $('chHint').textContent = `${pf.이름 || ''} · ${((STATE.languages || {})[pf.언어] || {}).이름 || '한국어'} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
 }
 function setProfileSlot(slot) { profileSlot = slot; document.querySelectorAll('#profSeg button').forEach(b => b.classList.toggle('on', b.dataset.slot === slot)); renderProfileForm(); }
 function renderProfileForm() {
   const P = STATE.profiles || {}, p = P[profileSlot]; if (!p || !$('pf_이름')) return;
   $('pf_썸네일_레이아웃').innerHTML = Object.entries(STATE.layouts || {}).map(([k, v]) => `<option value="${k}" ${(p.썸네일 || {}).레이아웃 === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
+  $('pf_언어').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(p.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
   for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더']) $('pf_' + k).value = p[k] || '';
   for (const k of ['검색어', '기본_태그']) $('pf_' + k).value = (p[k] || []).join(', ');
   const m = p.마스코트 || {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) $('pf_마스코트_' + k).value = m[k] || '';
@@ -1025,6 +1026,7 @@ function renderProfileForm() {
 }
 async function saveProfile() {
   const data = {};
+  data.언어 = $('pf_언어').value || 'ko';
   for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더', '검색어', '기본_태그']) data[k] = $('pf_' + k).value;
   data.마스코트 = {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) data.마스코트[k] = $('pf_마스코트_' + k).value;
   data.썸네일 = {레이아웃: $('pf_썸네일_레이아웃').value}; for (const k of ['띠_문구', '화풍', '구도']) data.썸네일[k] = $('pf_썸네일_' + k).value;

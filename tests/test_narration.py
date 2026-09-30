@@ -4,10 +4,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from 나레이션 import split_subtitle_text, synthesize
+from 나레이션 import split_sentences, split_subtitle_text, synthesize
 
 
 class SubtitleSplitTest(unittest.TestCase):
+    def test_japanese_and_chinese_sentences_are_kept(self):
+        self.assertEqual(split_sentences("今日は晴れです。散歩に行きます。"), ["今日は晴れです。", "散歩に行きます。"])
+        self.assertEqual(split_sentences("今天天气很好。我们去散步。"), ["今天天气很好。", "我们去散步。"])
+
     def test_empty_text(self) -> None:
         self.assertEqual(split_subtitle_text("  \n  "), [])
 

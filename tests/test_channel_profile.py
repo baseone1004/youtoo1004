@@ -43,6 +43,20 @@ class ChannelProfileTest(unittest.TestCase):
         self.assertIn("'콩'", P.mascot_reference_note("person"))
         self.assertEqual(P.mascot_reference_note("mindam"), "")
 
+    def test_language_setting_and_instruction(self):
+        saved = P.save("person", {"언어": "ja"})
+        self.assertEqual(saved["언어"], "ja")
+        self.assertEqual(P.language_name("person"), "日本語")
+        instruction = P.language_instruction("person")
+        self.assertIn("natural Japanese", instruction)
+        self.assertIn("대괄호 블록명", instruction)
+        self.assertEqual(P.fill("{{언어}}", "person"), "日本語")
+
+    def test_unknown_language_falls_back_to_korean(self):
+        saved = P.save("person", {"언어": "xx"})
+        self.assertEqual(saved["언어"], "ko")
+        self.assertEqual(P.language_instruction("person"), "")
+
 
 if __name__ == "__main__":
     unittest.main()

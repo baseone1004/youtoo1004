@@ -493,7 +493,7 @@ def read_guideline(name, channel="person"):
     if not path_inside(지침_폴더, p) or not os.path.isfile(p):
         raise FileNotFoundError(name)
     with open(p, encoding="utf-8-sig") as f:
-        return 채널_프로필.fill(f.read(), channel)
+        return 채널_프로필.fill(f.read(), channel) + 채널_프로필.language_instruction(channel)
 
 def write_guideline(name, text):
     p = os.path.join(지침_폴더, name)
@@ -563,7 +563,8 @@ def make_person_script(job, req):
     if req.get("optimize", True):
         try:
             text, _ = 최적화.optimize(ai, "person", body, extra=full.split("[대본]", 1)[0][:1500], log=job.add)
-            text = 대본생성.strip_english(text)
+            if 채널_프로필.language_code("person") == "ko":
+                text = 대본생성.strip_english(text)
             opt = re.sub(r"\.txt$", "", path) + "_유튜브최적화.txt"
             with open(opt, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -592,7 +593,8 @@ def make_mindam_script(job, req):
     if variation:
         job.add("   베리에이션 확정: " + variation.split("\n")[0][:80])
     r = 민담_대본.generate(ai, topic, str(req.get("length", "2")), log=job.add, workdir=req.get("resume_dir") or None,
-                        variation=variation)
+                        variation=variation, language_instruction=채널_프로필.language_instruction("mindam"),
+                        language=채널_프로필.language_code("mindam"))
     if req.get("mark_used", True):
         mark_used(re.sub(r"\s*\|\s*야담.*$", "", r["title"]).strip(), "민담_사용한_주제.txt")
         if bench:
@@ -640,7 +642,7 @@ def make_optimize_only(job, req):
                 extra = f.read()[:1500]
     job.add(f"AI: {ai.name} ({ai.model}) · 채널 {channel} · {os.path.basename(path)}")
     text, titles = 최적화.optimize(ai, channel, body, extra=extra, log=job.add)
-    if channel == "person":
+    if channel == "person" and 채널_프로필.language_code("person") == "ko":
         text = 대본생성.strip_english(text)
     out = os.path.join(os.path.dirname(path), "유튜브_최적화.txt") if is_final else re.sub(r"\.txt$", "", path) + "_유튜브최적화.txt"
     with open(out, "w", encoding="utf-8") as f:
@@ -2489,7 +2491,8 @@ class H(BaseHTTPRequestHandler):
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
                                 job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items(),
-                                channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), layouts=채널_프로필.레이아웃_이름, tones=채널_프로필.사진_톤_이름))
+                                channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), languages=채널_프로필.LANGUAGES,
+                                layouts=채널_프로필.레이아웃_이름, tones=채널_프로필.사진_톤_이름))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
             elif u.path == "/api/version":

@@ -173,6 +173,7 @@
     <p class="lead">채널 이름·소개·시청자·마스코트를 여기서 정하면 대본·주제 추천·제목·설명·이미지·썸네일 프롬프트가 전부 이 내용에 맞춰집니다. 채널이 바뀌면 여기만 고치면 됩니다.</p>
     <div class="row"><div class="seg" id="profSeg"><button data-slot="person" class="on" onclick="setProfileSlot('person')">정보형 채널</button><button data-slot="mindam" onclick="setProfileSlot('mindam')">이야기형 채널</button></div><span class="hint" id="profTypeHint"></span></div>
     <div class="keyrow"><b>채널 이름</b><input type="text" id="pf_이름" placeholder="예: 심리해독소"></div>
+    <div class="keyrow"><b>제작 언어</b><select id="pf_언어" style="max-width:240px"></select><span class="hint">대본·제목·설명·태그·자막에 적용됩니다. 이미지 프롬프트는 AI 호환을 위해 영어로 유지됩니다.</span></div>
     <div class="keyrow"><b>시청자</b><input type="text" id="pf_대상_시청자" placeholder="예: 관계·심리에 관심 있는 40~60대"></div>
     <div class="keyrow"><b>영상 길이</b><input type="text" id="pf_영상_길이" placeholder="예: 20~30분" style="max-width:160px"><b style="min-width:auto">해시태그</b><input type="text" id="pf_해시태그" placeholder="#채널명" style="max-width:200px"></div>
     <div class="keyrow"><b>채널 소개</b></div>
@@ -200,7 +201,7 @@
     <div class="keyrow"><b>글자 배치</b><select id="pf_썸네일_레이아웃" style="max-width:360px"></select><b style="min-width:auto">띠 태그 문구</b><input type="text" id="pf_썸네일_띠_문구" placeholder="예전 띠형에서 왼쪽 위 빨간 태그 (예: 옛이야기)" style="max-width:220px"></div>
     <div class="keyrow"><b>썸네일 화풍</b><input type="text" id="pf_썸네일_화풍" placeholder="비우면 장면 화풍을 그대로 씀 (영어)"></div>
     <div class="keyrow"><b>구도 지시</b><input type="text" id="pf_썸네일_구도" placeholder="썸네일 프롬프트에 들어갈 구도 설명 (한글)"></div>
-    <div class="row"><button class="primary" onclick="saveProfile()">프로필 저장</button><span class="hint">지침 파일 안의 {{채널명}} {{채널_설명}} {{대상_시청자}} {{마스코트_이름}} {{마스코트_설명}} {{마스코트_프롬프트}} {{해시태그}} 자리에 이 값이 들어갑니다.</span></div>
+    <div class="row"><button class="primary" onclick="saveProfile()">프로필·언어 한 번에 저장</button><span class="hint">언어를 바꾸면 다음 제작부터 주제·대본·유튜브 문구가 모두 해당 언어로 나옵니다.</span></div>
   </div>
 
   <div class="card">
@@ -222,6 +223,7 @@
 
   <div class="card">
     <h2>3. 나레이션 목소리 (인월드)</h2>
+    <p class="lead">위 채널 프로필에서 제작 언어를 고른 뒤, 그 언어를 지원하는 목소리 ID만 채널별로 넣으세요. 자막은 대본 언어로 자동 생성됩니다.</p>
     <div class="row"><label>모델 <select id="sInworldModel"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>
     <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="vPerson"></span><input type="text" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
     <div class="keyrow"><b class="pname-mindam">이야기형</b><span class="stat" id="vMindam"></span><input type="text" id="sVoiceM" placeholder="비우면 정보형 채널 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>

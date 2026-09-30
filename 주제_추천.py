@@ -13,7 +13,7 @@ FILE = "추천_추가.json"
 def channel_desc(channel):
     import 채널_프로필
     p = 채널_프로필.get(channel)
-    return f"{p['대상_시청자']}를 위한 '{p['이름']}' 채널 — {p['설명']} (영상 길이 {p.get('영상_길이', '')})"
+    return f"{p['대상_시청자']}를 위한 '{p['이름']}' 채널 — {p['설명']} (영상 길이 {p.get('영상_길이', '')}, 출력 언어 {채널_프로필.language_name(channel)})"
 
 
 def categories(channel):
@@ -88,6 +88,8 @@ def generate(cfg, channel, count, exclude, analysis=None, log=None):
               "공감 + 호기심 + 실제 궁금증을 함께 담는다. 자극적인 허위·과장·낚시 표현은 쓰지 않는다. "
               "비슷한 문장에서 낱말만 바꾼 유사·중복 제목은 내지 않는다(제외 목록·이번 답 안에서 모두). "
               "이십오 분 넘는 롱폼으로 내용을 충분히 풀 수 있는 주제만 고른다(한 줄 상식·단발 팁은 제외). 단기 조회수보다 몇 년 뒤에도 사람들이 찾아볼 주제를 우선한다.")
+    import 채널_프로필
+    system += 채널_프로필.language_instruction(channel)
     user = (f"[제외 목록 — 이미 만들었거나 올린 제목]\n" + ("\n".join(f"- {t}" for t in exclude[:120]) or "(없음)") + hits
             + f"\n\n오늘: {datetime.date.today().isoformat()}. 새 제목 {count}개를 만들어라.")
     if log:

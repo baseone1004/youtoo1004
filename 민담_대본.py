@@ -221,23 +221,30 @@ def check(text):
          "※ 본 영상의 대본·이미지·음성 제작에는 AI 기술이 사용되었습니다.")
 구분선 = "────────────────────"
 
-def youtube_meta(plan, title):
+def youtube_meta(plan, title, language="ko"):
     """기획의 [설명글]·[태그]·[고정댓글] 로 유튜브에 붙여 넣을 설명 텍스트를 만든다 (창작물·AI 고지 포함)."""
-    desc = block_of(plan, "설명글") or "옛이야기 한 편, 편안히 들어 보세요."
+    fallbacks = {"ko": "옛이야기 한 편, 편안히 들어 보세요.", "en": "Relax and enjoy this timeless story.",
+                 "ja": "心安らぐ昔話を、どうぞお楽しみください。", "es": "Relájate y disfruta de este cuento tradicional.",
+                 "zh": "请放松心情，欣赏这个古老的故事。"}
+    disclosures = {"ko": 설명_고지, "en": "This is a newly created story inspired by traditional tales. AI technology was used to produce the script, images, and narration.",
+                   "ja": "本作品は昔話に着想を得た創作物です。台本・画像・音声の制作にAI技術を使用しています。",
+                   "es": "Esta es una obra original inspirada en cuentos tradicionales. Se utilizó IA para crear el guion, las imágenes y la narración.",
+                   "zh": "本作品是受传统故事启发创作的新故事。脚本、图像和配音制作使用了人工智能技术。"}
+    desc = block_of(plan, "설명글") or fallbacks.get(language, fallbacks["ko"])
     tags = [t.strip().lstrip("#") for t in re.split(r"[,、\n]", block_of(plan, "태그")) if t.strip()]
-    for must in ("야담", "민담", "옛날이야기", "전설", "설화"):
+    for must in (("야담", "민담", "옛날이야기", "전설", "설화") if language == "ko" else ()):
         if must not in tags:
             tags.append(must)
     hashtags = " ".join("#" + re.sub(r"\s+", "", t) for t in tags[:6])
-    body = "\n\n".join([desc.strip(), 구분선, 설명_고지, 구분선, hashtags])
+    body = "\n\n".join([desc.strip(), 구분선, disclosures.get(language, disclosures["ko"]), 구분선, hashtags])
     return (f"[제목]\n{title}\n\n[설명글]\n{body}\n\n[태그]\n{', '.join(tags[:15])}\n\n"
             f"[고정댓글]\n{block_of(plan, '고정댓글')}\n")
 
 
-def generate(ai, topic, length_key="2", log=print, workdir=None, variation=""):
+def generate(ai, topic, length_key="2", log=print, workdir=None, variation="", language_instruction="", language="ko"):
     L = 길이.get(str(length_key), 길이["2"])
-    system_plan = read("01_기획_지침.txt")
-    system_ch = read("02_챕터_지침.txt")
+    system_plan = read("01_기획_지침.txt") + language_instruction
+    system_ch = read("02_챕터_지침.txt") + language_instruction
     refs = {
         "motif_bank": read("motif_bank.txt"),
         "장르 요소": read("참고_장르요소.txt"),
@@ -278,7 +285,7 @@ def generate(ai, topic, length_key="2", log=print, workdir=None, variation=""):
     log(f"   제목: {title}")
 
     intro = clean_body(block_of(plan, "인트로"))
-    if 인트로_고정.split(".")[0] not in intro:
+    if language == "ko" and 인트로_고정.split(".")[0] not in intro:
         intro = intro.rstrip() + "\n" + 인트로_고정
     facts = block_of(plan, "팩트시트")
     chars = block_of(plan, "등장인물")
@@ -332,11 +339,11 @@ def generate(ai, topic, length_key="2", log=print, workdir=None, variation=""):
 
     # 3) 합본
     script = intro + "\n\n" + "\n\n".join(bodies[k] for k in sorted(bodies))
-    if 고정_마무리.split("\n")[0] not in script:
+    if language == "ko" and 고정_마무리.split("\n")[0] not in script:
         script = script.rstrip() + "\n\n" + 고정_마무리
     script = strip_next_teaser(clean_body(script))
     # 마무리 멘트 뒤에 붙은 군더더기 제거
-    i = script.find(고정_마무리.split("\n")[0])
+    i = script.find(고정_마무리.split("\n")[0]) if language == "ko" else -1
     if i >= 0:
         script = script[:i] + 고정_마무리
     with open(os.path.join(workdir, "final.txt"), "w", encoding="utf-8") as f:
@@ -346,7 +353,7 @@ def generate(ai, topic, length_key="2", log=print, workdir=None, variation=""):
     with open(os.path.join(workdir, "thumbnail_brief.md"), "w", encoding="utf-8") as f:
         f.write(f"# thumbnail_brief.md\n\n{block_of(plan, '썸네일 브리프')}\n")
     with open(os.path.join(workdir, "유튜브_설명.txt"), "w", encoding="utf-8") as f:
-        f.write(youtube_meta(plan, title))
+        f.write(youtube_meta(plan, title, language))
     issues = check(script)
     log(f"   ✓ 합본 {len(script):,}자 (목표 {L['총글자']:,}자) → {os.path.join(workdir, 'final.txt')}")
     for m in issues:

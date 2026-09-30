@@ -77,6 +77,8 @@ def optimize(ai, channel, script_text, extra="", log=print):
     """대본 전문(또는 앞부분)과 기획 정보를 넣어 최적화 메타를 받는다. 반환: (텍스트, 제목목록)"""
     with open(지침_파일, encoding="utf-8-sig") as f:
         system = f.read()
+    import 채널_프로필
+    system += 채널_프로필.language_instruction(channel)
     trends = load_trends(channel)
     bench = load_bench_hits(channel)
     body = script_text.strip()

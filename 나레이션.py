@@ -47,10 +47,14 @@ def split_sentences(body, quotes=True):
     body = re.sub(r"(\.{2,}|…+)", ".", body)
     body = re.sub(r"\s+", " ", body.strip())
     if quotes:
-        body = re.sub(r'["“]([^"“”]{1,400})["”]', lambda m: re.sub(r"([.。])\s+", "\\1" + _붙임, m.group(0)), body)
-        body = re.sub(r'["“”‘’]', "", body)
-    parts = re.split(r"(?<=[.。])\s+", body)
-    return [p.replace(_붙임, " ").strip() for p in parts if p.strip() and re.search(r"[가-힣a-zA-Z0-9]", p)]
+        def protect_dialogue(match):
+            opening, inner, closing = match.group(0)[0], match.group(0)[1:-1], match.group(0)[-1]
+            inner = re.sub(r"([.。])(?!\s*$)\s*", "\\1" + _붙임, inner)
+            return opening + inner + closing
+        body = re.sub(r'["“「]([^"“”「」]{1,400})["”」]', protect_dialogue, body)
+        body = re.sub(r'["“”‘’「」]', "", body)
+    parts = re.split(r"(?<=[.。])(?!" + re.escape(_붙임) + r")\s*", body)
+    return [p.replace(_붙임, " ").strip() for p in parts if p.strip() and re.search(r"[가-힣ぁ-んァ-ン一-龯a-zA-Z0-9]", p)]
 
 
 def script_body(text):

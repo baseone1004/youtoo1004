@@ -6,6 +6,7 @@ import unittest
 
 import 나레이션
 import 대본선택 as app
+import 민담_대본
 
 
 class QuoteSplitTest(unittest.TestCase):
@@ -19,6 +20,13 @@ class QuoteSplitTest(unittest.TestCase):
 
 
 class StyleTest(unittest.TestCase):
+    def test_multilingual_youtube_meta_has_no_forced_korean_tags(self):
+        plan = "[설명글]\nA quiet old story.\n\n[태그]\nfolktale, bedtime\n\n[고정댓글]\nWhich moment stayed with you?"
+        meta = 민담_대본.youtube_meta(plan, "A Hidden Promise", "en")
+        self.assertIn("AI technology", meta)
+        self.assertIn("folktale, bedtime", meta)
+        self.assertNotIn("야담", meta)
+
     def test_folktale_lock_has_age_and_frame_and_alias(self):
         lock = app.image_style_lock("민화", "mindam")                      # 예전 이름 → 수채 사극
         self.assertIn("수채 사극", lock); self.assertIn("AGE LOCK", lock); self.assertIn("edge to edge", lock)

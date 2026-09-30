@@ -14,11 +14,19 @@ import threading
 
 FILE = "채널_프로필.json"
 SLOTS = ("person", "mindam")
+LANGUAGES = {
+    "ko": {"이름": "한국어", "지시": "자연스러운 한국어"},
+    "en": {"이름": "English", "지시": "natural American English"},
+    "ja": {"이름": "日本語", "지시": "natural Japanese"},
+    "es": {"이름": "Español", "지시": "natural neutral Spanish"},
+    "zh": {"이름": "中文", "지시": "natural Simplified Chinese"},
+}
 _lock = threading.Lock()
 
 기본_프로필 = {
     "person": {
         "유형": "정보형",
+        "언어": "ko",
         "이름": "심리해독소",
         "설명": ("복잡한 사람의 속마음과 관계의 해답을 찾아 주는 정보형 롱폼 채널. "
                "관계 해독(나를 이용하려는 사람 구분법·건강한 손절 기준), 감정 해독(피로감·불안·번아웃을 줄이는 마음 관리), "
@@ -59,6 +67,7 @@ _lock = threading.Lock()
     },
     "mindam": {
         "유형": "이야기형",
+        "언어": "ko",
         "이름": "옛날서재",
         "설명": "조선 시대 배경의 권선징악·반전·귀신·해학 이야기를 1~2시간 나레이션으로 들려주는 야담·민담·옛이야기 채널",
         "대상_시청자": "한국 야담·민담을 즐기는 50~70대",
@@ -148,7 +157,9 @@ def save(slot, patch):
     for k, v in (patch or {}).items():
         if k in ("유형",):
             continue
-        if k in ("검색어", "기본_태그", "자료_검색_접미"):
+        if k == "언어":
+            clean[k] = str(v or "ko").lower() if str(v or "ko").lower() in LANGUAGES else "ko"
+        elif k in ("검색어", "기본_태그", "자료_검색_접미"):
             if isinstance(v, str):
                 v = [x.strip() for x in re.split(r"[\n,]", v) if x.strip()]
             clean[k] = [str(x).strip() for x in (v or []) if str(x).strip()]
@@ -175,6 +186,7 @@ def placeholders(slot):
     m = p.get("마스코트") or {}
     return {
         "채널명": p["이름"],
+        "언어": language_name(slot),
         "채널_설명": p["설명"],
         "대상_시청자": p["대상_시청자"],
         "카테고리": p["카테고리"],
@@ -184,6 +196,28 @@ def placeholders(slot):
         "마스코트_프롬프트": m.get("프롬프트", ""),
         "인물_표현_규칙": 인물_표현_규칙(p),
     }
+
+
+def language_code(slot):
+    code = str(get(slot).get("언어") or "ko").lower()
+    return code if code in LANGUAGES else "ko"
+
+
+def language_name(slot):
+    return LANGUAGES[language_code(slot)]["이름"]
+
+
+def language_instruction(slot):
+    """파서용 한글 블록명은 보존하고 시청자에게 보이는 내용만 채널 언어로 만들게 한다."""
+    code = language_code(slot)
+    if code == "ko":
+        return ""
+    lang = LANGUAGES[code]
+    return ("\n\n[출력 언어 — 최우선 규칙]\n"
+            f"이 채널의 시청자 언어는 {lang['이름']}이다. 대본 본문, 제목, 설명, 태그, 고정댓글, 화면에 보이는 문구는 모두 {lang['지시']}로 작성한다. "
+            "입력 주제가 한국어여도 자연스럽게 현지화한다. 직역투를 피하고 해당 언어권의 호칭·관용 표현·문장부호를 쓴다. "
+            "프로그램이 읽는 [제목], [대본], [설명글], [태그], [고정댓글] 같은 대괄호 블록명과 ===001=== 같은 번호 표시는 원래 형식을 그대로 유지한다. "
+            "이미지 생성 프롬프트와 고유한 영어 스타일 문구는 영어를 유지한다.")
 
 
 def 인물_표현_규칙(p):
