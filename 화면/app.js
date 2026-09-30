@@ -136,6 +136,8 @@ async function refresh() {
   renderTopics();
   // 2단계
   renderProfileNames();
+  const activeProfile = (STATE.profiles || {})[channel] || {};
+  $('quickLanguage').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(activeProfile.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
   $('optHook').value = c.후킹_장면수 ?? 7;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
@@ -198,6 +200,20 @@ function setChannel(ch) {
   if (STATE) { renderChannels(STATE.channels || {}); loadAnalysis(ch); }
   $('customTitle').placeholder = ch === 'mindam' ? '예) 장터에서 아기를 백 냥에 사온 과부, 그 아이의 정체는' : '예) 나이 들수록 친구가 줄어드는 진짜 이유';
   renderTopics();
+  if (STATE && $('quickLanguage')) {
+    const code = ((STATE.profiles || {})[ch] || {}).언어 || 'ko';
+    $('quickLanguage').value = code;
+  }
+}
+
+async function saveQuickLanguage() {
+  const code = $('quickLanguage').value || 'ko';
+  const label = (((STATE || {}).languages || {})[code] || {}).이름 || code;
+  try {
+    await api('/api/profile', {slot: channel, data: {언어: code}});
+    toast(`${pname(channel)} 제작 언어를 ${label}(으)로 저장했습니다`);
+    await refresh();
+  } catch (e) { toast(e.message, true); }
 }
 function topicSource(ch) {
   const t = (STATE && STATE.topics) || {};

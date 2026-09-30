@@ -55,6 +55,7 @@
     <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
     <div class="row">
       <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">정보형</button><button data-ch="mindam" onclick="setChannel('mindam')">이야기형</button></div>
+      <label><b>제작 언어</b> <select id="quickLanguage" onchange="saveQuickLanguage()" style="min-width:130px"></select></label>
       <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
       <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
     </div>

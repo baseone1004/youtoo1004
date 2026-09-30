@@ -172,7 +172,8 @@ def main():
             time.sleep(1)
         else:
             raise RuntimeError("대본 만들기가 2분 안에 준비되지 않았습니다. 로그_대본선택.txt를 확인하세요.")
-        open_chrome(chrome, "http://127.0.0.1:8766/")
+        # 바로가기를 다시 눌렀을 때 이미 열린 예전 탭 대신 최신 화면을 확실히 요청한다.
+        open_chrome(chrome, f"http://127.0.0.1:8766/?v={int((HERE / '대본선택.py').stat().st_mtime)}")
         try:
             config = json.loads((HERE / "설정.json").read_text(encoding="utf-8"))
             if config.get("AI") == "deepseek-web":
