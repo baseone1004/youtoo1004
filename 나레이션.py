@@ -38,10 +38,63 @@ def find_ffmpeg(name="ffmpeg"):
 _붙임 = "⁠"     # 따옴표 안 문장 사이에 잠시 넣는 표시 (word joiner) — 여기서는 문장을 자르지 않는다
 
 
+def detect_language(text):
+    """대본의 주 언어를 가볍게 판별한다. 지원 대상은 한국어·영어·일본어다."""
+    sample = str(text or "")[:12000]
+    ko = len(re.findall(r"[가-힣]", sample))
+    ja = len(re.findall(r"[ぁ-んァ-ヶー]", sample))
+    en = len(re.findall(r"[A-Za-z]", sample))
+    if ja and ja * 3 >= ko:
+        return "ja"
+    if ko and ko * 2 >= en:
+        return "ko"
+    return "en" if en else "ko"
+
+
+def _foreign_sentences(text):
+    """공백 없는 일본어와 영문 약어·소수를 보존해 문장 경계를 찾는다."""
+    ends = ".!?。！？"
+    closers = "\"'”’」』》〉】)]}"
+    parts, start, i = [], 0, 0
+    while i < len(text):
+        char = text[i]
+        decimal = char == "." and i > 0 and i + 1 < len(text) and text[i - 1].isdigit() and text[i + 1].isdigit()
+        before, following = text[start:i + 1], text[i + 1:]
+        abbreviation = char == "." and (
+            bool(re.search(r"\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.$", before, re.I))
+            or (i + 1 < len(text) and text[i + 1].isascii() and text[i + 1].isalpha())
+            or (bool(re.search(r"(?:\b[A-Za-z]\.){2,}$", before)) and bool(re.match(r"\s+[a-z]", following)))
+        )
+        if char == "\n" or (char in ends and not decimal and not abbreviation):
+            end = i + 1
+            if char != "\n":
+                while end < len(text) and text[end] in ends + closers:
+                    end += 1
+                suffix = text[i + 1:end]
+                if ((any(q in suffix for q in "」』") and re.match(r"(?:と|って|など|なんて)", text[end:]))
+                        or (any(q in suffix for q in '\"”') and re.match(r" +[a-z]", text[end:]))):
+                    i = end
+                    continue
+            piece = text[start:end].strip()
+            if piece:
+                parts.append(piece)
+            start, i = end, end
+        else:
+            i += 1
+    if text[start:].strip():
+        parts.append(text[start:].strip())
+    return [part for part in parts if any(ch.isalnum() for ch in part)]
+
+
 def split_sentences(body, quotes=True):
     """문장 나누기 (나레이션·자막·이미지 번호가 모두 여기서 나온 번호를 쓴다).
     quotes=True: 따옴표 안의 대사는 마침표가 여러 개여도 한 문장으로 묶고, 따옴표 자체("“”‘’)는 자막·나레이션에 넣지 않는다.
     quotes=False: 예전 방식 (따옴표를 그대로 두고 마침표마다 자른다) — 예전 방식으로 만들던 편을 끝까지 같은 번호로 만들 때."""
+    body = str(body or "").replace("\r\n", "\n").replace("\r", "\n")
+    language = detect_language(body)
+    if language in ("en", "ja"):
+        parts = _foreign_sentences(body)
+        return [re.sub(r'["“”‘’]', "", part) for part in parts] if quotes else parts
     body = re.sub(r"[?!？！]+", ".", body)
     body = re.sub(r"(\.{2,}|…+)", ".", body)
     body = re.sub(r"\s+", " ", body.strip())

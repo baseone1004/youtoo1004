@@ -9,7 +9,7 @@
   window.__DAEBON_DS_BRIDGE__ = true;
 
   const SERVER = 'http://127.0.0.1:8766';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const PENDING_KEY = 'DAEBON_PENDING_JOB';          // 새 대화를 위해 페이지를 새로 열 때 작업을 이어받는 용도
   const DRIVER_KEY = 'DAEBON_DRIVER';                // 담당 탭 (localStorage: 탭끼리 공유)
   const DRIVER_TTL = 25000;
@@ -144,7 +144,7 @@
   async function runJob(job) {
     sentText = norm(job.text).slice(0, 200);
     setBadge('새 대화 준비 중…'); phase = '새 대화 준비 중';
-    const beat = () => api('/api/web/beat', 'POST', { id: job.id, progress: (document.hidden ? '⚠ 딥시크 창이 가려져 있어 답변이 그려지지 않음 · ' : '') + phase, hidden: !!document.hidden }).catch(() => { });
+    const beat = () => api('/api/web/beat', 'POST', { id: job.id, claim: job.claim, progress: (document.hidden ? '⚠ 딥시크 창이 가려져 있어 답변이 그려지지 않음 · ' : '') + phase, hidden: !!document.hidden }).catch(() => { });
     const beater = setInterval(beat, 8000); beat();
     try {
       await runJobInner(job);
@@ -190,7 +190,7 @@
     // 답변 본문에 "서버 혼잡" 같은 안내만 있으면 실패 처리 → 서버가 재시도
     const final = lastAssistantText();
     if (final.length < 40 && BLOCKED.test(final)) throw new Error('딥시크 안내문: ' + final.slice(0, 80));
-    await api('/api/web/result', 'POST', { id: job.id, text: final });
+    await api('/api/web/result', 'POST', { id: job.id, claim: job.claim, text: final });
     sessionStorage.removeItem(PENDING_KEY);
     setBadge(`전달 완료 · ${final.length.toLocaleString()}자`, '#22c55e');
   }
@@ -199,7 +199,7 @@
     // 새로고침 전에 남겨둔 작업 이어받기
     let pending = null;
     try { pending = JSON.parse(sessionStorage.getItem(PENDING_KEY) || 'null'); } catch (_) { }
-    if (pending && pending.id) { writeDriver(); try { await runJob(pending); } catch (e) { try { await api('/api/web/result', 'POST', { id: pending.id, error: String(e.message || e) }); } catch (_) { } sessionStorage.removeItem(PENDING_KEY); } }
+    if (pending && pending.id) { writeDriver(); try { await runJob(pending); } catch (e) { try { await api('/api/web/result', 'POST', { id: pending.id, claim: pending.claim, error: String(e.message || e) }); } catch (_) { } sessionStorage.removeItem(PENDING_KEY); } }
     while (true) {
       try {
         if (!iAmDriver()) { setBadge('다른 딥시크 탭이 담당 중 (이 탭은 대기)', '#8b95ad'); await sleep(8000); continue; }
@@ -212,7 +212,7 @@
           catch (e) {
             const msg = String(e.message || e);
             setBadge('실패: ' + msg, '#ef4444');
-            try { await api('/api/web/result', 'POST', { id: job.id, error: msg }); } catch (_) { }
+            try { await api('/api/web/result', 'POST', { id: job.id, claim: job.claim, error: msg }); } catch (_) { }
             sessionStorage.removeItem(PENDING_KEY);
             await sleep(5000);
           }

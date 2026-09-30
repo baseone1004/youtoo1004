@@ -2512,11 +2512,11 @@ class H(BaseHTTPRequestHandler):
                 run_job("variations", lambda job: make_variations(job, body)); self._json({"ok": True})
             elif u.path == "/api/web/result":
                 웹큐.extension_ping()
-                ok = 웹큐.finish(body.get("id", ""), result=body.get("text", ""), error=body.get("error", ""))
+                ok = 웹큐.finish(body.get("id", ""), result=body.get("text", ""), error=body.get("error", ""), claim=body.get("claim", ""))
                 self._json({"ok": ok})
             elif u.path == "/api/web/beat":
                 웹큐.extension_ping("hidden" if body.get("hidden") else "visible")
-                self._json({"ok": 웹큐.heartbeat(body.get("id", ""), body.get("progress", ""))})
+                self._json({"ok": 웹큐.heartbeat(body.get("id", ""), body.get("progress", ""), body.get("claim", ""))})
             elif u.path == "/api/tts":
                 run_job("tts", lambda job: make_tts(job, body)); self._json({"ok": True})
             elif u.path == "/api/workspace/save":

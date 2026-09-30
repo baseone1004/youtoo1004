@@ -6,7 +6,7 @@
   대본선택.py                        → /api/web/next, /api/web/result 로 확장과 주고받음
   딥시크_확장/content.js             → chat.deepseek.com 탭에서 큐를 가져다 입력·전송·답변 수집
 """
-import threading, time, uuid
+import secrets, threading, time, uuid
 
 _lock = threading.Lock()
 _jobs: dict[str, dict] = {}          # id → {text, status: pending|taken|done|fail, result, error, created, taken_at, beat}
@@ -26,7 +26,7 @@ def submit(text: str, meta: dict | None = None) -> str:
     with _event:
         _gc()
         _jobs[jid] = dict(id=jid, text=text, meta=meta or {}, status="pending", result="", error="",
-                          created=time.time(), taken_at=0.0, beat=0.0, progress="")
+                          created=time.time(), taken_at=0.0, beat=0.0, progress="", claim="", lease_no=0)
         _event.notify_all()
     return jid
 
@@ -66,18 +66,20 @@ def next_job(wait_sec: float = 20) -> dict | None:
             now = time.time()
             for j in sorted(_jobs.values(), key=lambda x: x["created"]):
                 if j["status"] == "pending" or (j["status"] == "taken" and now - max(j["taken_at"], j["beat"]) > LEASE_SEC):
-                    j["status"], j["taken_at"], j["beat"] = "taken", now, now
-                    return dict(id=j["id"], text=j["text"], meta=j["meta"])
+                    claim = uuid.uuid4().hex
+                    j["lease_no"] = int(j.get("lease_no") or 0) + 1
+                    j["status"], j["taken_at"], j["beat"], j["claim"] = "taken", now, now, claim
+                    return dict(id=j["id"], text=j["text"], meta=j["meta"], claim=claim)
             remain = end - now
             if remain <= 0:
                 return None
             _event.wait(min(remain, 5))
 
 
-def heartbeat(jid: str, progress: str = "") -> bool:
+def heartbeat(jid: str, progress: str = "", claim: str = "") -> bool:
     with _event:
         j = _jobs.get(jid)
-        if not j:
+        if not j or not _owns_lease(j, claim):
             return False
         j["beat"] = time.time()
         if progress:
@@ -85,10 +87,10 @@ def heartbeat(jid: str, progress: str = "") -> bool:
         return True
 
 
-def finish(jid: str, result: str = "", error: str = "") -> bool:
+def finish(jid: str, result: str = "", error: str = "", claim: str = "") -> bool:
     with _event:
         j = _jobs.get(jid)
-        if not j:
+        if not j or not _owns_lease(j, claim):
             return False
         if error:
             j["status"], j["error"] = "fail", error
@@ -96,6 +98,13 @@ def finish(jid: str, result: str = "", error: str = "") -> bool:
             j["status"], j["result"] = "done", result
         _event.notify_all()
         return True
+
+
+def _owns_lease(job: dict, claim: str) -> bool:
+    """새 확장은 토큰을 검사하고, 구 확장은 최초 임대에서만 호환한다."""
+    if claim:
+        return secrets.compare_digest(str(job.get("claim") or ""), str(claim))
+    return int(job.get("lease_no") or 0) == 1
 
 
 def status() -> dict:
