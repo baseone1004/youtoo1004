@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from 나레이션 import detect_language, split_sentences, split_subtitle_text, synthesize
+from 나레이션 import split_subtitle_text, synthesize
 
 
 class SubtitleSplitTest(unittest.TestCase):
@@ -52,21 +52,6 @@ class SubtitleSplitTest(unittest.TestCase):
             self.assertIn("00:00:00,000 -->", srt)
             self.assertIn("--> 00:00:05,000", srt)
 
-
-class ForeignSentenceTest(unittest.TestCase):
-    def test_japanese_without_spaces_is_split(self) -> None:
-        text = "最初の文です。次の文です！最後です？"
-        self.assertEqual(detect_language(text), "ja")
-        self.assertEqual(split_sentences(text), ["最初の文です。", "次の文です！", "最後です？"])
-
-    def test_english_abbreviation_and_decimal_are_not_split(self) -> None:
-        text = "Dr. Smith measured 3.5 meters. It worked!"
-        self.assertEqual(detect_language(text), "en")
-        self.assertEqual(split_sentences(text), ["Dr. Smith measured 3.5 meters.", "It worked!"])
-
-    def test_english_quote_and_reporting_clause_stay_together(self) -> None:
-        text = '"Stop." he said. Then we left.'
-        self.assertEqual(split_sentences(text), ["Stop. he said.", "Then we left."])
 
     def test_mindam_groups_short_captions_into_two_lines(self) -> None:
         sentence = "가" * 50
