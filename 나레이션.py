@@ -10,6 +10,7 @@ python 나레이션.py "대본 파일" [출력 폴더]
 """
 import sys, os, re, json, base64, subprocess, shutil, time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BASE = os.path.dirname(os.path.abspath(__file__)); os.chdir(BASE)
 import requests
@@ -259,7 +260,7 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
         p = part_path(a, b)
         txt = p[:-4] + ".txt"                    # 이 파일이 어떤 문장을 읽은 것인지 — 문장 나누기가 바뀌어 번호가 밀리면 다시 만든다
         try:
-            same_text = (open(txt, encoding="utf-8").read().strip() == text) if os.path.isfile(txt) else legacy_ok
+            same_text = (Path(txt).read_text(encoding="utf-8").strip() == text) if os.path.isfile(txt) else legacy_ok
         except OSError:
             same_text = False
         if os.path.exists(p) and os.path.getsize(p) > 500 and same_text:

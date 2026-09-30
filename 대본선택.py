@@ -8,7 +8,7 @@
   · 이미지 프롬프트: 만든 대본을 문장별 이미지 프롬프트(===001=== 형식)로 변환
   지침은 지침/ 폴더의 txt 를 골라 쓰고, 화면에서 바로 고쳐 저장할 수 있습니다.
 """
-import sys, os, re, io, json, glob, time, threading, datetime, webbrowser, urllib.parse, subprocess, shutil, uuid, mimetypes
+import sys, os, re, io, json, glob, time, threading, datetime, webbrowser, urllib.parse, subprocess, shutil, uuid, mimetypes, tempfile
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -33,6 +33,55 @@ VERSION = str(int(os.path.getmtime(os.path.abspath(__file__))))      # 파일이
 지침_폴더 = "지침"
 대본_폴더 = "대본"
 ADDR = f"http://127.0.0.1:{PORT}"
+LOCAL_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
+DEEPSEEK_ORIGIN = "https://chat.deepseek.com"
+
+
+def path_inside(root, path):
+    """path가 root 자체 또는 그 하위인지 경로 요소 기준으로 검사한다."""
+    try:
+        return os.path.commonpath((os.path.realpath(root), os.path.realpath(path))) == os.path.realpath(root)
+    except (OSError, ValueError):
+        return False
+
+
+def browser_origin_allowed(origin, path):
+    """자체 화면과 딥시크 연결 확장에 필요한 요청만 브라우저에서 허용한다."""
+    if not origin:                                      # Python·배치·로컬 프로그램 호출
+        return True
+    if origin in LOCAL_ORIGINS:
+        return True
+    web_endpoint = path.startswith("/api/web/") or path == "/ext/content.js"
+    return web_endpoint and (origin == DEEPSEEK_ORIGIN or origin.startswith("chrome-extension://"))
+
+
+def local_host_allowed(host):
+    """DNS 재바인딩으로 외부 도메인이 로컬 서버처럼 호출되는 것을 막는다."""
+    value = str(host or "").strip().lower()
+    try:
+        name = urllib.parse.urlsplit("//" + value).hostname or ""
+    except ValueError:
+        return False
+    return name in {"127.0.0.1", "localhost", "::1"}
+
+
+def atomic_write_text(path, text, encoding="utf-8"):
+    """전원 종료 중에도 기존 파일이 반쪽으로 남지 않게 같은 폴더에서 교체한다."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp = tempfile.mkstemp(prefix=target.name + ".", suffix=".tmp", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w", encoding=encoding, newline="") as handle:
+            handle.write(text)
+            handle.flush(); os.fsync(handle.fileno())
+        os.replace(temp, target)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+
+
+def atomic_write_json(path, value):
+    atomic_write_text(path, json.dumps(value, ensure_ascii=False, indent=2))
 
 
 # ── 작업 상태 (한 번에 하나) ─────────────────────────────────────
@@ -441,17 +490,16 @@ def refresh_topics(channel, shown):
 def read_guideline(name, channel="person"):
     """지침 파일을 읽고 {{채널명}} 같은 자리표시자를 채널 프로필 값으로 채운다."""
     p = os.path.join(지침_폴더, name)
-    if not os.path.abspath(p).startswith(os.path.abspath(지침_폴더)) or not os.path.exists(p):
+    if not path_inside(지침_폴더, p) or not os.path.isfile(p):
         raise FileNotFoundError(name)
     with open(p, encoding="utf-8-sig") as f:
         return 채널_프로필.fill(f.read(), channel)
 
 def write_guideline(name, text):
     p = os.path.join(지침_폴더, name)
-    if not os.path.abspath(p).startswith(os.path.abspath(지침_폴더)):
+    if not path_inside(지침_폴더, p) or Path(p).suffix.lower() != ".txt":
         raise ValueError(name)
-    with open(p, "w", encoding="utf-8") as f:
-        f.write(text)
+    atomic_write_text(p, text)
 
 def mask(key):
     """키를 화면에 보여 줄 때 앞 4자·뒤 4자만 남긴다."""
@@ -1191,19 +1239,15 @@ def save_workspace(body):
     data = workspace_data(script)
     kind = body.get("kind", "")
     if kind == "script":
-        Path(script).write_text(str(body.get("text", "")), encoding="utf-8")
+        atomic_write_text(script, str(body.get("text", "")))
     elif kind == "prompts":
-        Path(data["prompts_file"]).parent.mkdir(parents=True, exist_ok=True)
-        Path(data["prompts_file"]).write_text(str(body.get("text", "")), encoding="utf-8")
+        atomic_write_text(data["prompts_file"], str(body.get("text", "")))
     elif kind == "srt":
-        Path(data["srt_file"]).parent.mkdir(parents=True, exist_ok=True)
-        Path(data["srt_file"]).write_text(str(body.get("text", "")), encoding="utf-8")
+        atomic_write_text(data["srt_file"], str(body.get("text", "")))
     elif kind == "metadata":
         Path(data["assets"]).mkdir(parents=True, exist_ok=True)
         target = Path(data["assets"]) / "업로드_정보.json"
-        temp = target.with_suffix(".tmp")
-        temp.write_text(json.dumps({k: str(body.get(k, "")) for k in ("title", "description", "sources", "tags")}, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(temp, target)
+        atomic_write_json(target, {k: str(body.get(k, "")) for k in ("title", "description", "sources", "tags")})
     else:
         raise ValueError("저장할 항목을 선택하세요.")
     return {"ok": True}
@@ -1669,8 +1713,8 @@ def brand_preview(slot):
 def thumb_copies_for(script, assets, is_mindam, log=None):
     """유튜브_최적화.txt 의 썸네일 문구 3세트, 없으면 제목으로 만든다."""
     opt_path = os.path.join(assets, "유튜브_최적화.txt") if is_mindam else re.sub(r"\.txt$", "", script) + "_유튜브최적화.txt"
-    opt_text = open(opt_path, encoding="utf-8").read() if os.path.exists(opt_path) else ""
-    script_text = open(script, encoding="utf-8-sig").read()
+    opt_text = Path(opt_path).read_text(encoding="utf-8") if os.path.exists(opt_path) else ""
+    script_text = Path(script).read_text(encoding="utf-8-sig")
     copies = parse_thumb_copies(opt_text)
     blocks = 대본생성.blocks_of(script_text.split("[대본]", 1)[0])
     up, down = blocks.get("상단 제목", "").strip(), blocks.get("하단 제목", "").strip()
@@ -2367,7 +2411,10 @@ class H(BaseHTTPRequestHandler):
         data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         try:
             self.send_response(code); self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            origin = self.headers.get("Origin", "")
+            if origin and browser_origin_allowed(origin, urllib.parse.urlparse(self.path).path):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
             self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
             pass                                   # 화면이 새로고침되거나 확장이 긴 폴링을 끊은 것 — 오류가 아니므로 로그에 남기지 않는다
@@ -2379,9 +2426,23 @@ class H(BaseHTTPRequestHandler):
             pass
 
     def do_OPTIONS(self):
+        path = urllib.parse.urlparse(self.path).path
+        origin = self.headers.get("Origin", "")
+        if not browser_origin_allowed(origin, path):
+            self._json({"detail": "허용되지 않은 웹페이지의 요청입니다."}, 403); return
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*"); self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin); self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type"); self.end_headers()
+
+    def _allow_browser(self, path):
+        origin = self.headers.get("Origin", "")
+        cross_site_without_origin = self.headers.get("Sec-Fetch-Site", "").lower() == "cross-site" and not origin
+        if local_host_allowed(self.headers.get("Host", "")) and not cross_site_without_origin and browser_origin_allowed(origin, path):
+            return True
+        self._json({"detail": "허용되지 않은 웹페이지의 요청입니다."}, 403)
+        return False
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -2389,6 +2450,8 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
+        if not self._allow_browser(u.path):
+            return
         try:
             if u.path == "/" or u.path.startswith("/static/"):
                 data, mime = static_file("index.html" if u.path == "/" else u.path[len("/static/"):])
@@ -2474,12 +2537,15 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/ext/content.js":                     # 확장 소스 확인용 (콘솔에서 직접 붙여 넣어 테스트할 때)
                 data = open(os.path.join("딥시크_확장", "content.js"), "rb").read()
                 self.send_response(200); self.send_header("Content-Type", "application/javascript; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*"); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+                origin = self.headers.get("Origin", "")
+                if origin:
+                    self.send_header("Access-Control-Allow-Origin", origin); self.send_header("Vary", "Origin")
+                self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
             elif u.path == "/api/guideline":
                 self._json(dict(text=read_guideline(q["name"][0])))
             elif u.path == "/api/assets":
                 sf = q.get("script", [""])[0]
-                if not sf or not os.path.exists(sf):
+                if sf not in {item["path"] for item in script_files()}:
                     self._json({"detail": "대본 파일이 없습니다."}, 404); return
                 a = assets_dir(sf)
                 pr = os.path.join(a, "이미지프롬프트.txt") if os.path.basename(sf) == "final.txt" else re.sub(r"\.txt$", "", sf) + "_이미지프롬프트.txt"
@@ -2491,7 +2557,7 @@ class H(BaseHTTPRequestHandler):
                 self._json(workspace_data(q.get("script", [""])[0]))
             elif u.path == "/api/file":
                 p = q["path"][0]
-                if not os.path.abspath(p).startswith(os.path.abspath(BASE)):
+                if not path_inside(BASE, p) or not os.path.isfile(p):
                     raise ValueError("허용되지 않은 경로")
                 with open(p, encoding="utf-8-sig") as f:
                     self._json(dict(text=f.read()))
@@ -2502,6 +2568,8 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
+        if not self._allow_browser(u.path):
+            return
         try:
             body = self._body()
             if u.path == "/api/script":
@@ -2681,8 +2749,7 @@ class H(BaseHTTPRequestHandler):
                     cfg["API_키_" + ai] = cfg["API_키"]
                 if cfg.get("API_키_" + ai):
                     cfg["API_키"] = cfg["API_키_" + ai]
-                with open("설정.json", "w", encoding="utf-8") as f:
-                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+                atomic_write_json("설정.json", cfg)
                 for ch, key in 채널_연동.CONFIG_KEY.items():
                     if key in body or "유튜브_API_키" in body:
                         채널_연동.fetch_in_background(cfg, ch, force=True)
@@ -2692,8 +2759,7 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/bench/channels":
                 cfg = load_json("설정.json", {})
                 cfg["벤치_채널_추가"] = [str(x).strip() for x in (body.get("channels") or []) if str(x).strip()]
-                with open("설정.json", "w", encoding="utf-8") as f:
-                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+                atomic_write_json("설정.json", cfg)
                 self._json({"ok": True, "count": len(cfg["벤치_채널_추가"])})
             elif u.path == "/api/topics/hide":                    # 추천 목록의 주제를 '이미 만든 주제'로 기록해 다시 안 나오게
                 title = str(body.get("title") or "").strip()
@@ -2728,6 +2794,8 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": True})
             elif u.path == "/api/open":
                 p = body.get("path", "")
+                if not path_inside(BASE, p):
+                    raise ValueError("프로그램 작업 폴더 밖의 경로는 열 수 없습니다.")
                 if os.path.isfile(p):
                     subprocess.Popen(["explorer", "/select,", os.path.abspath(p)])
                 elif os.path.isdir(p):

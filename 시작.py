@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """초보자용 실행기: 필요한 구성만 설치하고 두 로컬 서버를 연다."""
 import importlib.util
+import importlib.metadata
 import json
 import os
 from pathlib import Path
+import py_compile
 import shutil
 import subprocess
 import sys
@@ -12,10 +14,10 @@ import urllib.request
 
 HERE = Path(__file__).resolve().parent
 PACKAGES = {
-    "yt_dlp": "yt-dlp", "openai": "openai", "ddgs": "ddgs",
-    "anthropic": "anthropic", "requests": "requests", "fastapi": "fastapi",
-    "uvicorn": "uvicorn", "PIL": "pillow", "pyautogui": "pyautogui",
-    "pyperclip": "pyperclip",
+    "yt_dlp": ("yt-dlp", "2026.8.19"), "openai": ("openai", "3.13.0"), "ddgs": ("ddgs", "9.16.0"),
+    "anthropic": ("anthropic", "1.5.0"), "requests": ("requests", "2.34.2"), "fastapi": ("fastapi", "0.141.1"),
+    "uvicorn": ("uvicorn", "0.52.4"), "PIL": ("pillow", "12.3.0"), "pyautogui": ("pyautogui", "0.9.54"),
+    "pyperclip": ("pyperclip", "1.11.0"),
 }
 
 
@@ -69,6 +71,48 @@ def open_chrome(chrome, url):
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def apply_editor_integrations(editor):
+    """편집기 연결 패치를 전부 적용·검증하고, 하나라도 실패하면 원상 복구한다."""
+    from 편집프로그램_UI_연결 import apply as apply_editor_ui
+    from 편집프로그램_KIE_연결 import apply as apply_editor_kie
+    from 편집프로그램_영상_연결 import apply as apply_editor_video
+    from 편집프로그램_글꼴_연결 import apply as apply_editor_fonts
+    from 편집프로그램_렌더_보호 import apply as apply_editor_render_guard
+    from 편집프로그램_AI표시_연결 import apply as apply_editor_ai_notice
+    from 편집프로그램_드롭샷자동좌표_연결 import apply as apply_dropshot_autoxy
+    from 편집프로그램_다시만들기_예약_연결 import apply as apply_regen_queue
+    from 편집프로그램_드롭샷영상_연결 import apply as apply_dropshot_video
+    from 편집프로그램_자막두께_연결 import apply as apply_subtitle_weight
+
+    editor = Path(editor)
+    patchers = (apply_editor_ui, apply_editor_kie, apply_editor_video, apply_editor_fonts,
+                apply_editor_render_guard, apply_editor_ai_notice, apply_dropshot_autoxy,
+                apply_regen_queue, apply_dropshot_video, apply_subtitle_weight)
+    suffixes = {".py", ".html", ".js", ".css"}
+    originals = {p.relative_to(editor) for p in editor.rglob("*") if p.is_file() and p.suffix.lower() in suffixes}
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="editor_patch_backup_") as td:
+        backup = Path(td)
+        for rel in originals:
+            target = backup / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(editor / rel, target)
+        try:
+            for patcher in patchers:
+                patcher(editor)
+            for source in editor.rglob("*.py"):
+                py_compile.compile(str(source), doraise=True)
+        except Exception:
+            current = {p.relative_to(editor) for p in editor.rglob("*") if p.is_file() and p.suffix.lower() in suffixes}
+            for rel in current - originals:
+                (editor / rel).unlink(missing_ok=True)
+            for rel in originals:
+                target = editor / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(backup / rel, target)
+            raise
+
+
 DETACHED = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
 
@@ -80,8 +124,14 @@ def main():
     chrome = find_chrome()
     if not chrome:
         raise RuntimeError("Chrome을 찾지 못했습니다. Chrome 설치 후 다시 실행하세요.")
-    missing = [package for module, package in PACKAGES.items()
-               if importlib.util.find_spec(module) is None]
+    missing = []
+    for module, (package, version) in PACKAGES.items():
+        try:
+            installed = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            installed = ""
+        if importlib.util.find_spec(module) is None or installed != version:
+            missing.append(f"{package}=={version}")
     if missing:
         print("필요한 프로그램을 처음 한 번 설치합니다:", ", ".join(missing), flush=True)
         subprocess.run([sys.executable, "-m", "pip", "install", *missing], check=True)
@@ -90,31 +140,14 @@ def main():
     env.update(PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
     children, logs = [], []
     editor = find_editor()
+    editor_integrations_ok = True
     if editor:
         try:
-            from 편집프로그램_UI_연결 import apply as apply_editor_ui
-            apply_editor_ui(editor)
-            from 편집프로그램_KIE_연결 import apply as apply_editor_kie
-            apply_editor_kie(editor)
-            from 편집프로그램_영상_연결 import apply as apply_editor_video
-            apply_editor_video(editor)
-            from 편집프로그램_글꼴_연결 import apply as apply_editor_fonts
-            apply_editor_fonts(editor)
-            from 편집프로그램_렌더_보호 import apply as apply_editor_render_guard
-            apply_editor_render_guard(editor)
-            from 편집프로그램_AI표시_연결 import apply as apply_editor_ai_notice
-            apply_editor_ai_notice(editor)
-            from 편집프로그램_드롭샷자동좌표_연결 import apply as apply_dropshot_autoxy
-            apply_dropshot_autoxy(editor)
-            from 편집프로그램_다시만들기_예약_연결 import apply as apply_regen_queue
-            apply_regen_queue(editor)
-            from 편집프로그램_드롭샷영상_연결 import apply as apply_dropshot_video
-            apply_dropshot_video(editor)
-            from 편집프로그램_자막두께_연결 import apply as apply_subtitle_weight
-            apply_subtitle_weight(editor)
-        except (OSError, ValueError) as exc:
-            print("편집프로그램 연결 설정을 확인하세요:", exc)
-    if editor and not ready(8765):
+            apply_editor_integrations(editor)
+        except Exception as exc:  # noqa: BLE001
+            editor_integrations_ok = False
+            print("편집프로그램 연결 적용에 실패해 원상 복구했습니다:", exc)
+    if editor and editor_integrations_ok and not ready(8765):
         log = open_log("로그_편집프로그램.txt")
         logs.append(log)
         children.append(subprocess.Popen([sys.executable, "app.py", "--no-browser"],
@@ -147,7 +180,7 @@ def main():
         except (OSError, ValueError):
             pass
         print("대본 만들기 화면이 열렸습니다: http://127.0.0.1:8766/")
-        if editor:
+        if editor and editor_integrations_ok:
             print("편집프로그램 준비:", "완료" if ready(8765) else "시작 중")
         if not background:
             print("이 창은 닫아도 됩니다 — 프로그램은 계속 돌아갑니다. 완전히 끝내려면 화면의 [종료] 버튼을 누르세요. (Enter: 이 창만 닫기)")

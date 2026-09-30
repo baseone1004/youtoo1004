@@ -18,6 +18,7 @@
 개인 자료(설정.json 의 키, 대본/, 업로드/, 채널_프로필.json, 계획·후보 json, 로그)는 넣지 않는다."""
 import argparse
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -243,6 +244,30 @@ def make_zip(out):
     return zpath
 
 
+def validate_release(out, python_exe=None):
+    """판매용 폴더에 개인 키가 없고 코드가 실행 가능한지 확인한 뒤 파일 해시를 남긴다."""
+    app = out / "app"
+    cfg = json.loads((app / "설정.json").read_text(encoding="utf-8"))
+    sensitive = [k for k in cfg if "키" in k or "토큰" in k]
+    leaked = [k for k in sensitive if str(cfg.get(k) or "").strip()]
+    if leaked:
+        raise RuntimeError("배포 설정에 개인 인증정보가 들어 있습니다: " + ", ".join(leaked))
+    forbidden = {"대본", "업로드", "로그_시작.txt", "로그_대본선택.txt"}
+    unexpected = [p.name for p in app.iterdir() if p.name in forbidden]
+    if unexpected:
+        raise RuntimeError("개인 작업 파일이 배포판에 포함됐습니다: " + ", ".join(unexpected))
+    exe = Path(python_exe) if python_exe else Path(sys.executable)
+    checked = subprocess.run([str(exe), "-m", "compileall", "-q", str(app)], capture_output=True, text=True)
+    if checked.returncode:
+        raise RuntimeError("배포 코드 문법 검사 실패:\n" + (checked.stdout + checked.stderr)[-3000:])
+    manifest = []
+    for path in sorted(p for p in out.rglob("*") if p.is_file() and p.name != "SHA256SUMS.txt"):
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        manifest.append(f"{digest}  {path.relative_to(out).as_posix()}")
+    (out / "SHA256SUMS.txt").write_text("\n".join(manifest) + "\n", encoding="utf-8")
+    log(f"   배포 검증 완료 · 파일 {len(manifest)}개 · SHA256SUMS.txt")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--editor", default="")
@@ -259,6 +284,7 @@ def main():
     build_ffmpeg(out / "app", a.skip_download)
     build_python(out / "python", ROOT / "배포" / "requirements.txt")
     write_launchers(out)
+    validate_release(out, out / "python" / "python.exe")
     size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file()) / 1e6
     log(f"✓ 배포 폴더 완성: {out} ({size:,.0f} MB)")
     if not a.no_zip:
