@@ -16,10 +16,10 @@ FILE = "채널_프로필.json"
 SLOTS = ("person", "mindam")
 LANGUAGES = {
     "ko": {"이름": "한국어", "지시": "자연스러운 한국어"},
-    "en": {"이름": "English", "지시": "natural American English"},
-    "ja": {"이름": "日本語", "지시": "natural Japanese"},
-    "es": {"이름": "Español", "지시": "natural neutral Spanish"},
-    "zh": {"이름": "中文", "지시": "natural Simplified Chinese"},
+    "en": {"이름": "영어", "지시": "natural American English"},
+    "ja": {"이름": "일본어", "지시": "natural Japanese"},
+    "es": {"이름": "스페인어", "지시": "natural neutral Spanish"},
+    "zh": {"이름": "중국어", "지시": "natural Simplified Chinese"},
 }
 _lock = threading.Lock()
 

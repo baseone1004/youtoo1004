@@ -46,11 +46,11 @@ class ChannelProfileTest(unittest.TestCase):
     def test_language_setting_and_instruction(self):
         saved = P.save("person", {"언어": "ja"})
         self.assertEqual(saved["언어"], "ja")
-        self.assertEqual(P.language_name("person"), "日本語")
+        self.assertEqual(P.language_name("person"), "일본어")
         instruction = P.language_instruction("person")
         self.assertIn("natural Japanese", instruction)
         self.assertIn("대괄호 블록명", instruction)
-        self.assertEqual(P.fill("{{언어}}", "person"), "日本語")
+        self.assertEqual(P.fill("{{언어}}", "person"), "일본어")
 
     def test_unknown_language_falls_back_to_korean(self):
         saved = P.save("person", {"언어": "xx"})
