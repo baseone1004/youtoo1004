@@ -63,6 +63,7 @@ def generate(ai, system, t, target, n_parts):
     card = topic_card(t, target)
     kw = " ".join(t.get("태그", [])[:2])
     import 채널_프로필
+    caption_language = 채널_프로필.LANGUAGES[채널_프로필.language_code("person")]["이름"]
     suffixes = 채널_프로필.get("person").get("자료_검색_접미") or ["연구 결과", "통계 조사"]
     src = web_search([t["제목"]] + [f"{kw} {sfx}" for sfx in suffixes], per_query=5, max_total=8)
     print(f"   참고 자료 {len(src)}건 검색")
@@ -91,7 +92,7 @@ def generate(ai, system, t, target, n_parts):
                 f"위에 이어서 구간 {s}~{e}를 약 {chars_of(s, e):,}자로 쓴다. 앞 내용을 다시 요약하거나 반복하지 않는다. "
                 f"[대본] 같은 블록 제목, 구간 제목, 설명 없이 낭독할 본문만 쓴다.\n\n{budget_text(target, s, e)}")
         if last:
-            user += ("\n마지막 구간을 끝낸 뒤 줄을 바꿔 '===sum===' 을 쓰고, 그 다음 줄에 [상단 제목]과 [하단 제목]의 한글 두 줄을 정확히 포함하는 "
+            user += (f"\n마지막 구간을 끝낸 뒤 줄을 바꿔 '===sum===' 을 쓰고, 그 다음 줄에 [상단 제목]과 [하단 제목]의 {caption_language} 두 줄을 정확히 포함하는 "
                      "16:9 썸네일 영어 프롬프트 한 문단을 쓴다.")
         else:
             user += f"\n구간 {e} 끝에서 멈추고 마지막 줄에 '===계속===' 이라고만 쓴다."

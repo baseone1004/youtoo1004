@@ -111,7 +111,7 @@ async function checkReady() {
     const info = STATE || await api('/api/state');
     const selectedChannels = [...new Set([...selection.values()].map(x => x.channel))];
     const requiredChannels = selectedChannels.length ? selectedChannels : [channel];
-    const v = requiredChannels.every(ch => String(info.config[ch === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || info.config.인월드_목소리 || '').trim());
+    const v = requiredChannels.every(ch => (info.profiles?.[ch]?.언어 === 'ja') ? String(info.config.인월드_목소리_일본 || '').trim() : String(info.config[ch === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || info.config.인월드_목소리 || '').trim());
     if (info.config.AI === 'deepseek-web') items.push([!!info.web_alive, info.web_alive ? '딥시크 웹 연결' : '딥시크 창 안 보임', 'settings']);
     else items.push([!!info.config.키있음, info.config.키있음 ? info.config.AI + ' 키' : info.config.AI + ' 키 없음', 'settings']);
     const voiceReady = !!v && !!info.config.인월드키있음;
@@ -173,6 +173,8 @@ async function refresh() {
   $('sWeb').textContent = isWeb ? (STATE.web_alive ? '🟢 딥시크 확장 연결됨 (chat.deepseek.com 탭 감지)' : '🔴 확장이 연결되지 않음 — 크롬에 딥시크_확장을 설치하고 chat.deepseek.com 탭을 열어 두세요') : '';
   for (const [k, v] of Object.entries(STATE.keys || {})) { const el = $('k_' + k); if (!el) continue; el.textContent = v ? '저장됨 ' + v : '없음'; el.className = 'stat ' + (v ? 'ok' : 'bad'); }
   $('sInworldModel').value = c.인월드_모델 || 'inworld-tts-1.5-max';
+  $('sVoiceJ').value = c.인월드_목소리_일본 || ''; $('sSpeedJ').value = c.인월드_속도_일본 || 1.0;
+  $('vJapan').textContent = c.인월드_목소리_일본 ? '저장됨 · TTS 2' : '일본어 목소리 필요'; $('vJapan').className = 'stat ' + (c.인월드_목소리_일본 ? 'ok' : 'bad');
   $('sVoiceP').value = c.인월드_목소리_사람 || ''; $('sSpeedP').value = c.인월드_속도_사람 || 1.0;
   $('sVoiceM').value = c.인월드_목소리_민담 || ''; $('sSpeedM').value = c.인월드_속도_민담 || 1.0; $('sCpm').value = c.분당_글자수 || 270;
   $('vPerson').textContent = c.인월드_목소리_사람 ? '저장됨' : '없음'; $('vPerson').className = 'stat ' + (c.인월드_목소리_사람 ? 'ok' : 'bad');
@@ -885,6 +887,22 @@ async function saveVoice(ch) {
     : {인월드_목소리_사람: $('sVoiceP').value.trim(), 인월드_속도_사람: +$('sSpeedP').value, 인월드_목소리: $('sVoiceP').value.trim(), 인월드_속도: +$('sSpeedP').value, 인월드_모델: $('sInworldModel').value};
   if (ch !== 'mindam' && !body.인월드_목소리_사람) return toast('목소리 ID를 입력하세요', true);
   await api('/api/config', body); toast(pname(ch) + (ch === 'mindam' && !body.인월드_목소리_민담 ? ' 목소리 비움 → ' + pname('person') + ' 목소리를 같이 씁니다' : ' 목소리 저장됨')); refresh();
+}
+async function saveJapanVoice() {
+  const voice = $('sVoiceJ').value.trim(), speed = +$('sSpeedJ').value;
+  if (!voice) return toast('일본어 목소리 ID를 입력하세요', true);
+  if (!Number.isFinite(speed) || speed < .5 || speed > 1.5) return toast('속도는 0.5~1.5로 입력하세요', true);
+  try { await api('/api/config', {인월드_목소리_일본: voice, 인월드_속도_일본: speed}); toast('일본어 목소리 저장됨'); await refresh(); } catch (e) { toast(e.message, true); }
+}
+async function checkSubtitleSync() {
+  const file = $('workFile').value;
+  if (!file) return toast('확인할 작업을 선택하세요', true);
+  const status = $('subtitleSyncStatus'); status.textContent = '음성 길이와 자막 시간을 확인 중…';
+  try {
+    const result = await api('/api/narration/sync?script=' + encodeURIComponent(file));
+    status.textContent = (result.ok ? '✓ 검사 통과' : '확인 필요') + ' · ' + result.cues + '개 자막 · ' + result.detail + (result.issues.length ? ' · ' + result.issues.join(' / ') : ' · 시간 역전·겹침·음성 길이 초과 없음');
+    toast(result.ok ? '자막 시간 검사 통과' : '자막 시간에 문제가 있습니다', !result.ok);
+  } catch (e) { status.textContent = e.message; toast(e.message, true); }
 }
 async function saveCpm() { await api('/api/config', {분당_글자수: +$('sCpm').value, 인월드_모델: $('sInworldModel').value}); toast('저장됨'); refresh(); }
 async function saveTelegramToken() { const token = $('tgToken').value.trim(); if (!token) return toast('BotFather에서 받은 봇 토큰을 입력하세요.', true); await api('/api/config', {텔레그램_봇_토큰: token}); $('tgToken').value = ''; toast('토큰 저장. 이제 봇에게 메시지를 보내고 채팅 자동 찾기를 누르세요.'); refresh(); }

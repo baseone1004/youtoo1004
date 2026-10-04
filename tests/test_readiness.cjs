@@ -3,9 +3,9 @@ const vm = require('vm');
 const assert = require('assert');
 const source = fs.readFileSync('화면/app.js', 'utf8');
 const fn = source.slice(source.indexOf('async function checkReady()'), source.indexOf('// ── 상태 불러오기'));
-async function check(channels, config, credit) {
+async function check(channels, config, credit, profiles = {}) {
   const nodes = {};
-  const ctx = { STATE: { config }, selection: new Map(channels.map((ch, i) => [i, {channel: ch}])), channel: 'mindam',
+  const ctx = { STATE: { config, profiles }, selection: new Map(channels.map((ch, i) => [i, {channel: ch}])), channel: 'mindam',
     api: async () => credit, get8765: async () => ({kie_key_saved: true, image_model: 'z-image'}),
     $: id => nodes[id] || (nodes[id] = {}), esc: x => x };
   vm.createContext(ctx); vm.runInContext(fn, ctx);
@@ -18,5 +18,7 @@ async function check(channels, config, credit) {
   assert.equal(await check(['mindam'], cfg, {ok:false,credit:null}), false);
   assert.equal(await check(['mindam'], cfg, {ok:true,credit:0}), false);
   assert.equal(await check(['mindam'], {...cfg, 인월드_목소리:'common'}, {ok:true,credit:0.1}), true);
-  console.log('Readiness checks passed (5 cases)');
+  assert.equal(await check(['person'], {...cfg, 인월드_목소리:'korean'}, {ok:true,credit:1}, {person:{언어:'ja'}}), false);
+  assert.equal(await check(['person'], {...cfg, 인월드_목소리_일본:'japanese'}, {ok:true,credit:1}, {person:{언어:'ja'}}), true);
+  console.log('Readiness checks passed (7 cases)');
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -2,13 +2,14 @@
 """
 나레이션.py — 인월드(Inworld) TTS 로 대본을 문장 단위로 읽고, 합친 mp3 + 문장별 SRT + 플로우 txt 를 만든다.
 
-  문장 1개 = 자막 1개 = 이미지 1장. 문장마다 따로 합성하므로 자막 시간이 정확하다.
+  긴 문장은 짧은 자막으로 나누고 이미지 번호는 플로우 파일에 유지한다.
+  일본어는 문자 타임스탬프, 기존 모델은 음성의 쉼과 글자 수로 자막 시간을 계산한다.
   설정.json: "인월드_API_키", "인월드_목소리", "인월드_모델"(기본 inworld-tts-1.5), "인월드_속도"(기본 1.0)
   API: POST https://api.inworld.ai/tts/v1/voice  (Authorization: Basic <API_KEY>)
 
 python 나레이션.py "대본 파일" [출력 폴더]
 """
-import sys, os, re, json, base64, subprocess, shutil, time
+import sys, os, re, json, base64, subprocess, shutil, time, hashlib, math, wave
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -66,9 +67,10 @@ def script_body(text):
 
 
 class Inworld:
-    def __init__(self, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, temperature=None):
+    def __init__(self, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, temperature=None, language="", timestamps=False):
         if not api_key or not voice_id:
             raise SystemExit("설정.json 에 인월드_API_키 와 인월드_목소리(voice ID) 를 넣어주세요.")
+        self.language, self.timestamps = language, timestamps
         self.h = {"Authorization": f"Basic {api_key.strip()}", "Content-Type": "application/json"}
         self.voice, self.model, self.speed, self.temperature = voice_id.strip(), model or "inworld-tts-1.5-max", float(speed or 1.0), temperature
 
@@ -77,7 +79,13 @@ class Inworld:
                 "audioConfig": {"audioEncoding": "MP3", "sampleRateHertz": 24000}}
         if abs(self.speed - 1.0) > 0.01:
             body["audioConfig"]["speakingRate"] = self.speed
-        if self.temperature is not None:
+        if self.language:
+            body["language"] = self.language
+        if self.timestamps:
+            body["timestampType"] = "CHARACTER"
+        if self.model == "inworld-tts-2":
+            body["deliveryMode"] = "STABLE"
+        elif self.temperature is not None and self.model != "inworld-tts-2-flash":
             body["temperature"] = float(self.temperature)
         last = ""
         for attempt in range(retries):
@@ -90,6 +98,9 @@ class Inworld:
                         raise RuntimeError(f"audioContent 없음: {str(j)[:200]}")
                     with open(out_path, "wb") as f:
                         f.write(base64.b64decode(audio))
+                    if self.timestamps:
+                        alignment = j.get("timestampInfo") or (j.get("result") or {}).get("timestampInfo") or {}
+                        Path(str(out_path) + ".alignment.json").write_text(json.dumps(alignment, ensure_ascii=False), encoding="utf-8")
                     return out_path
                 last = f"HTTP {r.status_code}: {r.text[:200]}"
                 if r.status_code in (401, 403):
@@ -231,8 +242,52 @@ def sentence_boundaries(ffmpeg, path, total, texts):
     return bounds
 
 
+def character_timings(text, alignment):
+    data = alignment.get("characterAlignment") or {}
+    chars, starts, ends = data.get("characters", []), data.get("characterStartTimeSeconds", []), data.get("characterEndTimeSeconds", [])
+    if not chars or len(chars) != len(starts) or len(chars) != len(ends):
+        raise ValueError("문자별 음성 타임스탬프가 없습니다. 일본어 모델을 Inworld TTS-2로 설정하세요.")
+    expanded, times = [], []
+    previous = 0.0
+    for token, start, end in zip(chars, starts, ends):
+        start, end = float(start), float(end)
+        if not math.isfinite(start + end) or start < previous - .08 or start < 0 or end < start:
+            raise ValueError("음성 타임스탬프 순서가 올바르지 않습니다.")
+        previous = start
+        for char in token:
+            if not char.isspace():
+                expanded.append(char); times.append((start, end))
+    if "".join(expanded) != re.sub(r"\s+", "", text):
+        raise ValueError("음성 타임스탬프의 글자가 대본과 다릅니다. 해당 음성을 확인하세요.")
+    return times
+
+
+def verify_subtitle_sync(srt_path, audio_duration, method="estimated"):
+    text = Path(srt_path).read_text(encoding="utf-8-sig")
+    def seconds(value):
+        h, m, s, ms = map(int, re.split(r"[:,]", value))
+        return h * 3600 + m * 60 + s + ms / 1000
+    cues = [(seconds(a), seconds(b)) for a, b in re.findall(r"(\d{2,}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2,}:\d{2}:\d{2},\d{3})", text)]
+    issues, prev = [], 0.0
+    if not cues:
+        issues.append("자막이 없습니다.")
+    if text.count("-->") != len(cues):
+        issues.append("자막 시간 형식을 확인하세요.")
+    if not math.isfinite(audio_duration) or audio_duration <= 0:
+        issues.append("음성 길이를 확인하지 못했습니다.")
+    for index, (start, end) in enumerate(cues, 1):
+        if end <= start or start < prev - .001:
+            issues.append(f"{index}번 자막의 시간이 역전되거나 겹칩니다.")
+        if end > audio_duration + .12:
+            issues.append(f"{index}번 자막이 음성 길이를 넘습니다.")
+        prev = end
+    return dict(ok=not issues, method=method, cues=len(cues), audio_duration=audio_duration,
+                last_caption_end=cues[-1][1] if cues else 0, issues=issues,
+                detail="문자별 음성 타임스탬프 사용" if method == "character" else "기존 음성의 쉼·글자 수로 추정한 자막")
+
+
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,
-               temperature=None, name="나레이션", subtitle_lines=1, groups=None):
+               temperature=None, name="나레이션", subtitle_lines=1, groups=None, language="", timestamps=False):
     """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 부분 파일은 (같은 문장이면) 재사용.
     groups: [(첫 문장 번호, 끝 문장 번호)] — 이 범위의 문장을 한 번에 읽혀 억양이 이어지게 한다 (문장마다 따로 읽으면 매 문장이 새로 시작하는 느낌).
             None 이면 문장마다 따로 읽는다 (예전 방식). 문장별 자막 시각은 음성 안의 쉼(무음)으로 되찾는다."""
@@ -240,7 +295,9 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
     out_dir = os.path.abspath(out_dir)          # concat 목록은 절대 경로여야 함 (목록 파일 기준 상대경로로 해석되므로)
     os.makedirs(out_dir, exist_ok=True)
     part_dir = os.path.join(out_dir, "tts_parts"); os.makedirs(part_dir, exist_ok=True)
-    tts = Inworld(api_key, voice_id, model, speed, temperature)
+    tts = Inworld(api_key, voice_id, model, speed, temperature, language=language, timestamps=timestamps)
+    identity = hashlib.sha256(json.dumps({"voice": voice_id, "model": model, "speed": speed, "temperature": temperature,
+        "language": language, "timestamps": timestamps}, sort_keys=True).encode()).hexdigest()
     n = len(sentences)
     if groups:
         groups = [(int(a), int(b)) for a, b in groups if 1 <= int(a) <= int(b) <= n]
@@ -267,10 +324,13 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
             same_text = (Path(txt).read_text(encoding="utf-8").strip() == text) if os.path.isfile(txt) else legacy_ok
         except OSError:
             same_text = False
-        if os.path.exists(p) and os.path.getsize(p) > 500 and same_text:
+        identity_path = Path(p + ".identity")
+        same_identity = identity_path.read_text(encoding="utf-8") == identity if identity_path.exists() else not (language or timestamps)
+        if os.path.exists(p) and os.path.getsize(p) > 500 and same_text and same_identity:
             done[0] += 1; return
         try:
             tts.synth(text, p)
+            identity_path.write_text(identity, encoding="utf-8")
             with open(txt, "w", encoding="utf-8") as f:
                 f.write(text)
         except SystemExit as e:
@@ -291,13 +351,17 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
     if fatal:
         raise SystemExit(fatal[0])
     if errors:
-        log(f"   ! 실패 문장 {len(errors)}개 (다시 실행하면 그 문장만 재시도): " + "; ".join(errors[:3]))
+        raise RuntimeError(f"음성 {len(errors)}개를 만들지 못했습니다. 이어 만들기로 재시도하세요: " + "; ".join(errors[:3]))
 
     # 무음 파일
-    silence = os.path.join(part_dir, "_silence.mp3")
+    silence = os.path.join(part_dir, "_silence.wav" if timestamps else "_silence.mp3")
     if not os.path.exists(silence):
         subprocess.run([ffmpeg, "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", str(문장_간격),
-                        "-c:a", "libmp3lame", "-b:a", "64k", silence], check=True)
+                        "-c:a", "pcm_s16le" if timestamps else "libmp3lame", "-b:a", "64k", silence], check=True)
+    gap_duration = 문장_간격
+    if timestamps:
+        with wave.open(silence) as wav:
+            gap_duration = wav.getnframes() / wav.getframerate()
     # 길이 계산 + SRT + concat 목록
     t = 0.0
     srt, lst, flow = [], [], ["# 이미지번호: 자막번호 (긴 문장은 짧은 한 줄 자막으로 나눔)"]
@@ -305,13 +369,36 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
         p = part_path(a, b)
         if not os.path.exists(p):
             continue
-        tp = p[:-4] + "_t.mp3"                    # 앞뒤 무음을 자르고 긴 쉼을 줄인 파일로 합친다 (원본은 그대로 둔다)
-        if not os.path.exists(tp) or os.path.getmtime(tp) < os.path.getmtime(p):
-            tighten_pauses(ffmpeg, ffprobe, p, tp)
-        p = tp
-        total = probe_duration(ffprobe, p)
-        texts = sentences[a - 1:b]
-        bounds = [0.0] + sentence_boundaries(ffmpeg, p, total, texts) + [total]
+        alignment_times = None
+        if timestamps:
+            texts = sentences[a - 1:b]
+            try:
+                alignment = json.loads(Path(p + ".alignment.json").read_text(encoding="utf-8"))
+                alignment_times = character_timings(" ".join(x.strip() for x in texts), alignment)
+            except (OSError, ValueError, TypeError) as exc:
+                raise RuntimeError(f"{a}번 음성의 자막 싱크를 확인하지 못했습니다: {exc}") from None
+            tp = p[:-4] + "_aligned.wav"
+            if not os.path.exists(tp) or os.path.getmtime(tp) < os.path.getmtime(p):
+                subprocess.run([ffmpeg, "-y", "-v", "error", "-i", p, "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", tp], check=True)
+            p = tp
+            with wave.open(p) as wav:
+                total = wav.getnframes() / wav.getframerate()
+            if alignment_times[-1][1] > total + .12:
+                raise RuntimeError("음성 타임스탬프가 실제 음성 길이를 넘습니다.")
+            offset = 0
+            bounds = [0.0]
+            for sentence in texts:
+                offset += len(re.sub(r"\s+", "", sentence))
+                bounds.append(min(total, alignment_times[offset - 1][1]))
+        else:
+            tp = p[:-4] + "_t.mp3"
+            if not os.path.exists(tp) or os.path.getmtime(tp) < os.path.getmtime(p):
+                tighten_pauses(ffmpeg, ffprobe, p, tp)
+            p = tp
+            total = probe_duration(ffprobe, p)
+            texts = sentences[a - 1:b]
+            bounds = [0.0] + sentence_boundaries(ffmpeg, p, total, texts) + [total]
+        char_offset = 0
         for k, s in enumerate(texts):
             s_start, s_end = t + bounds[k], t + bounds[k + 1]
             d = max(0.05, s_end - s_start)
@@ -324,14 +411,20 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
             total_weight = sum(weights)
             elapsed = 0.0
             for chunk_no, (chunk, weight) in enumerate(zip(chunks, weights)):
-                start = s_start + elapsed
-                elapsed += d * weight / total_weight
-                end = s_end if chunk_no == len(chunks) - 1 else s_start + elapsed
+                if alignment_times is not None:
+                    count = len(re.sub(r"\s+", "", chunk))
+                    start = t + alignment_times[char_offset][0]
+                    end = t + min(total, alignment_times[char_offset + count - 1][1])
+                    char_offset += count
+                else:
+                    start = s_start + elapsed
+                    elapsed += d * weight / total_weight
+                    end = s_end if chunk_no == len(chunks) - 1 else s_start + elapsed
                 srt.append(f"{len(srt) + 1}\n{fmt_srt(start)} --> {fmt_srt(end)}\n{chunk}\n")
             cue_end = len(srt)
             flow.append(f"{a + k}: {cue_start}" if cue_start == cue_end else f"{a + k}: {cue_start}-{cue_end}")
         lst.append(f"file '{p.replace(os.sep, '/')}'"); lst.append(f"file '{silence.replace(os.sep, '/')}'")
-        t += total + 문장_간격
+        t += total + gap_duration
     list_path = os.path.join(part_dir, "_list.txt")
     with open(list_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lst) + "\n")
@@ -344,8 +437,16 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
     flow_path = os.path.join(out_dir, "플로우.txt")
     with open(flow_path, "w", encoding="utf-8") as f:
         f.write("\n".join(flow) + "\n")
+    sync = None
+    if timestamps:
+        duration = probe_duration(ffprobe, mp3)
+        sync = verify_subtitle_sync(srt_path, duration, "character")
+        Path(out_dir, f"{name}_싱크.json").write_text(json.dumps(sync, ensure_ascii=False, indent=2), encoding="utf-8")
+        if not sync["ok"]:
+            raise RuntimeError("자막 싱크 검사 실패: " + "; ".join(sync["issues"][:3]))
+        log(f"   ✓ 일본어 자막 싱크 확인 · 문자 타임스탬프 · {sync['cues']}개")
     log(f"   ✓ 나레이션 {t / 60:.1f}분 · {mp3}")
-    return dict(mp3=mp3, srt=srt_path, flow=flow_path, duration=t, sentences=len(srt))
+    return dict(mp3=mp3, srt=srt_path, flow=flow_path, duration=t, sentences=len(srt), sync=sync)
 
 
 def main():

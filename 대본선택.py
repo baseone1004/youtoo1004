@@ -1256,12 +1256,36 @@ def save_workspace(body):
 
 def voice_for(cfg, channel):
     """채널별 목소리·속도. 채널 전용 값이 없으면 공통(인월드_목소리/인월드_속도)을 쓴다."""
+    if 채널_프로필.language_code(channel) == "ja":
+        return str(cfg.get("인월드_목소리_일본", "")).strip(), float(cfg.get("인월드_속도_일본", 1.0) or 1.0)
     suffix = "_민담" if channel == "mindam" else "_사람"
     voice = (cfg.get("인월드_목소리" + suffix) or cfg.get("인월드_목소리") or "").strip()
     speed = cfg.get("인월드_속도" + suffix)
     if speed in (None, "", 0):
         speed = cfg.get("인월드_속도", 1.0)
     return voice, float(speed or 1.0)
+
+def narration_settings(cfg, channel):
+    voice, speed = voice_for(cfg, channel)
+    japanese = 채널_프로필.language_code(channel) == "ja"
+    return dict(voice=voice, speed=speed, model="inworld-tts-2" if japanese else cfg.get("인월드_모델", "inworld-tts-1.5-max"),
+                language="ja-JP" if japanese else "", timestamps=japanese)
+
+def narration_cache_matches(assets, cfg, channel):
+    saved = load_json(os.path.join(assets, "나레이션_설정.json"), None)
+    expected = narration_settings(cfg, channel)
+    return saved == expected if saved is not None else not expected["timestamps"]
+
+def check_narration_sync(script_file):
+    if script_file not in {item["path"] for item in script_files()}:
+        raise ValueError("목록에서 대본을 선택하세요.")
+    folder = assets_dir(script_file)
+    audio, srt = os.path.join(folder, "나레이션.mp3"), os.path.join(folder, "나레이션.srt")
+    if not os.path.isfile(audio) or not os.path.isfile(srt):
+        raise ValueError("나레이션과 자막을 먼저 만드세요.")
+    duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), audio)
+    settings = load_json(os.path.join(folder, "나레이션_설정.json"), {})
+    return 나레이션.verify_subtitle_sync(srt, duration, "character" if settings.get("timestamps") else "estimated")
 
 def make_tts(job, req):
     cfg = 대본생성.load_cfg()
@@ -1273,6 +1297,7 @@ def make_tts(job, req):
     sents = split_sentences(body, path)
     out = req.get("out_dir") or assets_dir(path)
     channel = req.get("channel") or channel_of(path)
+    settings = narration_settings(cfg, channel)
     voice, speed = voice_for(cfg, channel)
     if req.get("voice_id"):
         voice = req["voice_id"]
@@ -1284,10 +1309,15 @@ def make_tts(job, req):
     job.stage = "나레이션 합성"
     groups = tts_groups(path, sents)             # 문장을 묶어 읽혀 억양이 이어지게 (문장 번호는 그대로라 예전 방식 편도 된다)
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
-                         req.get("model") or cfg.get("인월드_모델", "inworld-tts-1.5-max"), speed,
+                         settings["model"] if settings["timestamps"] else req.get("model") or settings["model"], speed,
                          log=job.add, cancel=lambda: job.cancel_requested,
                          subtitle_lines=2 if channel == "mindam" else 1, groups=groups,
+                         language=settings["language"], timestamps=settings["timestamps"],
                          temperature=(float(cfg["인월드_온도"]) if cfg.get("인월드_온도") not in (None, "", 0) else None))   # 감정 변화폭 (비우면 인월드 기본)
+    settings.update(voice=voice, speed=speed)
+    if not settings["timestamps"] and req.get("model"):
+        settings["model"] = req["model"]
+    atomic_write_json(os.path.join(out, "나레이션_설정.json"), settings)
     return r
 
 
@@ -1549,6 +1579,8 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
                 fit="cover", ken_burns=ken_burns, kb_zoom=0.12, transition="none", transition_duration=0.5, burn_srt=True,
                 srt_font="Malgun Gothic", srt_font_size=22, srt_bold=True, srt_outline=3.5, crf=18, preset="medium")
     body.update(keep); body["burn_srt"] = True
+    if re.search(r"[ぁ-んァ-ン]", Path(srt).read_text(encoding="utf-8-sig")) and os.path.isfile(os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothM.ttc")):
+        body["srt_font"] = "Yu Gothic"
     j = aip_wait("/api/render", body, job=job)
     last_progress, since = -1.0, time.time()
     while True:
@@ -1937,7 +1969,7 @@ def make_pipeline(job, req):
             for v in existing_tts.values():
                 try: os.remove(v)
                 except OSError: pass
-        if req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values()):
+        if req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values()) and narration_cache_matches(assets, 대본생성.load_cfg(), req.get("channel") or channel_of(script)):
             try:
                 duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), existing_tts["mp3"])
             except (FileNotFoundError, OSError):
@@ -2332,6 +2364,7 @@ class H(BaseHTTPRequestHandler):
                                             인월드_속도=cfg.get("인월드_속도", 1.0),
                                             인월드_목소리_사람=cfg.get("인월드_목소리_사람", cfg.get("인월드_목소리", "")),
                                             인월드_목소리_민담=cfg.get("인월드_목소리_민담", ""),
+                                            인월드_목소리_일본=cfg.get("인월드_목소리_일본", ""), 인월드_속도_일본=cfg.get("인월드_속도_일본", 1.0),
                                             인월드_속도_사람=cfg.get("인월드_속도_사람", cfg.get("인월드_속도", 1.0)),
                                             인월드_속도_민담=cfg.get("인월드_속도_민담", cfg.get("인월드_속도", 1.0)),
                                             분당_글자수=cfg.get("분당_글자수", 270), 화풍=화풍_별칭.get(cfg.get("화풍", "실사"), cfg.get("화풍", "실사")),
@@ -2412,6 +2445,8 @@ class H(BaseHTTPRequestHandler):
                                 video=os.path.abspath(os.path.join(a, "최종.mp4")) if os.path.exists(os.path.join(a, "최종.mp4")) else ""))
             elif u.path == "/api/workspace":
                 self._json(workspace_data(q.get("script", [""])[0]))
+            elif u.path == "/api/narration/sync":
+                self._json(check_narration_sync(q.get("script", [""])[0]))
             elif u.path == "/api/file":
                 p = q["path"][0]
                 if not path_inside(BASE, p) or not os.path.isfile(p):
@@ -2586,7 +2621,7 @@ class H(BaseHTTPRequestHandler):
                     raise ValueError("지원하는 대본 AI를 선택하세요.")
                 prev_ai = (cfg.get("AI") or "").strip().lower()
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
-                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "영상변환_방식", "분당_글자수", "화풍", "후킹_장면수",
+                          "인월드_목소리_사람", "인월드_목소리_민담", "인월드_목소리_일본", "인월드_속도_일본", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "영상변환_방식", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감

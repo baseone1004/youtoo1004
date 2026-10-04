@@ -81,7 +81,8 @@
 
 <!-- ═══ 작업 선택 ═══ -->
 <div class="panel" id="step-4">
-  <div class="panel-head"><span class="tag-lbl">완성한 작업</span><select id="workFile" style="min-width:min(100%,420px)" onchange="onWorkChange()"></select><button class="mini" onclick="refresh()">새로고침</button><span class="spacer"></span><span class="hint">제작 중이면 지금 만드는 작업이 자동으로 보입니다</span></div>
+  <div class="panel-head"><span class="tag-lbl">완성한 작업</span><select id="workFile" style="min-width:min(100%,420px)" onchange="onWorkChange()"></select><button class="mini" onclick="refresh()">새로고침</button><button class="mini" onclick="checkSubtitleSync()">자막 싱크 확인</button><span class="spacer"></span><span class="hint">제작 중이면 지금 만드는 작업이 자동으로 보입니다</span></div>
+  <p class="hint" id="subtitleSyncStatus" role="status"></p>
   <div id="workEmpty" class="hint" style="padding:0 18px 14px">아직 만든 작업이 없습니다. 위에서 주제를 넣고 제작을 시작하세요.</div>
 </div>
 
@@ -230,6 +231,8 @@
     <div class="keyrow"><b>인월드 (나레이션)</b><span class="stat" id="k_inworld"></span><input type="password" aria-label="인월드 API 키" id="key_inworld" placeholder="Basic 키  (platform.inworld.ai)"><button class="mini" onclick="saveKey('inworld')">저장</button></div>
     <div class="row"><label>모델 <select id="sInworldModel"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>
     <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="vPerson"></span><input type="text" aria-label="정보형 목소리 ID" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
+    <div class="keyrow"><b>일본어 채널</b><span class="stat" id="vJapan"></span><input type="text" aria-label="일본어 목소리 ID" id="sVoiceJ" placeholder="Inworld 일본어 목소리 ID"><label>속도 <input type="number" id="sSpeedJ" value="1" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveJapanVoice()">저장</button></div>
+    <p class="hint">운영할 채널의 제작 언어를 ‘일본어’로 선택하면 위 일본어 목소리를 사용합니다. 일본어는 Inworld TTS 2와 문자별 타임스탬프로 자막을 만들고 싱크를 자동 검사합니다. 일본어를 지원하는 목소리 ID를 넣으세요.</p>
     <div class="keyrow"><b class="pname-mindam">이야기형</b><span class="stat" id="vMindam"></span><input type="text" aria-label="이야기형 목소리 ID" id="sVoiceM" placeholder="비우면 정보형 채널 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>
     <div class="keyrow"><b>분당 글자수</b><span class="stat ok" id="vCpm"></span><label>영상 길이 계산용 <input type="number" id="sCpm" value="270" min="150" max="400" step="10" style="width:90px"></label><button class="mini" onclick="saveCpm()">저장</button></div>
   </div>
