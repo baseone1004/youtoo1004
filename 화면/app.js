@@ -109,15 +109,19 @@ async function checkReady() {
   const items = [];
   try {
     const info = STATE || await api('/api/state');
-    const v = info.config.인월드키있음 && (info.config.인월드_목소리_사람 || info.config.인월드_목소리);
+    const selectedChannels = [...new Set([...selection.values()].map(x => x.channel))];
+    const requiredChannels = selectedChannels.length ? selectedChannels : [channel];
+    const v = requiredChannels.every(ch => String(info.config[ch === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || info.config.인월드_목소리 || '').trim());
     if (info.config.AI === 'deepseek-web') items.push([!!info.web_alive, info.web_alive ? '딥시크 웹 연결' : '딥시크 창 안 보임', 'settings']);
     else items.push([!!info.config.키있음, info.config.키있음 ? info.config.AI + ' 키' : info.config.AI + ' 키 없음', 'settings']);
     const voiceReady = !!v && !!info.config.인월드키있음;
-    items.push([voiceReady, voiceReady ? '나레이션 연결' : '나레이션 키·목소리 필요', 'settings']);
+    items.push([voiceReady, voiceReady ? '나레이션 설정 완료' : '나레이션 키·목소리 필요', 'settings']);
   } catch (e) { items.push([false, '제작 서버 연결 확인', 'settings']); }
   try {
-    const j = await get8765('/api/info'); const ok = !!j.kie_key_saved && j.image_model === 'z-image';
-    items.push([ok, ok ? 'KIE 이미지 연결' : 'KIE 키·프로그램 연결 확인', 'settings']);
+    const j = await get8765('/api/info');
+    const c = j.kie_key_saved && j.image_model === 'z-image' ? await api('/api/kie/credit') : null;
+    const ok = !!c && c.ok && Number.isFinite(c.credit) && c.credit > 0;
+    items.push([ok, ok ? 'KIE 연결 확인 완료' : (c && c.ok && c.credit === 0 ? 'KIE 크레딧 충전 필요' : 'KIE 키·연결 확인 필요'), 'settings']);
     items.push([true, '편집프로그램 연결', null]);
   } catch (e) { items.push([false, '편집프로그램 꺼짐 — 시작 파일을 다시 실행하세요', null]); }
   const html = '<span class="lbl">준비 상태</span>' + items.map(([ok, label, tab]) => `<span class="pill ${ok ? 'ok' : 'bad'}" ${(!ok && tab) ? `onclick="showView('${tab}')"` : ''}>${ok ? '✓' : '!'} ${esc(label)}${(!ok && tab) ? ' → 고치기' : ''}</span>`).join('');
@@ -696,15 +700,22 @@ async function hookScene(no) {
 }
 let kieCredit = null;                         // 마지막으로 읽은 KIE 남은 크레딧 (모르면 null)
 async function refreshKieStatus() {
-  let ok = false;
-  try { const info = await get8765('/api/info'); ok = !!info.kie_key_saved; $('kieStatus').textContent = $('sKieStat').textContent = ok ? 'KIE 키 저장됨' : 'KIE 키 없음'; $('sKieStat').className = 'stat ' + (ok ? 'ok' : 'bad'); }
-  catch (e) { $('kieStatus').textContent = $('sKieStat').textContent = '편집프로그램 연결 확인'; $('sKieStat').className = 'stat bad'; return false; }
-  if (ok) {                                    // 남은 크레딧도 같이 보여 준다 (영상 한 장면에 수십 크레딧이 들어 부족하면 변환이 실패한다)
-    try { const c = await api('/api/kie/credit'); kieCredit = c.ok ? c.credit : null; const t = c.ok ? `KIE 키 저장됨 · 남은 크레딧 ${Math.round(c.credit)}` : `KIE 키 저장됨 · 크레딧 확인 실패`; $('kieStatus').textContent = $('sKieStat').textContent = t; if (c.ok && c.credit < 100) { $('sKieStat').className = 'stat bad'; } }
-    catch (e) { kieCredit = null; }
-  }
+  let ok = false, label = 'KIE 키·연결 확인 필요'; kieCredit = null;
+  try {
+    const info = await get8765('/api/info');
+    if (info.kie_key_saved && info.image_model === 'z-image') {
+      const c = await api('/api/kie/credit');
+      if (c.ok && Number.isFinite(c.credit)) {
+        kieCredit = c.credit; ok = c.credit > 0;
+        label = ok ? `KIE 연결 확인 완료 · 남은 크레딧 ${c.credit.toLocaleString()}` : 'KIE 크레딧 충전 필요';
+      } else label = c.detail || 'KIE 인증·잔액 확인 실패';
+    }
+  } catch (e) { label = 'KIE 연결 확인 실패 · 잠시 뒤 다시 확인하세요'; }
+  $('kieStatus').textContent = $('sKieStat').textContent = label;
+  $('sKieStat').className = 'stat ' + (ok ? 'ok' : 'bad');
   return ok;
 }
+
 async function saveKieKey() {
   const key = $('sKieKey').value.trim(); if (!key) return toast('KIE API 키를 입력하세요', true);
   try { await post8765('/api/config', {kie_api_key: key}); $('sKieKey').value = ''; await refreshKieStatus(); toast('KIE 키 저장됨'); checkReady(); } catch (e) { toast('KIE 키 저장 실패: ' + e.message, true); }

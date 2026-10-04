@@ -2665,29 +2665,15 @@ def static_file(name):
 
 
 def auto_resume_queue():
-    """프로그램을 껐다 켜면, 만들다 만 대기열을 편집프로그램이 뜨는 대로 자동으로 이어서 만든다.
-    (대본·프롬프트·나레이션·받아 둔 이미지·썸네일 원본은 그대로 재사용)"""
+    """미완료 작업을 복구하되 사용자가 이어 만들기를 누를 때까지 요청하지 않는다."""
     with QUEUE.lock:
         items = QUEUE.data.get("items", [])
-        for x in items:                                # 종료·강제 종료로 끊긴 편은 다시 대기로
-            if x.get("status") == "error" and "취소" in str(x.get("error", "")) and int(x.get("attempts", 0)) < 5:
-                x.update(status="pending", stage="이어서 만들 예정", error="")
-        pending = [x for x in items if x.get("status") == "pending"]
-        resumable = QUEUE.data.get("status") == "running" or QUEUE.data.get("resume_on_start") or (QUEUE.data.get("status") == "done" and pending)
-        if not resumable or not pending:
-            return
-        QUEUE.data["status"] = "running"; QUEUE.data["resume_on_start"] = False; QUEUE.save()
-    print(f"이어서 만들기: 대기열 {len(pending)}편 · 편집프로그램이 준비되면 자동으로 시작합니다")
-    for _ in range(60):                               # 편집프로그램(8765)이 뜰 때까지 최대 3분
-        try:
-            aip("/api/info", timeout=5); break
-        except Exception:  # noqa: BLE001
-            time.sleep(3)
-    else:
-        print("편집프로그램이 켜지지 않아 자동으로 이어가지 못했습니다. 화면에서 [▶ 계속]을 누르세요.")
-        return
-    time.sleep(3)
-    start_queue_worker()
+        for x in items:
+            if x.get("status") == "working" or (x.get("status") == "error" and "취소" in str(x.get("error", "")) and int(x.get("attempts", 0)) < 5):
+                x.update(status="pending", stage="이어 만들기를 눌러 재개하세요", error="")
+        if any(x.get("status") == "pending" for x in items) and QUEUE.data.get("status") != "cancelled":
+            QUEUE.data.update(status="paused", current_id="", resume_on_start=False)
+            QUEUE.save()
 
 
 def main():

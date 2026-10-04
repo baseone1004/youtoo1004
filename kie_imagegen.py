@@ -147,7 +147,26 @@ class Runner:
             if no not in {s.no for s in parse_prompts(self.settings.prompts_file)}:
                 raise KieImageError("해당 장면의 프롬프트가 없습니다.")
             self.state.queued.append(no)
+            self._save_regens()
             return True
+
+    def _save_regens(self):
+        out = Path(self.settings.output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        self._save(out / ".kie-image-regens.json", {
+            "prompts_file": str(Path(self.settings.prompts_file).resolve()),
+            "queued": self.state.queued, "active": getattr(self, "_active_regen", None)})
+
+    @staticmethod
+    def _valid_image(path):
+        try:
+            with Image.open(path) as image:
+                image.verify()
+            with Image.open(path) as image:
+                image.load()
+            return True
+        except (OSError, ValueError, SyntaxError):
+            return False
 
     def recover_submission(self, output_dir, scene, task_id="", confirmed_not_created=False):
         """접수 응답을 잃은 요청만 사람이 KIE 작업 내역으로 확인해 복구한다."""
@@ -207,7 +226,7 @@ class Runner:
         if regen and record.get("status") == "saved":
             records.pop(slot, None)
             record = {}
-        if not record or record.get("status") == "saved":
+        if not record:
             if not self._wait(0):
                 return None
             # A lost POST response cannot safely be retried without provider idempotency.
@@ -280,18 +299,39 @@ class Runner:
             by_no = {sc.no: sc for sc in parse_prompts(s.prompts_file)}
             todo = [(sc, not s.skip_existing) for sc in by_no.values()
                     if sc.no >= s.start_no and (not s.end_no or sc.no <= s.end_no)]
+            with self._lock:
+                queue_path = out / ".kie-image-regens.json"
+                saved = json.loads(queue_path.read_text(encoding="utf-8")) if queue_path.exists() else {}
+                if saved.get("prompts_file") == str(Path(s.prompts_file).resolve()):
+                    self._active_regen = saved.get("active")
+                    st.queued = list(dict.fromkeys(saved.get("queued", []) + st.queued))
+                else:
+                    self._active_regen = None
+                st.queued = [no for no in st.queued if no in by_no]
+                if self._active_regen and self._active_regen["scene"] in by_no:
+                    no = self._active_regen["scene"]
+                    record = records.get(str(no), {})
+                    # A saved new task means the reservation already finished before a crash.
+                    finished = record.get("status") == "saved" and record.get("task_id") != self._active_regen.get("previous_task")
+                    todo = [(sc, regen) for sc, regen in todo if sc.no != no]
+                    todo.insert(0, (by_no[no], not finished))
+                else:
+                    self._active_regen = None
+                self._save_regens()
             st.total = len(todo)
             while self._wait(0):
                 with self._lock:
                     if not todo and st.queued:
                         no = st.queued.pop(0)
+                        self._active_regen = {"scene": no, "previous_task": records.get(str(no), {}).get("task_id")}
+                        self._save_regens()
                         todo.append((by_no[no], True))
                     if not todo:
                         st.status = "done"
                         break
                     sc, regen = todo.pop(0)
                 st.current = sc.no
-                existing = [p for p in out.glob(f"{sc.no:03d}.*") if p.suffix.lower() in IMAGE_EXTS and p.stat().st_size]
+                existing = [p for p in out.glob(f"{sc.no:03d}.*") if p.suffix.lower() in IMAGE_EXTS and self._valid_image(p)]
                 if s.skip_existing and not regen and existing:
                     dest = existing[0]
                 else:
@@ -299,6 +339,10 @@ class Runner:
                     dest = self._generate(sc, s, out, records, journal, regen)
                 if dest is None:
                     break
+                with self._lock:
+                    if self._active_regen and self._active_regen["scene"] == sc.no:
+                        self._active_regen = None
+                        self._save_regens()
                 if sc.no not in st.done:
                     st.done.append(sc.no)
                 st.files[sc.no] = str(dest)

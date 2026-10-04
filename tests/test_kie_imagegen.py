@@ -127,6 +127,54 @@ class ZImageTest(unittest.TestCase):
         self.assertEqual(order, [(1, False), (2, False), (1, True)])
         self.assertEqual(runner.state.status, "done")
 
+    def test_corrupt_saved_image_redownloads_without_new_charge(self):
+        self.s.end_no = 1
+        with patch.object(gen.requests, "request", side_effect=[self.created, self.success]), patch.object(gen.requests, "get", return_value=self.download):
+            self.run_sync()
+        (self.out / "001.jpg").write_bytes(b"broken jpeg")
+        with patch.object(gen.requests, "request", return_value=self.success) as api, patch.object(gen.requests, "get", return_value=self.download):
+            self.assertEqual(self.run_sync().state.status, "done")
+            self.assertTrue(all(c.args[0] == "GET" for c in api.call_args_list))
+        self.assertTrue(gen.Runner._valid_image(self.out / "001.jpg"))
+
+    def test_regeneration_reservation_survives_stop_and_new_runner(self):
+        runner = gen.Runner()
+        def generate(scene, settings, out, records, journal, regen=False):
+            runner.queue_regen(1)
+            runner.stop()
+            return None
+        with patch.object(runner, "_generate", side_effect=generate):
+            self.run_sync(runner)
+        queue = json.loads((self.out / ".kie-image-regens.json").read_text())
+        self.assertEqual(queue["queued"], [1])
+        with patch.object(gen.requests, "request", side_effect=[self.created, self.success] * 3) as api, patch.object(gen.requests, "get", return_value=self.download):
+            self.assertEqual(self.run_sync().state.status, "done")
+            self.assertEqual(sum(c.args[0] == "POST" for c in api.call_args_list), 3)
+        self.assertEqual(json.loads((self.out / ".kie-image-regens.json").read_text())["queued"], [])
+
+    def test_pending_active_regeneration_resumes_same_task(self):
+        self.s.end_no = 1
+        gen.Runner._save(self.out / ".kie-image-tasks.json", {
+            "1": {"task_id": "new-task", "status": "pending", "fingerprint": "old"}})
+        gen.Runner._save(self.out / ".kie-image-regens.json", {
+            "prompts_file": str(self.prompts.resolve()), "queued": [],
+            "active": {"scene": 1, "previous_task": "older-task"}})
+        with patch.object(gen.requests, "request", return_value=self.success) as api, patch.object(gen.requests, "get", return_value=self.download):
+            self.assertEqual(self.run_sync().state.status, "done")
+            self.assertTrue(all(c.args[0] == "GET" for c in api.call_args_list))
+            self.assertEqual(api.call_args.kwargs["params"]["taskId"], "new-task")
+
+    def test_completed_active_reservation_does_not_charge_again(self):
+        self.s.end_no = 1
+        with patch.object(gen.requests, "request", side_effect=[self.created, self.success]), patch.object(gen.requests, "get", return_value=self.download):
+            self.run_sync()
+        gen.Runner._save(self.out / ".kie-image-regens.json", {
+            "prompts_file": str(self.prompts.resolve()), "queued": [],
+            "active": {"scene": 1, "previous_task": "older-task"}})
+        with patch.object(gen.requests, "request") as api:
+            self.assertEqual(self.run_sync().state.status, "done")
+            api.assert_not_called()
+
     def test_regen_backs_up_existing_only_after_success(self):
         (self.out / "001.png").write_bytes(b"original")
         self.s.start_no = self.s.end_no = 1
