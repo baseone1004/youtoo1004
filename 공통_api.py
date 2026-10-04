@@ -3,7 +3,7 @@
 공통_api.py — AI 호출 + 무료 웹 검색 (두 채널 폴더가 같은 파일을 복사해 씀)
 
 설정.json 예)
-  "AI": "deepseek"          ← deepseek / gemini / claude 중 하나
+  "AI": "deepseek"          ← deepseek / deepseek-web / gemini 중 하나
   "API_키": "sk-..."        ← 고른 서비스의 키 하나만
   "모델": ""                ← 비워 두면 기본 모델
 """
@@ -17,16 +17,20 @@ PROVIDERS = {
     "gemini":   dict(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", model="gemini-3.6-flash",
                      env="GEMINI_API_KEY", price=(0.0, 0.0), max_out=60000,
                      발급="https://aistudio.google.com/apikey"),
-    "claude":   dict(base_url=None, model="claude-opus-5",
-                     env="ANTHROPIC_API_KEY", price=(5.0, 25.0), max_out=64000,
-                     발급="https://console.anthropic.com"),
     # 딥시크 웹 채팅(chat.deepseek.com)을 크롬 확장으로 조종 — API 키·비용 없음 (대본선택.bat + 딥시크_확장 필요)
     "deepseek-web": dict(base_url=None, model="chat.deepseek.com", env="", price=(0.0, 0.0), max_out=8000,
                          발급="(키 불필요) 딥시크_확장 폴더를 크롬에 설치하고 chat.deepseek.com 에 로그인"),
 }
 환율 = 1400
 
-예비_순서 = ("gemini", "deepseek", "claude")      # 주 AI 가 계속 실패하면 키가 저장된 순서대로 넘어간다 (무료·저렴한 순)
+예비_순서 = ("gemini", "deepseek")      # 주 AI 가 계속 실패하면 키가 저장된 순서대로 넘어간다 (무료·저렴한 순)
+
+
+def normalize_provider_config(cfg):
+    """제거된 AI의 예전 선택값을 무료 웹 방식으로 옮긴다. 예전 키는 전송하지 않는다."""
+    if str(cfg.get("AI", "")).strip().lower() == "claude":
+        return dict(cfg, AI="deepseek-web", API_키="", 모델="")
+    return cfg
 
 
 def fallback_candidates(cfg, current):
@@ -56,9 +60,10 @@ cancel_hook = None      # 대본선택 이 지정: 지금 작업이 중단 요�
 
 class AI:
     def __init__(self, cfg, _is_fallback=False):
+        cfg = normalize_provider_config(cfg)
         name = (cfg.get("AI") or "deepseek").strip().lower()
         if name not in PROVIDERS:
-            raise SystemExit(f"설정.json 의 AI 값은 deepseek / deepseek-web / gemini / claude 중 하나여야 합니다. (지금: {name})")
+            raise SystemExit(f"설정.json 의 AI 값은 deepseek / deepseek-web / gemini 중 하나여야 합니다. (지금: {name})")
         p = PROVIDERS[name]
         self.name, self.p = name, p
         self.cfg, self.fallback, self._is_fallback = cfg, None, _is_fallback
@@ -82,12 +87,8 @@ class AI:
         self.key = (cfg.get("API_키") or "").strip() or os.environ.get(p["env"], "")
         if not self.key:
             raise SystemExit(f"설정.json 의 API_키 가 비어 있습니다. {name} 키는 {p['발급']} 에서 발급받아 붙여 넣으세요.")
-        if name == "claude":
-            import anthropic
-            self.client = anthropic.Anthropic(api_key=self.key)
-        else:
-            from openai import OpenAI
-            self.client = OpenAI(api_key=self.key, base_url=p["base_url"])
+        from openai import OpenAI
+        self.client = OpenAI(api_key=self.key, base_url=p["base_url"])
 
     # ── 한 번 묻고 전체 답을 받는다 (스트리밍, 진행 표시) ──────────────
     def _make_fallback(self, reason, exclude=()):
@@ -130,8 +131,6 @@ class AI:
             try:
                 if self.name == "deepseek-web":
                     return self._ask_web(system, user)
-                if self.name == "claude":
-                    return self._ask_claude(system, user, max_tokens)
                 return self._ask_openai(system, user, max_tokens)
             except Cancelled:
                 raise
@@ -140,7 +139,7 @@ class AI:
                     raise Cancelled("사용자가 중단했습니다.") from e
                 if attempt >= retries:
                     tried, last = set(), e
-                    while True:                       # 예비 AI 가 한도 초과 등으로 실패하면 그 다음 예비 AI 로 넘어간다 (gemini → deepseek → claude)
+                    while True:                       # 예비 AI 가 한도 초과 등으로 실패하면 그 다음 예비 AI 로 넘어간다 (gemini → deepseek)
                         spare = self._make_fallback(f"{self.name} 가 {retries + 1}번 실패 ({str(last)[:80]})", exclude=tried)
                         if spare is None:
                             raise last
@@ -210,22 +209,6 @@ class AI:
             self.usage["in"] += (len(system) + len(user)) // 2; self.usage["out"] += len(text) // 2
         print()
         return text
-
-    def _ask_claude(self, system, user, max_tokens):
-        n, texts = 0, []
-        with self.client.messages.stream(
-            model=self.model, max_tokens=max_tokens, system=system,
-            thinking={"type": "adaptive"}, output_config={"effort": "high"},
-            messages=[{"role": "user", "content": user}],
-        ) as stream:
-            for t in stream.text_stream:
-                texts.append(t); n += len(t); self._progress(n)
-            msg = stream.get_final_message()
-        print()
-        if msg.stop_reason == "refusal":
-            raise RuntimeError("모델이 이 주제의 작성을 거절했습니다: " + str(getattr(msg, "stop_details", "")))
-        self.usage["in"] += msg.usage.input_tokens; self.usage["out"] += msg.usage.output_tokens
-        return "".join(texts)
 
     # ── 이번 실행 비용 ─────────────────────────────────────────────
     def cost_text(self):

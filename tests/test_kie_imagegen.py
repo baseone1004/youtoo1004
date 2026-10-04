@@ -127,6 +127,41 @@ class ZImageTest(unittest.TestCase):
         self.assertEqual(order, [(1, False), (2, False), (1, True)])
         self.assertEqual(runner.state.status, "done")
 
+    def test_reference_model_upload_and_shared_scene_download(self):
+        reference = self.out / "reference.png"
+        reference.write_bytes(self.download.content)
+        self.s.reference_image = str(reference)
+        uploaded = response({"code": 200, "data": {"downloadUrl": "https://tempfile.redpandaai.co/ref.png"}})
+        with patch.object(gen.requests, "post", return_value=uploaded) as upload, patch.object(gen.requests, "request", side_effect=[self.created, self.success] * 2) as api, patch.object(gen.requests, "get", return_value=self.download):
+            self.assertEqual(self.run_sync().state.status, "done")
+            self.assertEqual(upload.call_count, 1)
+            payload = api.call_args_list[0].kwargs["json"]
+            self.assertEqual(payload["model"], "seedream/4.5-edit")
+            self.assertEqual(payload["input"]["image_urls"], ["https://tempfile.redpandaai.co/ref.png"])
+            self.assertEqual(payload["input"]["quality"], "basic")
+            self.assertNotIn("test-secret", str(self.journal()))
+
+    def test_reference_upload_failure_does_not_submit_generation(self):
+        reference = self.out / "reference.png"
+        reference.write_bytes(self.download.content)
+        self.s.reference_image = str(reference)
+        with patch.object(gen.requests, "post", side_effect=requests.Timeout), patch.object(gen.requests, "request") as api:
+            runner = self.run_sync()
+            self.assertIn("업로드", runner.state.error)
+            api.assert_not_called()
+        self.assertFalse((self.out / ".kie-image-tasks.json").exists())
+
+    def test_reference_pending_job_resumes_without_upload_or_post(self):
+        reference = self.out / "reference.png"
+        reference.write_bytes(self.download.content)
+        self.s.reference_image = str(reference)
+        self.s.end_no = 1
+        gen.Runner._save(self.out / ".kie-image-tasks.json", {"1": {"task_id": "existing", "status": "pending"}})
+        with patch.object(gen.requests, "post") as upload, patch.object(gen.requests, "request", return_value=self.success) as api, patch.object(gen.requests, "get", return_value=self.download):
+            self.assertEqual(self.run_sync().state.status, "done")
+            upload.assert_not_called()
+            self.assertTrue(all(c.args[0] == "GET" for c in api.call_args_list))
+
     def test_corrupt_saved_image_redownloads_without_new_charge(self):
         self.s.end_no = 1
         with patch.object(gen.requests, "request", side_effect=[self.created, self.success]), patch.object(gen.requests, "get", return_value=self.download):

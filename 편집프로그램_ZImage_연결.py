@@ -9,6 +9,7 @@ REQUEST = '''class GenStart(BaseModel):
     skip_existing: bool = True
     style_prefix: str = ""
     aspect_ratio: str = "16:9"
+    reference_image: str = ""
 
 
 '''
@@ -18,6 +19,7 @@ SETTINGS = '''    cfg = load_config()
         api_key=cfg.get("kie_api_key") or os.environ.get("KIE_API_KEY", ""),
         start_no=req.start_no, end_no=req.end_no, skip_existing=req.skip_existing,
         style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,
+        reference_image=req.reference_image,
     )
 '''
 REGEN = '''@app.post("/api/gen/regen")
@@ -39,6 +41,7 @@ def api_gen_regen(req: RegenRequest):
         api_key=cfg.get("kie_api_key") or os.environ.get("KIE_API_KEY", ""),
         start_no=req.scene, end_no=req.scene, skip_existing=False,
         style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,
+        reference_image=req.reference_image,
     )
     try:
         imagegen.runner.start(s)
@@ -115,6 +118,21 @@ def apply(editor_dir):
 def info():''')
         updated = updated.replace('"kie_key_saved": bool(', '"image_model": "z-image",\n        "kie_key_saved": bool(')
         updated += "\n" + marker + "\n"
+    if "running.reference_image != req.reference_image" not in updated:
+        updated = updated.replace('or Path(running.prompts_file).resolve() != Path(req.prompts_file).resolve()):',
+            'or Path(running.prompts_file).resolve() != Path(req.prompts_file).resolve()\n                or running.reference_image != req.reference_image):')
+    # Upgrade existing V1 installations as well as new editor copies.
+    start = updated.index("class GenStart(BaseModel):")
+    end = updated.index("class HookRequest(BaseModel):", start)
+    updated = updated[:start] + REQUEST + updated[end:]
+    for function in ("def api_gen_start(", "def api_gen_regen("):
+        start = updated.index("    s = imagegen.GenSettings(", updated.index(function))
+        end = updated.index("    try:", start)
+        block = updated[start:end]
+        if "reference_image=req.reference_image" not in block:
+            block = block.replace("style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,",
+                                  "style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,\n        reference_image=req.reference_image,")
+        updated = updated[:start] + block + updated[end:]
     compile(updated, str(target), "exec")
     runner = Path(__file__).with_name("kie_imagegen.py").read_text(encoding="utf-8")
     gen = editor / "core" / "imagegen.py"

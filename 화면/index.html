@@ -211,7 +211,7 @@
 
   <div class="card">
     <h2>1. 대본을 쓰는 AI <span class="stat" id="aiStat"></span></h2>
-    <div class="row"><label>AI <select id="sAI" onchange="saveAI()"><option value="deepseek-web">딥시크 웹 (무료 · 크롬 확장 필요)</option><option value="deepseek">딥시크 API</option><option value="gemini">제미나이 API</option><option value="claude">클로드 API</option></select></label><label>모델 <input type="text" id="sModel" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
+    <div class="row"><label>AI <select id="sAI" onchange="saveAI()"><option value="deepseek-web">딥시크 웹 (무료 · 크롬 확장 필요)</option><option value="deepseek">딥시크 API</option><option value="gemini">제미나이 API</option></select></label><label>모델 <input type="text" id="sModel" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
     <p class="hint" id="sStatus"></p>
     <details class="box soft" id="webHelp" open><summary>딥시크 웹(무료) 쓰는 법</summary><div><ol class="guide hint">
       <li>크롬 주소창에 <code>chrome://extensions</code> → 오른쪽 위 <b>개발자 모드</b> 켜기 → <b>압축해제된 확장 프로그램을 로드</b> → 이 폴더의 <code>딥시크_확장</code> 선택</li>
@@ -221,7 +221,6 @@
     <h3>선택한 대본 AI의 API 키</h3>
     <div class="keyrow"><b>딥시크</b><span class="stat" id="k_deepseek"></span><input type="password" id="key_deepseek" placeholder="sk-…  (platform.deepseek.com)"><button class="mini" onclick="saveKey('deepseek')">저장</button></div>
     <div class="keyrow"><b>제미나이</b><span class="stat" id="k_gemini"></span><input type="password" id="key_gemini" placeholder="AIza…  (aistudio.google.com/apikey)"><button class="mini" onclick="saveKey('gemini')">저장</button></div>
-    <div class="keyrow"><b>클로드</b><span class="stat" id="k_claude"></span><input type="password" id="key_claude" placeholder="sk-ant-…  (console.anthropic.com)"><button class="mini" onclick="saveKey('claude')">저장</button></div>
 
   </div>
 
@@ -236,11 +235,27 @@
   </div>
 
   <div class="card" id="kieCard">
-    <h2>3. 이미지 연결 · KIE Z-Image</h2>
+    <h2>3. 이미지 연결 · KIE</h2>
     <p class="lead">KIE API 키 하나로 이미지와 선택한 움직이는 영상을 만듭니다. 이미지 생성에도 크레딧이 사용됩니다.</p>
     <div class="keyrow"><b>KIE AI (이미지·영상)</b><span class="stat" id="sKieStat">확인 중…</span><input type="password" aria-label="KIE API 키" id="sKieKey" placeholder="KIE AI API 키" autocomplete="off"><button class="mini" onclick="saveKieKey()">저장</button></div>
     <p class="hint"><a href="https://kie.ai/api-key" target="_blank" rel="noopener">KIE API 키 발급</a> · 저장 후 연결 상태를 확인하세요. 마우스 위치를 맞출 필요가 없습니다.</p>
   </div>
+  <div class="card" id="referenceCard">
+    <h2>레퍼런스 이미지 <span class="stat" id="referenceStatus"></span></h2>
+    <p class="lead">캐릭터나 원하는 그림을 올리면 장면 이미지·썸네일을 만들 때 직접 참조합니다.</p>
+    <div class="row"><label for="referenceChannel">적용할 채널</label><select id="referenceChannel" onchange="renderReference()"><option value="person">정보형 채널</option><option value="mindam">이야기형 채널</option></select></div>
+    <div class="row" style="align-items:flex-start"><img id="referencePreview" class="hidden" alt="저장된 레퍼런스 이미지" style="width:160px;height:160px;object-fit:contain;border-radius:12px;background:#f5f7fb">
+      <div><label class="primary" style="display:inline-block;padding:12px;border-radius:10px;cursor:pointer" for="referenceFile">이미지 선택</label>
+        <input id="referenceFile" type="file" accept="image/png,image/jpeg,image/webp" onchange="uploadReference(this)" style="max-width:100%">
+        <p class="hint">PNG·JPG·WEBP · 최대 10MB. 이미지 선택 시 해당 채널에 저장됩니다.</p>
+        <label><input type="checkbox" id="referenceEnabled" onchange="saveReferenceEnabled()"> 제작에 이 이미지 사용</label>
+        <button class="mini ghost" onclick="removeReference()">연결 해제</button>
+      </div>
+    </div>
+    <p id="referenceModelHint" class="hint"></p>
+    <p class="hint">레퍼런스 사용 시 <b>Seedream 4.5 Edit</b>로 생성하며 해당 모델의 KIE 크레딧이 사용됩니다. 제작 시 이미지를 KIE에 전송합니다. 외형의 완전한 일치는 보장되지 않습니다. 사용을 끄면 Z-Image로 만듭니다.</p>
+  </div>
+
   <div class="card" id="chanCard" data-advanced>
     <h2>유튜브 연동 · 내 유튜브 채널 연동</h2>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>

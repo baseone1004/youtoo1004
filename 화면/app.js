@@ -181,7 +181,7 @@ async function refresh() {
   $('tgTokenStat').textContent = c.텔레그램_토큰 ? '저장됨 ' + c.텔레그램_토큰 : '없음'; $('tgTokenStat').className = 'stat ' + (c.텔레그램_토큰 ? 'ok' : '');
   $('tgChatStat').textContent = c.텔레그램_채팅_ID ? '연결된 채팅: ' + c.텔레그램_채팅_ID : '연결된 채팅 없음';
   $('tgEnabled').checked = c.텔레그램_알림 !== false;
-  renderChannels(STATE.channels || {}); loadTrash(); renderProfileForm();
+  renderChannels(STATE.channels || {}); loadTrash(); renderProfileForm(); renderReference();
   $('ytKeyStat').textContent = c.유튜브_API_키 ? '저장됨 ' + c.유튜브_API_키 : '없음'; $('ytKeyStat').className = 'stat ' + (c.유튜브_API_키 ? 'ok' : '');
   loadAnalysis(channel); loadBench();
   // 경고
@@ -665,7 +665,8 @@ async function genBodyFromUI() {
   const info = await get8765('/api/info');
   if (!info.kie_key_saved) throw new Error('설정에서 KIE API 키를 먼저 저장하세요');
   return {prompts_file: galPromptsPath, output_dir: galDir, start_no: 1, end_no: 0,
-    skip_existing: true, aspect_ratio: '16:9', style_prefix: (STATE.style_prefixes || {})[styleValue] || ''};
+    skip_existing: true, aspect_ratio: '16:9', style_prefix: (STATE.style_prefixes || {})[styleValue] || '',
+    reference_image: referencePathFor($('galFile').value.endsWith('final.txt') ? 'mindam' : 'person')};
 }
 async function galStart() {
   try {
@@ -877,7 +878,7 @@ async function saveKey(k) {
   const v = $('key_' + k).value.trim(); if (!v) return toast('새 키를 입력한 뒤 저장을 누르세요. (이미 저장된 키는 그대로 유지됩니다)', true);
   const body = k === 'inworld' ? {인월드_API_키: v} : {['API_키_' + k]: v};
   const ai = STATE.config.AI === 'deepseek-web' ? 'deepseek' : STATE.config.AI; if (k === ai) body.API_키 = v;
-  await api('/api/config', body); $('key_' + k).value = ''; toast({deepseek: '딥시크', gemini: '제미나이', claude: '클로드', inworld: '인월드'}[k] + ' 키 저장됨'); refresh();
+  await api('/api/config', body); $('key_' + k).value = ''; toast({deepseek: '딥시크', gemini: '제미나이', inworld: '인월드'}[k] + ' 키 저장됨'); refresh();
 }
 async function saveVoice(ch) {
   const body = ch === 'mindam' ? {인월드_목소리_민담: $('sVoiceM').value.trim(), 인월드_속도_민담: +$('sSpeedM').value}
@@ -891,8 +892,46 @@ async function findTelegramChats() { try { const r = await api('/api/telegram/ch
 async function saveTelegramChat() { const id = $('tgChats').value; if (!id) return toast('저장할 채팅을 선택하세요.', true); await api('/api/config', {텔레그램_채팅_ID: id}); toast('텔레그램 채팅 저장됨'); refresh(); }
 async function saveTelegramEnabled() { await api('/api/config', {텔레그램_알림: $('tgEnabled').checked}); toast($('tgEnabled').checked ? '텔레그램 알림 켬' : '텔레그램 알림 끔'); }
 async function testTelegram() { try { await api('/api/telegram/test', {}); toast('텔레그램으로 테스트 메시지를 보냈습니다.'); } catch (e) { toast(e.message, true); } }
+function referencePathFor(slot) {
+  const m = (((STATE || {}).profiles || {})[slot] || {}).마스코트 || {};
+  return m.레퍼런스_사용 ? m.이미지 || '' : '';
+}
+function renderReference() {
+  if (!STATE || !$('referenceChannel')) return;
+  const slot = $('referenceChannel').value;
+  const m = ((STATE.profiles || {})[slot] || {}).마스코트 || {};
+  const has = !!m.이미지;
+  $('referencePreview').classList.toggle('hidden', !has);
+  if (has) $('referencePreview').src = '/api/image?path=' + encodeURIComponent(m.이미지) + '&t=' + Date.now();
+  $('referenceEnabled').checked = !!m.레퍼런스_사용;
+  $('referenceEnabled').disabled = !has;
+  $('referenceStatus').textContent = m.레퍼런스_사용 ? '생성에 적용' : has ? '사용 안 함' : '이미지 없음';
+  $('referenceModelHint').textContent = m.레퍼런스_사용 ? '사용 모델: Seedream 4.5 Edit · 장면·재생성·썸네일에 적용' : '사용 모델: Z-Image';
+}
+async function uploadReference(input) {
+  const file = input.files[0]; if (!file) return;
+  const slot = $('referenceChannel').value;
+  if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+    input.value = ''; return toast('PNG·JPG·WEBP 이미지(10MB 이하)를 선택하세요.', true);
+  }
+  input.disabled = true; $('referenceStatus').textContent = '저장 중…';
+  try {
+    const data = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('이미지를 읽지 못했습니다')); r.readAsDataURL(file); });
+    await api('/api/reference/upload', {slot, data_url: data});
+    toast('레퍼런스 저장됨 · 다음 이미지 생성부터 적용됩니다'); await refresh();
+  } catch (e) { toast(e.message, true); renderReference(); }
+  finally { input.disabled = false; input.value = ''; }
+}
+async function saveReferenceEnabled() {
+  try { await api('/api/profile', {slot: $('referenceChannel').value, data: {마스코트: {레퍼런스_사용: $('referenceEnabled').checked}}}); await refresh(); }
+  catch (e) { toast(e.message, true); renderReference(); }
+}
+async function removeReference() {
+  try { await api('/api/profile', {slot: $('referenceChannel').value, data: {마스코트: {이미지: '', 레퍼런스_사용: false}}}); toast('레퍼런스 연결 해제됨'); await refresh(); }
+  catch (e) { toast(e.message, true); }
+}
 async function loadMascot() {
-  const path = ((STATE.profiles || {}).person || {}).마스코트 && STATE.profiles.person.마스코트.이미지 || 'assets/캐릭터/해.png';
+  const path = (((STATE.profiles || {})[profileSlot] || {}).마스코트 || {}).이미지 || '';
   if (!$('mascotImg')) return;
   try { const r = await fetch('/api/image?path=' + encodeURIComponent(path), {cache: 'no-store'}); if (!r.ok) throw 0;
     $('mascotImg').src = '/api/image?path=' + encodeURIComponent(path) + '&t=' + Date.now(); $('mascotImg').classList.remove('hidden'); $('mascotStat').textContent = '저장됨'; $('mascotStat').className = 'stat ok'; }
@@ -943,7 +982,7 @@ function renderProfileForm() {
   $('brandPreview').innerHTML = '';
   $('profTypeHint').textContent = profileSlot === 'mindam' ? '이야기형: 기획 → 챕터로 창작 이야기를 씁니다 (야담·민담·전설 등)' : '정보형: 주제 하나를 9구간 나레이션으로 풀어 씁니다 (심리·건강·역사·상식 등)';
   $('profStat').textContent = p.이름 || '';
-  profileSlot === 'person' ? loadMascot() : ($('mascotImg').classList.add('hidden'), $('mascotStat').textContent = '');
+  loadMascot();
 }
 async function saveProfile() {
   const data = {};

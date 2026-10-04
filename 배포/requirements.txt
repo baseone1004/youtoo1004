@@ -1,7 +1,6 @@
 # 배포판 내장 파이썬에 설치하는 패키지 (빌드.py 가 사용)
 yt-dlp==2026.8.19
 openai==3.13.0
-anthropic==1.5.0
 ddgs==9.16.0
 requests==2.34.2
 fastapi==0.141.1

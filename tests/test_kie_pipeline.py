@@ -48,6 +48,22 @@ class KiePipelineTest(unittest.TestCase):
                                "===002===\n유형: C\n프롬프트: medium shot, standing, talking", encoding="utf-8")
             self.assertEqual(app.pick_hook_scenes(str(prompts), 1), [2])
 
+    def test_channel_reference_is_sent_to_image_runner(self):
+        import reference_images
+        with tempfile.TemporaryDirectory() as td:
+            prompts = Path(td) / "prompts.txt"
+            prompts.write_text("1. a new scene", encoding="utf-8")
+            calls = []
+            def api(path, body=None):
+                calls.append((path, body))
+                if path == "/api/gen/status":
+                    return {"status": "idle"} if len(calls) == 1 else {"status": "done", "done": [1], "failed": [], "total": 1}
+                return {"ok": True}
+            with patch.object(app, "aip_wait", return_value={"kie_key_saved": True}), patch.object(app, "aip", side_effect=api), patch.object(reference_images, "reference_options", return_value={"reference_image": "reference.png"}) as options:
+                app.run_image_generation(app.Job("pipeline"), str(prompts), str(Path(td) / "images"), reference_slot="mindam")
+                options.assert_called_once_with("mindam")
+            self.assertEqual(next(body for path, body in calls if path == "/api/gen/start")["reference_image"], "reference.png")
+
     def test_pipeline_generation_uses_api_without_coordinates(self):
         with tempfile.TemporaryDirectory() as td:
             prompts = Path(td) / "prompts.txt"

@@ -32,6 +32,8 @@ def budget_text(target, s, e):
 def load_cfg():
     with open("설정.json", encoding="utf-8") as f:
         cfg = json.load(f)
+    from 공통_api import normalize_provider_config
+    cfg = normalize_provider_config(cfg)
     cfg.setdefault("AI", "deepseek"); cfg.setdefault("API_키", ""); cfg.setdefault("모델", "")
     cfg.setdefault("대본_글자수", 6750); cfg.setdefault("하루_대본_편수", 2)     # 6,750자 = 25분 (분당 270자 기준)
     return cfg

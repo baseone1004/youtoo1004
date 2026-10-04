@@ -1367,7 +1367,7 @@ def aip_wait(path, body=None, job=None, retries=3):
                 job.add("   ✓ 편집프로그램이 다시 켜졌습니다 → 이어서")
 
 
-def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries_left=2):
+def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries_left=2, reference_slot=None):
     """KIE Z-Image로 생성하고 중단 후에도 같은 작업을 이어 확인한다."""
     info = aip_wait("/api/info", job=job)
     if not info.get("kie_key_saved"):
@@ -1380,6 +1380,9 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
         pass
     body = dict(prompts_file=os.path.abspath(prompts_file), output_dir=os.path.abspath(images_dir),
                 start_no=1, end_no=0, skip_existing=True, style_prefix=style_prefix, aspect_ratio="16:9")
+    if reference_slot:
+        from reference_images import reference_options
+        body.update(reference_options(reference_slot))
     current = aip("/api/gen/status")
     if current.get("status") in ("running", "paused"):
         running_dir = ((info.get("config") or {}).get("gen") or {}).get("output_dir") or ""
@@ -1401,11 +1404,11 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
                 raise
             job.add("   ✓ 편집프로그램이 다시 켜졌습니다 → 빠진 장면부터 이어서")
             time.sleep(3)
-            return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left)
+            return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left, reference_slot)
         if st.get("status") == "idle" and last >= 0:   # 재시작된 편집프로그램은 아무것도 안 하는 상태 → 다시 요청
             job.add("   편집프로그램이 새로 켜져 이미지 생성을 다시 요청합니다 (만든 장면은 건너뜀)")
             time.sleep(3)
-            return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left)
+            return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left, reference_slot)
         n = len(st.get("done", [])) + len(st.get("failed", []))
         if n != last:
             last = n
@@ -1420,7 +1423,7 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
             if failed and retries_left > 0:
                 job.add(f"   ↻ 실패 장면 {', '.join(f'{n:03d}' for n in failed[:12])}{' …' if len(failed) > 12 else ''} 다시 시도 ({3 - retries_left}/2)")
                 time.sleep(5)
-                return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left - 1)
+                return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left - 1, reference_slot)
             return st
         time.sleep(4)
 
@@ -1785,7 +1788,7 @@ def make_thumbnails(job, req):
     # 이미지 생성 (KIE Z-Image API)
     job.stage = "썸네일 이미지 생성"
     raw_dir = os.path.join(tdir, "raw")
-    run_image_generation(job, pf, raw_dir, "")
+    run_image_generation(job, pf, raw_dir, "", reference_slot=channel_of(script))
     # 합성 (썸네일_합성.py: 심리해독소 = 키워드 강조형/숫자 배지형, 민담 = 하단 띠형)
     job.stage = "썸네일 문구 합성"
     if not raw_thumbnails(tdir):
@@ -1968,7 +1971,7 @@ def make_pipeline(job, req):
         if wanted and all(k in have_imgs for k in wanted):
             job.add(f"   이미지 {len(wanted)}장이 이미 다 있어 건너뜀")     # 편집프로그램이 다른 편을 만드는 중이어도 방해하지 않는다
         else:
-            run_image_generation(job, result["prompts"], images_dir, prefix)
+            run_image_generation(job, result["prompts"], images_dir, prefix, reference_slot=channel_of(script))
     check_cancelled()
     # 5) 후킹 영상
     n_hook = int(steps.get("hook", 0) or 0)
@@ -2280,9 +2283,17 @@ class H(BaseHTTPRequestHandler):
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
+        if n < 0 or n > 15 * 1024 * 1024:
+            raise ValueError("요청이 너무 큽니다. 10MB 이하 이미지를 선택하세요.")
         return json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
 
     def _editor_proxy(self, path, body=None):
+        if body and body.get("reference_image"):
+            reference = Path(BASE, body["reference_image"]).resolve()
+            if not reference.is_relative_to(Path(BASE).resolve()) or not reference.is_file():
+                self._json({"detail": "프로그램에 저장한 레퍼런스 이미지를 선택하세요."}, 400)
+                return
+            body = dict(body, reference_image=str(reference))
         if not is_editor(editor_port()):
             self._json({"detail": "편집프로그램 연결을 확인하지 못했습니다. 시작 파일을 다시 실행하세요."}, 503)
             return
@@ -2314,7 +2325,6 @@ class H(BaseHTTPRequestHandler):
                                 hidden_channels=(["mindam"] if hide_mindam else []),
                                 keys={"deepseek": mask(cfg.get("API_키_deepseek") or (cfg.get("API_키") if cfg["AI"] in ("deepseek", "deepseek-web") else "")),
                                       "gemini": mask(cfg.get("API_키_gemini") or (cfg.get("API_키") if cfg["AI"] == "gemini" else "")),
-                                      "claude": mask(cfg.get("API_키_claude") or (cfg.get("API_키") if cfg["AI"] == "claude" else "")),
                                       "inworld": mask(cfg.get("인월드_API_키", ""))},
                                 config=dict(AI=cfg["AI"], 모델=cfg["모델"], 키있음=bool(cfg["API_키"] or os.environ.get("DEEPSEEK_API_KEY")),
                                             대본_글자수=cfg["대본_글자수"], 인월드키있음=bool(cfg.get("인월드_API_키")),
@@ -2518,6 +2528,10 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/profile/preview":            # 저장된 브랜드로 샘플 썸네일 (최근 raw 원본 또는 장면 이미지 사용)
                 slot = body.get("slot") or "person"
                 self._json(dict(ok=True, images=brand_preview(slot)))
+            elif u.path == "/api/reference/upload":
+                from reference_images import save_reference
+                saved = save_reference(body.get("slot"), body.get("data_url"))
+                self._json(dict(ok=True, profile=saved))
             elif u.path == "/api/profile":
                 slot = body.get("slot") or "person"
                 saved = 채널_프로필.save(slot, body.get("data") or {})
@@ -2568,10 +2582,12 @@ class H(BaseHTTPRequestHandler):
                 write_guideline(body["name"], body["text"]); self._json({"ok": True})
             elif u.path == "/api/config":
                 cfg = load_json("설정.json", {})
+                if "AI" in body and body["AI"] not in _공통.PROVIDERS:
+                    raise ValueError("지원하는 대본 AI를 선택하세요.")
                 prev_ai = (cfg.get("AI") or "").strip().lower()
                 for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "영상변환_방식", "분당_글자수", "화풍", "후킹_장면수",
-                          "API_키_deepseek", "API_키_gemini", "API_키_claude", "프롬프트_묶음",
+                          "API_키_deepseek", "API_키_gemini", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감
                         cfg[k] = str(body[k]).strip() if isinstance(body[k], str) else body[k]

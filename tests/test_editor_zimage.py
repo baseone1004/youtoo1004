@@ -107,6 +107,23 @@ class EditorIntegrationTest(unittest.TestCase):
         self.assertEqual(settings.aspect_ratio, "16:9")
         self.assertNotIn("api_key", self.config["gen"])
 
+    def test_reference_is_forwarded_for_start_and_regeneration(self):
+        body = dict(self.body, reference_image=str(self.root / "reference.png"))
+        for endpoint, request in [("/api/gen/start", body), ("/api/gen/regen", dict(body, scene=1))]:
+            with patch.object(kie_imagegen.runner, "start") as start:
+                result = self.client.post(endpoint, json=request)
+                self.assertEqual(result.status_code, 200)
+                self.assertEqual(start.call_args.args[0].reference_image, body["reference_image"])
+
+    def test_old_v1_installation_gets_reference_parameters(self):
+        path = self.root / "app.py"
+        old = path.read_text(encoding="utf-8").replace('    reference_image: str = ""\n', '').replace('        reference_image=req.reference_image,\n', '')
+        path.write_text(old, encoding="utf-8")
+        self.assertTrue(apply(self.root))
+        self.assertIn('reference_image: str = ""', path.read_text(encoding="utf-8"))
+        self.assertIn('reference_image=req.reference_image', path.read_text(encoding="utf-8"))
+        self.assertFalse(apply(self.root))
+
     def test_public_info_hides_nested_credentials(self):
         result = self.client.get("/api/info")
         self.assertEqual(result.status_code, 200)

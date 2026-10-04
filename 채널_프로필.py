@@ -240,7 +240,7 @@ def fill(text, slot):
 
 
 def mascot_reference_note(slot):
-    """Z-Image에 공통 외형 설명을 전달한다. 참조 이미지 업로드는 사용하지 않는다."""
+    """공통 외형 설명은 이미지 모델과 관계없이 프롬프트에 반복한다."""
     m = get(slot).get("마스코트") or {}
     if not m.get("이름"):
         return ""

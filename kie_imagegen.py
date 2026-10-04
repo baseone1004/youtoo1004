@@ -5,6 +5,7 @@ API 문서: https://docs.kie.ai/market/z-image/z-image
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -75,6 +76,7 @@ class GenSettings:
     start_no: int = 1
     end_no: int = 0
     skip_existing: bool = True
+    reference_image: str = ""
     style_prefix: str = ""
     aspect_ratio: str = "16:9"
     poll_interval: float = 3
@@ -118,7 +120,10 @@ class Runner:
                 raise KieImageError("설정에서 KIE API 키를 먼저 저장하세요.")
             if not parse_prompts(settings.prompts_file):
                 raise KieImageError("이미지 프롬프트가 없습니다. 프롬프트를 먼저 만들어 주세요.")
+            if settings.reference_image and not self._valid_image(Path(settings.reference_image)):
+                raise KieImageError("레퍼런스 이미지를 읽지 못했습니다. 다시 올려 주세요.")
             self.settings = settings
+            self._reference_url = None
             self.state = GenState(status="running")
             self._stop.clear()
             self._pause.clear()
@@ -214,10 +219,39 @@ class Runner:
         temp.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(path)
 
+    def _upload_reference(self, s):
+        if getattr(self, "_reference_url", None) and time.monotonic() - getattr(self, "_reference_uploaded_at", 0) < 12 * 3600:
+            return self._reference_url
+        try:
+            with Image.open(s.reference_image) as image:
+                image.load()
+                buffer = io.BytesIO()
+                image.convert("RGBA").save(buffer, format="PNG")
+            data = buffer.getvalue()
+            if len(data) > 10 * 1024 * 1024:
+                raise KieImageError("레퍼런스 이미지가 너무 큽니다. 10MB 이하로 다시 올려 주세요.")
+            response = requests.post("https://kieai.redpandaai.co/api/file-base64-upload",
+                headers={"Authorization": "Bearer " + s.api_key}, timeout=60,
+                json={"base64Data": "data:image/png;base64," + base64.b64encode(data).decode(),
+                      "uploadPath": "images/references"})
+            payload = response.json()
+            if not response.ok or str(payload.get("code")) != "200":
+                raise KieImageError(friendly_error(payload.get("code", response.status_code), payload.get("msg")))
+            url = (payload.get("data") or {}).get("downloadUrl")
+            if not isinstance(url, str) or not url.startswith("https://"):
+                raise ValueError()
+            self._reference_url = url
+            self._reference_uploaded_at = time.monotonic()
+            return url
+        except (requests.RequestException, ValueError, OSError):
+            raise KieImageError("레퍼런스 이미지 업로드에 실패했습니다. 연결을 확인하고 이어 만들기를 누르세요.") from None
+
     def _generate(self, scene, s, out, records, journal, regen=False):
         # Legacy @image references are unsupported; character descriptions come from the prompt/profile.
         prompt = re.sub(r"@image\s*\d+", "the described character", s.style_prefix + " " + scene.prompt).strip()
-        fingerprint = hashlib.sha256((s.aspect_ratio + prompt).encode()).hexdigest()
+        model = "seedream/4.5-edit" if s.reference_image else "z-image"
+        reference_hash = hashlib.sha256(Path(s.reference_image).read_bytes()).hexdigest() if s.reference_image else ""
+        fingerprint = hashlib.sha256((s.aspect_ratio + prompt + (model + reference_hash if s.reference_image else "")).encode()).hexdigest()
         slot = str(scene.no)
         record = records.get(slot, {})
         # Pending remote work is always resolved before a changed prompt can incur another charge.
@@ -229,13 +263,18 @@ class Runner:
         if not record:
             if not self._wait(0):
                 return None
+            input_data = {"prompt": prompt, "aspect_ratio": s.aspect_ratio, "nsfw_checker": True}
+            if s.reference_image:
+                input_data.update(image_urls=[self._upload_reference(s)], quality="basic",
+                    prompt="Use the reference image to preserve the character design, colors and style. Create a NEW scene following this description, rather than copying the reference background. Only include the character when the scene calls for it. " + prompt)
+                if not self._wait(0):
+                    return None
             # A lost POST response cannot safely be retried without provider idempotency.
             records[slot] = {"status": "submitting", "fingerprint": fingerprint}
             self._save(journal, records)
             try:
                 data = self._request("POST", "/createTask", s.api_key,
-                                     json={"model": "z-image", "input": {"prompt": prompt,
-                                           "aspect_ratio": s.aspect_ratio, "nsfw_checker": True}})
+                                     json={"model": model, "input": input_data})
             except KieImageError as exc:
                 if "연결을 확인" not in str(exc):
                     records.pop(slot, None)
@@ -335,7 +374,7 @@ class Runner:
                 if s.skip_existing and not regen and existing:
                     dest = existing[0]
                 else:
-                    st.add(f"{sc.no:03d} KIE Z-Image 생성 중")
+                    st.add(f"{sc.no:03d} KIE {'Seedream 4.5 레퍼런스' if s.reference_image else 'Z-Image'} 생성 중")
                     dest = self._generate(sc, s, out, records, journal, regen)
                 if dest is None:
                     break
