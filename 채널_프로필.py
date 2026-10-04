@@ -47,7 +47,7 @@ _lock = threading.Lock()
             "이미지": "assets/캐릭터/해.png",
             "설명": ("크림색 아기곰, 크고 동그란 안경, 발그레한 볼과 미소, 목에 하늘색 리본과 '해' 글자가 적힌 동그란 배지, "
                    "한 손에 하트 모양 열쇠, 옆에 하트가 새겨진 자물쇠. 굵은 갈색 외곽선의 단순한 2D 캐릭터"),
-            "프롬프트": ("the channel mascot Hae exactly matching the uploaded reference image: a cream-colored chibi bear with big round glasses, "
+            "프롬프트": ("the channel mascot Hae: a cream-colored chibi bear with big round glasses, "
                      "rosy cheeks, a light-blue ribbon collar with a round badge, holding a heart-shaped key next to a small heart padlock, "
                      "same face, same design, consistent character design"),
         },
@@ -221,10 +221,10 @@ def language_instruction(slot):
 
 
 def 인물_표현_규칙(p):
-    """사람 장면(D형)의 인물을 어떻게 그릴지. '캐릭터': 마스코트(@image 1)와 같은 디자인 언어의 캐릭터로 / '사람': 현대 한국 성인 그대로."""
+    """사람 장면(D형)의 인물을 어떻게 그릴지. '캐릭터': 마스코트 설명와 같은 디자인 언어의 캐릭터로 / '사람': 현대 한국 성인 그대로."""
     if (p.get("인물_표현") or "캐릭터") == "캐릭터":
-        return ("사람 장면의 인물은 사람이 아니라 채널 마스코트(@image 1)와 같은 종류의 캐릭터다: 같은 머리 모양·몸통·팔다리·얼굴 스타일·채색 그대로. "
-                "프롬프트에 'a Korean man/woman' 처럼 사람을 먼저 쓰지 말고 'an @image 1-type character (same head shape, body, limbs and face style as @image 1 — not a human, no human face) dressed as a Korean office worker in his forties, ...' 처럼 캐릭터를 먼저 쓴다. "
+        return ("사람 장면의 인물은 사람이 아니라 채널 마스코트 설명와 같은 종류의 캐릭터다: 같은 머리 모양·몸통·팔다리·얼굴 스타일·채색 그대로. "
+                "프롬프트에 'a Korean man/woman' 처럼 사람을 먼저 쓰지 말고 'a mascot-like creature with the described head shape, body, limbs and face style (not a human, no human face) dressed as a Korean office worker in his forties, ...' 처럼 캐릭터를 먼저 쓴다. "
                 "사람마다 색·머리 모양·옷·소품(안경, 넥타이, 앞치마, 가방, 지팡이)으로 구분하고, 같은 인물이 이어지면 그 특징을 그대로 유지한다. "
                 "나이와 역할은 소품과 자세로 보여 준다(직장인은 넥타이와 서류, 어머니는 앞치마, 노년은 흰 머리와 지팡이). "
                 "마스코트의 상징 소품(리본·배지·열쇠 등)은 다른 인물에게 주지 않아 마스코트와 헷갈리지 않게 한다. 배경은 현대 한국(사무실·집·카페·버스)이되 캐릭터와 어울리게 단순하게. "
@@ -240,13 +240,16 @@ def fill(text, slot):
 
 
 def mascot_reference_note(slot):
-    """이미지 프롬프트 요청에 붙일 [레퍼런스] 안내. 마스코트가 없는 채널은 빈 문자열."""
+    """Z-Image에 공통 외형 설명을 전달한다. 참조 이미지 업로드는 사용하지 않는다."""
     m = get(slot).get("마스코트") or {}
-    if not (m.get("이름") and m.get("프롬프트")):
+    if not m.get("이름"):
         return ""
-    return (f"[레퍼런스] 드롭샷 References 패널에 채널 마스코트 '{m['이름']}' 이미지가 @image 1 로 올라가 있다 ({m.get('설명', '')[:60]}). "
-            "마스코트가 나오는 장면(C형)에는 지침의 레퍼런스 일관성 문구를 그대로 넣고 '@image 1' 을 명시한다. 마스코트 생김새를 글로 새로 묘사하지 않는다. "
-            "사람 장면(D형)과 대상 장면(A형)에는 마스코트를 넣지 않는다.\n")
+    description = (m.get("설명") or m.get("프롬프트") or "").strip()
+    if not description:
+        return ""
+    return (f"[캐릭터 설명] 채널 마스코트 '{m['이름']}': {description}. "
+            "마스코트 장면(C형)마다 이 외형·색상·소품을 글로 구체적으로 반복한다. "
+            "참조 이미지나 @image 표기를 사용하지 않는다. 대상 장면(A형)에는 마스코트를 넣지 않는다.\n")
 
 
 def brand(slot):

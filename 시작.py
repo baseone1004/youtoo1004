@@ -16,8 +16,7 @@ HERE = Path(__file__).resolve().parent
 PACKAGES = {
     "yt_dlp": ("yt-dlp", "2026.8.19"), "openai": ("openai", "3.13.0"), "ddgs": ("ddgs", "9.16.0"),
     "anthropic": ("anthropic", "1.5.0"), "requests": ("requests", "2.34.2"), "fastapi": ("fastapi", "0.141.1"),
-    "uvicorn": ("uvicorn", "0.52.4"), "PIL": ("pillow", "12.3.0"), "pyautogui": ("pyautogui", "0.9.54"),
-    "pyperclip": ("pyperclip", "1.11.0"),
+    "uvicorn": ("uvicorn", "0.52.4"), "PIL": ("pillow", "12.3.0"),
 }
 
 
@@ -79,15 +78,13 @@ def apply_editor_integrations(editor):
     from 편집프로그램_글꼴_연결 import apply as apply_editor_fonts
     from 편집프로그램_렌더_보호 import apply as apply_editor_render_guard
     from 편집프로그램_AI표시_연결 import apply as apply_editor_ai_notice
-    from 편집프로그램_드롭샷자동좌표_연결 import apply as apply_dropshot_autoxy
-    from 편집프로그램_다시만들기_예약_연결 import apply as apply_regen_queue
-    from 편집프로그램_드롭샷영상_연결 import apply as apply_dropshot_video
     from 편집프로그램_자막두께_연결 import apply as apply_subtitle_weight
 
     editor = Path(editor)
+    from 편집프로그램_ZImage_연결 import apply as apply_zimage
+
     patchers = (apply_editor_ui, apply_editor_kie, apply_editor_video, apply_editor_fonts,
-                apply_editor_render_guard, apply_editor_ai_notice, apply_dropshot_autoxy,
-                apply_regen_queue, apply_dropshot_video, apply_subtitle_weight)
+                apply_editor_render_guard, apply_editor_ai_notice, apply_subtitle_weight, apply_zimage)
     suffixes = {".py", ".html", ".js", ".css"}
     originals = {p.relative_to(editor) for p in editor.rglob("*") if p.is_file() and p.suffix.lower() in suffixes}
     import tempfile

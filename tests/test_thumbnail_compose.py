@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
 
 class FallbackThumbnailTest(unittest.TestCase):
-    def test_scene_images_become_thumbnails_when_dropshot_fails(self):
+    def test_scene_images_become_thumbnails_when_image_generation_fails(self):
         import 대본선택 as app
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

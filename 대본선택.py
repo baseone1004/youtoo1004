@@ -765,7 +765,7 @@ def make_variations(job, req):
                   "clean confident ink outlines, refined expressive adult faces, flat layered shapes with subtle cel shading, "
                   "consistent character proportions, controlled warm cream and muted teal palette with restrained coral accents, "
                   "cinematic composition made with 2D color shapes, crisp readable focal point, 16:9 landscape. "
-                  "Use the image already uploaded in the Dropshot References panel as the primary visual guide: "
+                  "Use the character profile description as the primary visual guide: "
                   "match its character design, facial features, hairstyle, linework and palette where relevant. "
                   "Do not copy its pose or background. No watercolor texture, pastel wash, photorealism, 3D render, text or watermark.",
     "파스텔": "hand-drawn 2D pastel illustration, soft colored-pencil and watercolor textures, clean illustrated faces and outlines, warm muted palette, 16:9 aspect ratio",
@@ -809,14 +809,14 @@ def image_style_lock(style, channel=None):
            "FRAME LOCK: the picture fills the whole frame edge to edge with no border, frame, paper margin or vignette. "
            if channel == "mindam" else "")
     if channel == "person" and (채널_프로필.get("person").get("인물_표현") or "캐릭터") == "캐릭터":
-        people = ("CHARACTER LOCK: every person in the scene is the same kind of creature as the uploaded reference @image 1 — identical head shape, "
+        people = ("CHARACTER LOCK: every person in the scene is the same kind of creature as the channel mascot described in the character profile — identical head shape, "
                   "body type, limbs, face style and rendering — distinguished only by clothing, hair accessories, colors and props. "
                   "Never draw a human: no human faces, no human anatomy, no realistic or anime people. Modern Korean setting. ")
     else:
         people = ("PEOPLE LOCK: every person shown is Korean with East Asian facial features, dark hair and Korean clothing and setting; "
                   "never Western, Caucasian, Black, South Asian or Southeast Asian faces. ")
     return (f"STRICT STYLE LOCK: every image must be {style} style. {base}{tail} " + people + age +
-            "Keep the same linework, character design, proportions and color palette as the uploaded Dropshot reference image. "
+            "Keep the same linework, character design, proportions and color palette as the character profile description. "
             "If a later scene description conflicts, this style lock takes priority. "
             "Never generate a photo, photorealistic face, live-action still, realistic skin texture, 3D render or mixed-media image.")
 
@@ -1064,7 +1064,7 @@ def make_image_prompts(job, req):
         user = (f"[화풍·화면 비율] {style}\n"
                 + sheet_note(sheet)
                 + 채널_프로필.mascot_reference_note(channel_of(path))
-                + ("[레퍼런스] 드롭샷 References 패널에 업로드된 이미지를 반드시 참조한다. "
+                + ("[캐릭터] 인물표에 적힌 외형과 의상을 모든 장면에서 글로 구체적으로 묘사한다. "
                    "C형의 동일 인물은 얼굴형·눈·머리·체형·의상을 유지하고, "
                    "A형은 인물을 억지로 추가하지 말고 선화·색감만 일치시킨다. "
                    "각 영어 프롬프트에 이 레퍼런스 지시를 명시한다. 수채화·사진·3D 표현은 금지한다.\n"
@@ -1139,10 +1139,10 @@ def restyle_script_prompts_2d(script_file):
         if not re.match(r"^===\d{3}===", block):
             changed.append(block); continue
         kind = re.search(r"^유형:\s*([ABC])", block, flags=re.M)
-        role = ("For the principal recurring person, use the uploaded reference image as the exact character identity: "
+        role = ("For the principal recurring person, repeat the character sheet description: "
                 "preserve facial structure, eyes, hairstyle, proportions, and signature clothing across scenes. "
                 if kind and kind.group(1) == "C" else
-                "Use the uploaded reference image for linework, color palette, and overall 2D art direction; "
+                "Use the specified linework, color palette, and overall 2D art direction; "
                 "do not add a person who is not in this scene. ")
         def update_prompt(match):
             prompt = match.group(1).strip()
@@ -1337,7 +1337,7 @@ def kie_credit():
     r = _rq.get("https://api.kie.ai/api/v1/chat/credit", headers={"Authorization": f"Bearer {key}"}, timeout=20)
     j = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
     if r.status_code != 200 or j.get("code") not in (200, None):
-        return dict(ok=False, credit=None, detail=f"KIE 응답 {r.status_code}: {j.get('msg') or r.text[:120]}")
+        return dict(ok=False, credit=None, detail="KIE 인증 또는 잔액 조회에 실패했습니다. KIE 키와 계정을 확인하세요.")
     return dict(ok=True, credit=float(j.get("data") or 0))
 
 
@@ -1367,27 +1367,18 @@ def aip_wait(path, body=None, job=None, retries=3):
 
 
 def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries_left=2):
-    """편집프로그램의 좌표 자동화로 이미지를 전부 만들 때까지 기다린다. 좌표·다운로드 폴더는 편집프로그램에 저장된 값을 쓴다."""
+    """KIE Z-Image로 생성하고 중단 후에도 같은 작업을 이어 확인한다."""
     info = aip_wait("/api/info", job=job)
-    ui = (info.get("config") or {}).get("gen_ui") or {}
-    xy = ui.get("XY") or {}
-    if not (xy.get("prompt") and xy.get("download")):
-        raise SystemExit("설정에서 드롭샷 프롬프트 입력창과 이미지 다운로드 버튼 좌표를 먼저 저장하세요.")
-    dl = (ui.get("P") or {}).get("download") or info.get("downloads_dir")
-    if not dl or not os.path.isdir(dl):          # 저장된 폴더가 없으면 실제 다운로드 폴더로
-        dl = info.get("downloads_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
-        job.add(f"   브라우저 다운로드 폴더 → {dl}")
+    if not info.get("kie_key_saved"):
+        raise RuntimeError("설정에서 KIE API 키를 먼저 저장하세요.")
     try:
         with open(prompts_file, encoding="utf-8-sig") as f:
             if "STRICT STYLE LOCK" in f.read():
-                style_prefix = ""                     # 장면 프롬프트마다 이미 화풍 고정이 들어 있다
+                style_prefix = ""
     except OSError:
         pass
-    body = dict(prompts_file=os.path.abspath(prompts_file), output_dir=os.path.abspath(images_dir), download_dir=dl,
-                prompt_xy=xy["prompt"], generate_xy=xy.get("generate") or xy["prompt"], download_xy=xy["download"],
-                wait_generate=float(ui.get("wait_generate") or 60), wait_download=float(ui.get("wait_download") or 120), window_keyword=ui.get("window_keyword") or "드롭샷", auto_generate=ui.get("auto_generate", True) is not False,
-                wait_next=0.5, start_no=1, end_no=0, skip_existing=True,
-                style_prefix=style_prefix or ui.get("style_prefix") or "", retries=1)
+    body = dict(prompts_file=os.path.abspath(prompts_file), output_dir=os.path.abspath(images_dir),
+                start_no=1, end_no=0, skip_existing=True, style_prefix=style_prefix, aspect_ratio="16:9")
     current = aip("/api/gen/status")
     if current.get("status") in ("running", "paused"):
         running_dir = ((info.get("config") or {}).get("gen") or {}).get("output_dir") or ""
@@ -1433,7 +1424,7 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
         time.sleep(4)
 
 
-KIE_MIN_CREDIT = 50           # 이보다 적으면 KIE 대신 드롭샷 좌표 변환을 쓴다 (장면 하나에 수십 크레딧)
+KIE_MIN_CREDIT = 50           # 영상 변환 크레딧이 부족하면 정지 이미지로 편집한다
 
 
 def kie_usable():
@@ -1448,27 +1439,6 @@ def kie_usable():
     if c.get("ok") and c.get("credit") is not None and c["credit"] < KIE_MIN_CREDIT:
         return False, f"KIE 크레딧 부족 ({c['credit']:.0f})"
     return True, ""
-
-
-def video_engine(info=None):
-    """영상 변환 방식: auto(KIE 먼저, 안 되면 드롭샷) | kie | dropshot. 설정.json 의 영상변환_방식 을 먼저 보고, 없으면 편집프로그램 설정 gen_ui.video_engine."""
-    v = str(load_json("설정.json", {}).get("영상변환_방식") or "").lower()
-    if v not in ("auto", "kie", "dropshot"):
-        try:
-            info = info or aip("/api/info")
-            v = str(((info.get("config") or {}).get("gen_ui") or {}).get("video_engine") or "auto").lower()
-        except Exception:  # noqa: BLE001
-            v = "auto"
-    return v if v in ("auto", "kie", "dropshot") else "auto"
-
-
-def dropshot_video_xy(info=None):
-    """설정에 저장된 드롭샷 영상 변환 좌표 4개 (업로드·입력창·생성·다운로드). 하나라도 없으면 None."""
-    info = info or aip("/api/info")
-    v = ((info.get("config") or {}).get("gen_ui") or {}).get("VXY") or {}
-    if all(v.get(k) for k in ("upload", "prompt", "generate", "download")):
-        return v
-    return None
 
 
 움직임_프롬프트 = ("Animate this exact illustration. Keep the input image's 2D illustrated art style, colors, linework and character design completely unchanged — "
@@ -1507,48 +1477,6 @@ def scene_motion_prompts(prompts_file, scenes):
         out[no] = text.lstrip(" ,;.").strip()[:500]
     return out
 
-
-def start_dropshot_videos(images_dir, prompts_file, scenes):
-    """편집프로그램에 드롭샷 좌표 영상 변환을 요청한다 (앞 n장). 좌표가 없으면 안내와 함께 실패."""
-    info = aip("/api/info")
-    v = dropshot_video_xy(info)
-    if not v:
-        raise RuntimeError("드롭샷 영상 변환 좌표(업로드·입력창·생성·다운로드)가 없습니다. 설정 → 드롭샷 영상 변환 좌표에서 먼저 잡으세요.")
-    ui = (info.get("config") or {}).get("gen_ui") or {}
-    dl = (ui.get("P") or {}).get("download") or info.get("downloads_dir") or os.path.join(os.path.expanduser("~"), "Downloads")
-    body = dict(images_dir=os.path.abspath(images_dir), download_dir=dl, scenes=list(scenes), prompts=scene_motion_prompts(prompts_file, scenes),
-                upload_xy=v["upload"], prompt_xy=v["prompt"], generate_xy=v["generate"], download_xy=v["download"],
-                motion_prompt=motion_prompt_for(prompts_file),
-                wait_min=float(ui.get("video_wait_min") or 60), wait_max=float(ui.get("video_wait_max") or 360),
-                manual_download=ui.get("video_manual_download", True) is not False,
-                window_keyword=ui.get("video_window_keyword") or "드롭샷")   # 드롭샷 창 (우리 프로그램 창은 제외된다)
-    aip("/api/vgen/start", body)
-    return body
-
-
-def run_hook_videos_dropshot(job, images_dir, prompts_file, scenes):
-    """드롭샷 좌표 변환이 끝날 때까지 기다린다. 실패한 장면이 있으면 오류."""
-    start_dropshot_videos(images_dir, prompts_file, scenes)
-    job.add(f"   드롭샷 좌표로 {len(scenes)}장면 영상 변환 · 드롭샷 창을 가리지 마세요 (장면당 1~5분)")
-    while True:
-        if job.cancel_requested:
-            aip("/api/vgen/stop", {}); raise RuntimeError("취소됨")
-        st = aip_wait("/api/vgen/status", job=job)
-        n = len(st.get("done", [])) + len(st.get("failed", []))
-        job.stage = f"후킹 영상(드롭샷): {st.get('current', 0):03d} ({n}/{st.get('total') or len(scenes)})"
-        if st.get("waiting"):                          # 다운로드는 사람이 누른다 → 무엇을 해야 하는지 진행 줄에 보여 준다
-            job.stage += " · ⬇ " + st["waiting"]
-            if getattr(job, "_vgen_waiting_for", None) != st.get("current"):
-                job._vgen_waiting_for = st.get("current"); job.add("   ⬇ " + st["waiting"])
-        if st.get("status") in ("done", "error", "stopped"):
-            if st.get("status") != "done":
-                raise RuntimeError("드롭샷 영상 변환이 끝나지 않음: " + (st.get("error") or st.get("status")))
-            failed = list(st.get("failed") or [])
-            if failed:
-                raise RuntimeError("드롭샷 영상 변환 실패 장면: " + ", ".join(f"{no:03d}" for no in failed))
-            job.add(f"   ✓ 드롭샷 영상 {len(st.get('done', []))}개")
-            return st
-        time.sleep(4)
 
 
 움직임_부적합 = ("phone", "screen", "split", "collage", "diagram", "chart", "arrow", "text overlay", "extreme close-up", "close-up of", "hands holding",
@@ -1748,7 +1676,7 @@ def raw_thumbnails(tdir):
 
 
 def compose_thumbnails(script, log=None):
-    """이미 받아 둔 raw 원본에 문구만 얹어 썸네일_1~3.jpg 를 만든다 (AI·드롭샷 호출 없음)."""
+    """이미 받아 둔 raw 원본에 문구만 얹어 썸네일_1~3.jpg 를 만든다 (AI 호출 없음)."""
     assets = assets_dir(script)
     is_mindam = channel_of(script) == "mindam"
     tdir = os.path.abspath(os.path.join(assets, "썸네일"))
@@ -1771,7 +1699,7 @@ def compose_thumbnails(script, log=None):
 
 
 def fallback_thumbnails(script, images_dir, log=None):
-    """드롭샷 썸네일 생성이 안 됐을 때: 장면 이미지 3장(앞·중간·뒤)을 원본으로 삼아 문구를 얹는다."""
+    """KIE 썸네일 생성이 안 됐을 때: 장면 이미지 3장(앞·중간·뒤)을 원본으로 삼아 문구를 얹는다."""
     assets = assets_dir(script)
     tdir = os.path.abspath(os.path.join(assets, "썸네일"))
     scenes = []
@@ -1791,7 +1719,7 @@ def fallback_thumbnails(script, images_dir, log=None):
 
 
 def make_thumbnails(job, req):
-    """대본 폴더 → 썸네일 프롬프트 3개(딥시크) → 이미지 생성(편집프로그램 좌표 클릭) → 문구 합성 → 썸네일_1~3.jpg"""
+    """대본 폴더 → 썸네일 프롬프트 3개(딥시크) → 이미지 생성(KIE Z-Image API) → 문구 합성 → 썸네일_1~3.jpg"""
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
     script = req.get("script_file", "")
@@ -1825,8 +1753,8 @@ def make_thumbnails(job, req):
             + f"\n\n[영상별 SEO 정보]\n{seo_context}"
             + (f"\n\n[브리프]\n{brief}" if brief else "")
             + (("\n\n" + sheet_note(character_sheet(script, ai, job.add)).rstrip()) if is_mindam else "")
-            + (("\n\n[캐릭터 규칙 — 반드시] 주인공은 드롭샷 레퍼런스의 채널 마스코트(@image 1)다. 세 장 모두 '@image 1 character (exactly the same face, body and colors as @image 1)' 로 시작한다. "
-                "사람 얼굴을 그리지 않는다. 함께 나오는 다른 인물도 'an @image 1-type character (same head shape, body and face style as @image 1 — not a human) dressed as ...' 로 쓴다. "
+            + (("\n\n[캐릭터 규칙 — 반드시] 주인공은 채널 프로필에 설명된 마스코트다. 세 장 모두 채널 프로필의 마스코트 외형·색상 설명을 동일하게 포함한다. "
+                "사람 얼굴을 그리지 않는다. 함께 나오는 다른 인물도 'a mascot-like creature with the described head shape, body and face style (not a human) dressed as ...' 로 쓴다. "
                 "'a Korean woman/man' 처럼 사람을 쓰지 않는다.") if (not is_mindam and (profile.get("인물_표현") or "캐릭터") == "캐릭터") else ""))
     job.stage = "썸네일 프롬프트"
     job.add("   썸네일 프롬프트 3개 ")
@@ -1836,8 +1764,8 @@ def make_thumbnails(job, req):
     if not prompts:
         raise RuntimeError("썸네일 프롬프트를 읽지 못했습니다:\n" + text[:300])
     if not is_mindam and (profile.get("인물_표현") or "캐릭터") == "캐릭터":     # 썸네일도 장면과 같은 캐릭터 고정 (편집프로그램의 옛 화풍 접두어가 붙지 않게 잠금 문구를 넣는다)
-        thumb_lock = ("STRICT STYLE LOCK: " + style.rstrip(". ") + ". CHARACTER LOCK: the main figure is exactly the uploaded reference @image 1 "
-                      "(same face, body and colors); every other figure is the same kind of creature as @image 1 — never a human, no human faces. "
+        thumb_lock = ("STRICT STYLE LOCK: " + style.rstrip(". ") + ". CHARACTER LOCK: the main figure is exactly the channel mascot described in the character profile "
+                      "(same face, body and colors); every other figure is the same kind of creature as the described mascot — never a human, no human faces. "
                       "Never generate a photo, photorealistic face, 3D render or mixed-media image.")
         prompts = [thumb_lock + " " + re.sub(r"^\s*" + re.escape(style.rstrip(". ")) + r"[.,]?\s*", "", p) for p in prompts]
     tdir = os.path.abspath(os.path.join(assets, "썸네일")); os.makedirs(tdir, exist_ok=True)
@@ -1853,7 +1781,7 @@ def make_thumbnails(job, req):
     pf = os.path.join(tdir, "썸네일_프롬프트.txt")
     with open(pf, "w", encoding="utf-8") as f:
         f.write("\n".join(f"{i}. {p}" for i, p in enumerate(prompts, 1)) + "\n")
-    # 이미지 생성 (편집프로그램 좌표 클릭)
+    # 이미지 생성 (KIE Z-Image API)
     job.stage = "썸네일 이미지 생성"
     raw_dir = os.path.join(tdir, "raw")
     run_image_generation(job, pf, raw_dir, "")
@@ -1926,78 +1854,6 @@ def main_character_line(assets):
             desc = ", ".join(x.split(":", 1)[1].strip() for x in parts[3:6] if ":" in x and "not specified" not in x)
             return parts[0], parts[1], desc
     return None
-
-
-def ensure_face_reference(job, script, assets, prompts_file, style):
-    """이야기형: 주인공 정면 초상(인물/주인공.jpg)을 만들어 드롭샷 레퍼런스 패널에 올리고, 프롬프트마다 '@image 1 = 주인공 얼굴' 을 적어 둔다.
-    실패해도 제작은 계속한다 (얼굴 고정만 빠짐)."""
-    who = main_character_line(assets)
-    if not who:
-        job.add("   인물표가 없어 얼굴 고정(레퍼런스)은 건너뜁니다"); return
-    name, age, desc = who
-    face_dir = os.path.join(assets, "인물"); os.makedirs(face_dir, exist_ok=True)
-    face = os.path.join(face_dir, "주인공.jpg")
-    if not os.path.isfile(face):
-        job.add(f"   주인공({name}) 얼굴 기준 그림을 먼저 만듭니다")
-        pf = os.path.join(face_dir, "인물_프롬프트.txt")
-        lock = image_style_lock(style, "mindam")
-        prompt = (f"{lock} CHARACTER DESIGN REFERENCE: front-facing bust portrait of a Korean Joseon {age} ({desc}), "
-                  "calm neutral expression, looking straight at the viewer, even soft lighting, plain light background, no other people, no text, 16:9 aspect ratio")
-        with open(pf, "w", encoding="utf-8") as f:
-            f.write(f"===001===\n유형: C\n대사: {name} 얼굴 기준\n프롬프트: {prompt}\n")
-        try:
-            run_image_generation(job, pf, face_dir, "", retries_left=1)
-        except Exception as e:  # noqa: BLE001
-            job.add(f"   ! 얼굴 기준 그림 실패(얼굴 고정 없이 진행): {e}"); return
-        made = os.path.join(face_dir, "001.jpg")
-        if os.path.isfile(made):
-            shutil.move(made, face)
-    if not os.path.isfile(face):
-        job.add("   ! 얼굴 기준 그림이 없어 얼굴 고정 없이 진행"); return
-    try:
-        aip("/api/ref/clear", {"window_keyword": "드롭샷"})
-        r = aip("/api/ref/add", {"image": os.path.abspath(face), "window_keyword": "드롭샷"})
-    except Exception as e:  # noqa: BLE001
-        job.add(f"   ! 레퍼런스 올리기 실패(얼굴 고정 없이 진행): {e}"); return
-    if not r.get("ok"):
-        job.add("   ! 드롭샷 레퍼런스 패널에 올리지 못함 (얼굴 고정 없이 진행)"); return
-    idx = int(r.get("count") or 1)                # 패널에 다른 그림이 남아 있으면 우리 그림은 마지막 번호다
-    note = f"REFERENCE FACE: @image {idx} is {name}'s face and hairstyle — draw {name} with exactly this face, hair and age in every scene."
-    with open(prompts_file, encoding="utf-8-sig") as f:
-        text = f.read()
-    text = re.sub(r"REFERENCE FACE: @image \d+ [^\n]*?in every scene\.\s*", "", text)   # 지난번 지시는 지우고 다시 쓴다
-    text = re.sub(r"^(프롬프트\s*[:：]\s*)", lambda m: m.group(1) + note + " ", text, flags=re.M)
-    with open(prompts_file, "w", encoding="utf-8") as f:
-        f.write(text)
-    job.add(f"   ✓ 주인공 얼굴 레퍼런스 올림 (@image {idx} = {name}) · 모든 장면에 같은 얼굴 지시")
-
-
-def ensure_mascot_reference(job):
-    """정보형: 드롭샷 레퍼런스 패널을 비우고, 채널 마스코트 그림(채널_프로필 마스코트.이미지)이 있으면 그것만 올린다.
-    (이야기형 주인공 얼굴이 남아 있으면 정보형 그림에 한복·사극이 섞여 나온다.)"""
-    m = (채널_프로필.get("person") or {}).get("마스코트") or {}
-    img = (m.get("이미지") or "").strip()
-    img = os.path.abspath(os.path.join(BASE, img)) if img and not os.path.isabs(img) else img
-    try:
-        r = aip("/api/ref/clear", {"window_keyword": "드롭샷"})
-        if r.get("removed"):
-            job.add(f"   레퍼런스 패널 비움 ({r['removed']}장 · 다른 편 것)")
-        if img and os.path.isfile(img):
-            r = aip("/api/ref/add", {"image": img, "window_keyword": "드롭샷"})
-            job.add(f"   ✓ 마스코트 '{m.get('이름', '')}' 레퍼런스 올림" if r.get("ok") else "   ! 마스코트 레퍼런스를 올리지 못함 (마스코트 없이 진행)")
-        elif img:
-            job.add(f"   마스코트 그림 파일이 없음: {img}")
-    except Exception as e:  # noqa: BLE001
-        job.add(f"   ! 레퍼런스 패널 정리 실패(그대로 진행): {e}")
-
-
-def clear_face_reference(job):
-    try:
-        r = aip("/api/ref/clear", {"window_keyword": "드롭샷"})
-        if r.get("removed"):
-            job.add(f"   레퍼런스 비움 ({r['removed']}장)")
-    except Exception as e:  # noqa: BLE001
-        job.add(f"   ! 레퍼런스 비우기 실패: {e}")
 
 
 def final_video_is_current(video, images_dir, result):
@@ -2101,14 +1957,7 @@ def make_pipeline(job, req):
         if legacy_split(script):                    # 예전 방식으로 시작한 편: 프롬프트 안의 화풍 문구를 그대로 쓴다 (새 화풍을 덧붙이지 않음)
             prefix = ""
             job.add("   예전 방식으로 시작한 편이라 화풍·문장 나누기를 그대로 둡니다 (새 규칙은 다음 편부터)")
-        if 대본생성.load_cfg().get("레퍼런스_자동관리"):      # 기본 꺼짐: 드롭샷 레퍼런스 패널은 사용자가 직접 넣은 그림을 그대로 쓴다 (바꾸면 바뀐 대로)
-            if channel_of(script) == "mindam" and not legacy_split(script):
-                ensure_face_reference(job, script, assets, result["prompts"], selected_style)
-            else:
-                ensure_mascot_reference(job)
-        else:
-            # 레퍼런스 개수 확인(접근성 트리 읽기)을 이미지 생성 직전에 하면 편집프로그램이 두 스레드에서 동시에 창을 읽다가 죽는다(_ctypes 0xC0000005) → 읽지 않는다
-            job.add("   드롭샷 레퍼런스 패널에 올려 둔 캐릭터(@image 1)를 그대로 참고합니다 (직접 바꾸면 바뀐 대로 씁니다)")
+        job.add("   캐릭터 외형과 화풍 설명으로 KIE Z-Image를 생성합니다.")
         try:
             with open(result["prompts"], encoding="utf-8-sig") as f:
                 wanted = sorted(prompt_blocks(f.read()))
@@ -2131,32 +1980,16 @@ def make_pipeline(job, req):
             job.add(f"   앞 {n_hook}장 움직이는 영상이 이미 있어 건너뜀")
             result["hook"] = images_dir
         else:
-            engine = video_engine()                 # auto: KIE 먼저 → 안 되면 드롭샷 / kie: KIE 만 / dropshot: 드롭샷만
-            ok, why = (False, "드롭샷 AI 로 만들도록 설정됨") if engine == "dropshot" else kie_usable()
-            if engine == "kie" and not ok:
-                job.add(f"   ! {why} — KIE 만 쓰도록 설정되어 있어 그래도 KIE 로 시도합니다")
-                ok = True
-            done_hook = False
+            ok, why = kie_usable()
             if ok:
                 try:
                     run_hook_videos(job, images_dir, result["prompts"], todo)
-                    result["hook"] = images_dir; done_hook = True
-                except Exception as e:  # noqa: BLE001
-                    why = f"KIE 실패: {e}"
-            if not done_hook and engine == "kie":
+                    result["hook"] = images_dir
+                except Exception as e:
+                    check_cancelled()
+                    job.add(f"   ! 움직이는 영상 건너뜀(정지 이미지로 편집): {e}")
+            else:
                 job.add(f"   ! 움직이는 영상 건너뜀(정지 이미지로 편집): {why}")
-            elif not done_hook:                     # KIE 가 안 되면(또는 드롭샷 설정이면) 드롭샷 좌표 변환으로 (좌표가 있을 때만)
-                if dropshot_video_xy():
-                    job.add(f"   {why} → 드롭샷 좌표로 영상을 만듭니다")
-                    try:
-                        todo = [n for n in todo if not os.path.exists(os.path.join(images_dir, f"{n:03d}.mp4"))]
-                        if todo:
-                            run_hook_videos_dropshot(job, images_dir, result["prompts"], todo)
-                        result["hook"] = images_dir
-                    except Exception as e:  # noqa: BLE001
-                        job.add(f"   ! 드롭샷 영상 변환 실패(넘어감, 정지 이미지로 편집): {e}")
-                else:
-                    job.add(f"   ! 움직이는 영상 건너뜀(정지 이미지로 편집): {why} · 드롭샷 영상 좌표도 없음")
     check_cancelled()
     # 5.5) 썸네일
     if steps.get("thumbnail", True):
@@ -2185,8 +2018,6 @@ def make_pipeline(job, req):
         except Exception as e:  # noqa: BLE001
             render_error = e
             job.add(f"   ! 최종 영상 합치기 실패: {e}")
-    if channel_of(script) == "mindam" and 대본생성.load_cfg().get("레퍼런스_자동관리"):
-        clear_face_reference(job)                 # 다음 편은 다른 주인공이므로 레퍼런스를 비운다
     job.stage = "⑦ 업로드 폴더 정리"
     result["upload_dir"] = make_upload_package(script, result)
     job.add("   ✓ 업로드 폴더: " + result["upload_dir"])
@@ -2482,7 +2313,7 @@ class H(BaseHTTPRequestHandler):
                                             인월드_속도_민담=cfg.get("인월드_속도_민담", cfg.get("인월드_속도", 1.0)),
                                             분당_글자수=cfg.get("분당_글자수", 270), 화풍=화풍_별칭.get(cfg.get("화풍", "실사"), cfg.get("화풍", "실사")),
                                             영상변환_방식=cfg.get("영상변환_방식", ""),
-                                            후킹_장면수=cfg.get("후킹_장면수", 7), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
+                                            후킹_장면수=cfg.get("후킹_장면수", 0), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
                                             텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
                                             텔레그램_알림=cfg.get("텔레그램_알림", True), 온보딩_완료=bool(cfg.get("온보딩_완료", False))),
@@ -2648,7 +2479,7 @@ class H(BaseHTTPRequestHandler):
                 j = STATE["job"]
                 if j and j.status == "running":
                     j.cancel_requested = True; stopped.append("지금 작업")
-                for path, name in (("/api/gen/stop", "이미지 생성"), ("/api/vgen/stop", "영상 변환")):
+                for path, name in (("/api/gen/stop", "이미지 생성"),):
                     try:
                         _rq.post(AIP + path, json={}, timeout=5); stopped.append(name)
                     except _rq.RequestException:
@@ -2700,18 +2531,6 @@ class H(BaseHTTPRequestHandler):
                 self._json(reset_everything())
             elif u.path == "/api/delete-script":
                 self._json(delete_script(body.get("script_file", "")))
-            elif u.path == "/api/hook/dropshot":               # 앞 n장을 드롭샷 좌표로 영상 변환 (KIE 대신)
-                sf = body.get("script_file", "")
-                if not sf or not os.path.exists(sf):
-                    raise ValueError("대본을 먼저 고르세요.")
-                a = assets_dir(sf)
-                pr = os.path.join(a, "이미지프롬프트.txt") if os.path.basename(sf) == "final.txt" else re.sub(r"\.txt$", "", sf) + "_이미지프롬프트.txt"
-                scenes = [int(n) for n in (body.get("scenes") or [1, 2, 3, 4, 5, 6, 7])]
-                try:
-                    start_dropshot_videos(os.path.join(a, "images"), pr, scenes)
-                except SystemExit as e:
-                    raise ValueError(str(e))
-                self._json({"ok": True, "scenes": scenes})
             elif u.path == "/api/thumbnail":
                 run_job("thumbnail", lambda job: make_thumbnails(job, body)); self._json({"ok": True})
             elif u.path == "/api/thumbnail/compose":            # raw 원본에 문구만 다시 얹기 (빠름, 비용 없음 → 다른 작업 중에도 된다)

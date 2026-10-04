@@ -48,7 +48,7 @@ EDITOR_FILES = ["app.py", "README.md", "requirements.txt"]
     "AI": "deepseek-web", "API_키": "", "모델": "", "대본_글자수": 6750, "하루_대본_편수": 2,
     "내_채널": "", "민담_채널": "", "벤치_채널_추가": [], "민담_벤치_채널_추가": [],
     "인월드_API_키": "", "인월드_목소리": "", "인월드_목소리_사람": "", "인월드_목소리_민담": "",
-    "인월드_모델": "inworld-tts-1.5-max", "인월드_속도": 1.0, "분당_글자수": 270, "화풍": "파스텔", "후킹_장면수": 7,
+    "인월드_모델": "inworld-tts-1.5-max", "인월드_속도": 1.0, "분당_글자수": 270, "화풍": "파스텔", "후킹_장면수": 0,
     "API_키_deepseek": "", "API_키_gemini": "", "API_키_claude": "", "유튜브_API_키": "",
     "텔레그램_봇_토큰": "", "텔레그램_채팅_ID": "", "텔레그램_알림": True, "온보딩_완료": False,
 }
@@ -130,6 +130,8 @@ def build_app(out_app, editor):
         if (editor / d).is_dir():
             copy_tree(editor / d, out_ed / d)
     (out_ed / "config.json").write_text("{}", encoding="utf-8")
+    from 시작 import apply_editor_integrations
+    apply_editor_integrations(out_ed)
 
 
 def build_ffmpeg(out_app, skip_download):
@@ -220,7 +222,7 @@ shell.Run Chr(34) & fso.BuildPath(folder, "python\\pythonw.exe") & Chr(34) & " "
 3. [시작.bat] 을 더블클릭합니다. 검은 창이 뜨고 잠시 뒤 크롬에 프로그램 화면이 열립니다.
    - 검은 창을 닫으면 프로그램이 꺼집니다. 창 없이 쓰려면 [시작(창없이).vbs] 를 쓰세요 (종료는 화면의 [종료] 버튼).
    - 처음 실행하면 윈도우 방화벽이 물어볼 수 있습니다. [액세스 허용]을 누르세요 (내 컴퓨터 안에서만 통신합니다).
-4. 화면의 [🧭 처음 설정]을 순서대로 따라가면 됩니다: 채널 이름 → 대본 AI(딥시크 확장 또는 API 키) → 나레이션(인월드) → 드롭샷 좌표.
+4. 화면의 [🧭 처음 설정]을 순서대로 따라가면 됩니다: 대본 AI(딥시크 확장 또는 API 키) → 나레이션(인월드) → KIE API 키.
 5. 파이썬을 따로 설치할 필요가 없습니다. python 폴더 안에 필요한 것이 모두 들어 있습니다.
 
 폴더 설명

@@ -10,7 +10,7 @@
   <div class="brand">🎬 유튜브 영상 자동 제작 <small id="brandSub"></small><span class="pill-live" id="liveDot"></span></div>
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
-    <button data-view="settings" onclick="showView('settings')">⚙ 설정</button>
+    <button data-view="settings" onclick="showView('settings')">처음 설정</button>
     <button class="hidden" id="restartBtn" onclick="restartProgram()" style="color:var(--amber)">🔁 다시 시작</button>
     <button class="quit" onclick="exitProgram()">종료</button>
   </nav>
@@ -22,10 +22,42 @@
 <div id="envwarn" class="banner warn hidden"></div>
 
 <section id="view-wizard">
+<div class="welcome"><p class="eyebrow">나의 영상 스튜디오</p><h1>주제만 정하면, 영상이 완성됩니다.</h1><p>1 주제 선택 <span>→</span> 2 제작 시작 <span>→</span> 3 완성 확인</p></div>
+
+
+<!-- ═══ 주제 입력 ═══ -->
+<div class="panel" id="step-1">
+  <div class="panel-head"><span class="tag-lbl">1. 주제 선택</span><span class="hint" id="chLinkStat">내 유튜브 채널 연동 안 됨</span><span class="spacer"></span><button class="mini ghost" onclick="document.body.classList.add('advanced');showView('settings');setTimeout(()=>$('chanCard').scrollIntoView({behavior:'smooth'}),300)">채널 연동 설정</button></div>
+  <div class="inner">
+    <h2>어떤 영상을 만들까요?</h2>
+    <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
+    <div class="row">
+      <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">정보형</button><button data-ch="mindam" onclick="setChannel('mindam')">이야기형</button></div>
+      <label><b>제작 언어</b> <select id="quickLanguage" onchange="saveQuickLanguage()" style="min-width:130px"></select></label>
+      <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
+      <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
+    </div>
+    <div class="row" style="margin:6px 0 2px"><span class="hint">추천 주제 — 체크하면 제작 목록에 들어갑니다</span><span class="spacer"></span><span class="hint" id="topicRefreshStat"></span><button class="mini" id="benchBtn" data-advanced onclick="runBenchmark()">📊 채널 벤치마킹</button><button class="primary mini" id="topicRefreshBtn" onclick="refreshTopics()">🔄 새 주제 추천</button></div>
+    <div class="hint" id="chAnalysisLine" style="margin:0 0 6px"></div>
+    <div id="benchBox" class="hidden" style="margin:4px 0 10px"><div class="row" style="margin:0 0 4px"><span class="hint" id="benchStat"></span><span class="spacer"></span><button class="mini ghost" onclick="$('benchGal').classList.toggle('hidden')">썸네일 참고 접기/펴기</button></div><div class="gal thumbs" id="benchGal"></div></div>
+    <ul class="topics" id="topicList"></ul>
+    <div class="hint" style="margin:14px 0 4px">주제 또는 키워드 — 여러 편은 한 줄에 하나씩</div>
+    <textarea aria-label="만들 영상의 주제" id="customTitle" class="topic-input" rows="3" placeholder="예: 병원에 사주를 많이 보는 이유&#10;예: 비가 그친 골목에 남은 기억"></textarea>
+    <div class="chips hidden" id="genreChips"><span class="hint" style="align-self:center">장르만 고를 수도 있어요:</span></div>
+    <div class="row" style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
+    <div class="row" data-advanced id="personLenRow" style="margin-top:10px"><label><b class="pname-person">정보형</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
+    <div id="mindamLenRow" data-advanced class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
+    <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상 (추가 크레딧) <input type="number" id="optHook" value="0" min="0" max="30" style="width:70px"> 장면</label></div>
+    <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
+    <div id="startHint" class="hint" style="margin-top:8px"></div>
+    <ol class="order" id="orderList" style="margin-top:8px"></ol><span class="hidden" id="orderCount"></span>
+    <div class="row" data-advanced style="margin-top:12px"><span class="tag-lbl">이미 만든 대본으로 이어서</span><select id="contFile" style="min-width:min(100%,380px)"></select><button onclick="continuePipeline()">이어서 만들기</button></div>
+  </div>
+</div>
 
 <!-- ═══ 상단: 제작 현황 + 시작 ═══ -->
 <div class="panel" id="step-3">
-  <div class="panel-head"><span class="tag-lbl">제작 현황</span><span class="stat" id="pgKind">대기 중</span><span class="spacer"></span><span id="queueSummary" class="hint">대기열 없음</span><button class="mini" onclick="$('stage-image').scrollIntoView({behavior:'smooth',block:'start'})">🖼 이미지 칸으로</button></div>
+  <div class="panel-head"><span class="tag-lbl">2. 제작 시작 · 진행 상황</span><span class="stat" id="pgKind">대기 중</span><span class="spacer"></span><span id="queueSummary" class="hint">대기열 없음</span><button class="mini" data-advanced onclick="$('stage-image').scrollIntoView({behavior:'smooth',block:'start'})">🖼 이미지 칸으로</button></div>
   <div class="pipe" id="pipe">
     <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
   </div>
@@ -38,7 +70,7 @@
     <span id="queueManage" class="row hidden" style="margin:0"><button onclick="queueControl('pause')">❚❚ 잠시 멈춤</button><button onclick="queueControl('resume')">▶ 계속</button></span>
     <button class="danger hidden" id="cancelJob" onclick="stopAll()">■ 중단</button>
   </div>
-  <div class="row" style="margin-top:10px"><span class="tag-lbl">그림체</span><div class="quick-styles" id="quickStyles"></div><button class="mini ghost" onclick="$('styleBox').classList.toggle('hidden')">그림체 더 보기</button></div>
+  <div class="row" data-advanced style="margin-top:10px"><span class="tag-lbl">그림체</span><div class="quick-styles" id="quickStyles"></div><button class="mini ghost" onclick="$('styleBox').classList.toggle('hidden')">그림체 더 보기</button></div>
   <div id="styleBox" class="hidden"></div>
   <div class="qlist" id="queueList"></div>
   <div class="row hidden" id="topThumbsRow" style="align-items:flex-start"><span class="tag-lbl">썸네일</span><div class="gal thumbs" id="topThumbs" style="flex:1;margin-top:0"></div></div>
@@ -47,44 +79,16 @@
   <div id="pgPreview" class="preview hidden"></div>
 </div>
 
-<!-- ═══ 주제 입력 ═══ -->
-<div class="panel" id="step-1">
-  <div class="panel-head"><span class="tag-lbl">주제 · 제작</span><span class="hint" id="chLinkStat">내 유튜브 채널 연동 안 됨</span><span class="spacer"></span><button class="mini ghost" onclick="showView('settings');setTimeout(()=>$('chanCard').scrollIntoView({behavior:'smooth'}),300)">채널 연동 설정</button></div>
-  <div class="inner">
-    <h2>어떤 영상을 만들까요?</h2>
-    <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
-    <div class="row">
-      <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">정보형</button><button data-ch="mindam" onclick="setChannel('mindam')">이야기형</button></div>
-      <label><b>제작 언어</b> <select id="quickLanguage" onchange="saveQuickLanguage()" style="min-width:130px"></select></label>
-      <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
-      <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
-    </div>
-    <div class="row" style="margin:6px 0 2px"><span class="hint">추천 주제 — 체크하면 제작 목록에 들어갑니다</span><span class="spacer"></span><span class="hint" id="topicRefreshStat"></span><button class="mini" id="benchBtn" onclick="runBenchmark()">📊 채널 벤치마킹</button><button class="primary mini" id="topicRefreshBtn" onclick="refreshTopics()">🔄 새 주제 추천</button></div>
-    <div class="hint" id="chAnalysisLine" style="margin:0 0 6px"></div>
-    <div id="benchBox" class="hidden" style="margin:4px 0 10px"><div class="row" style="margin:0 0 4px"><span class="hint" id="benchStat"></span><span class="spacer"></span><button class="mini ghost" onclick="$('benchGal').classList.toggle('hidden')">썸네일 참고 접기/펴기</button></div><div class="gal thumbs" id="benchGal"></div></div>
-    <ul class="topics" id="topicList"></ul>
-    <div class="hint" style="margin:14px 0 4px">주제 또는 키워드 — 여러 편은 한 줄에 하나씩</div>
-    <textarea id="customTitle" class="topic-input" rows="3" placeholder="예: 병원에 사주를 많이 보는 이유&#10;예: 비가 그친 골목에 남은 기억"></textarea>
-    <div class="chips hidden" id="genreChips"><span class="hint" style="align-self:center">장르만 고를 수도 있어요:</span></div>
-    <div class="row" style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
-    <div class="row" id="personLenRow" style="margin-top:10px"><label><b class="pname-person">정보형</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
-    <div id="mindamLenRow" class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
-    <div class="row"><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상(KIE) <input type="number" id="optHook" value="7" min="0" max="30" style="width:70px"> 장면</label></div>
-    <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
-    <div id="startHint" class="hint" style="margin-top:8px"></div>
-    <ol class="order" id="orderList" style="margin-top:8px"></ol><span class="hidden" id="orderCount"></span>
-    <div class="row" style="margin-top:12px"><span class="tag-lbl">이미 만든 대본으로 이어서</span><select id="contFile" style="min-width:min(100%,380px)"></select><button onclick="continuePipeline()">이어서 만들기</button></div>
-  </div>
-</div>
-
 <!-- ═══ 작업 선택 ═══ -->
 <div class="panel" id="step-4">
-  <div class="panel-head"><span class="tag-lbl">보고 있는 작업</span><select id="workFile" style="min-width:min(100%,420px)" onchange="onWorkChange()"></select><button class="mini" onclick="refresh()">새로고침</button><span class="spacer"></span><span class="hint">제작 중이면 지금 만드는 작업이 자동으로 보입니다</span></div>
+  <div class="panel-head"><span class="tag-lbl">완성한 작업</span><select id="workFile" style="min-width:min(100%,420px)" onchange="onWorkChange()"></select><button class="mini" onclick="refresh()">새로고침</button><span class="spacer"></span><span class="hint">제작 중이면 지금 만드는 작업이 자동으로 보입니다</span></div>
   <div id="workEmpty" class="hint" style="padding:0 18px 14px">아직 만든 작업이 없습니다. 위에서 주제를 넣고 제작을 시작하세요.</div>
 </div>
 
+<div class="row"><button id="advancedToggle" onclick="toggleAdvanced()">고급 편집 열기</button><span class="hint">이미지 수정 · 자막 · 썸네일 · 채널 프로필</span></div>
+<div class="panel" id="simpleResult"><div class="inner"><h2>3. 완성 확인</h2><p class="hint">위에서 작업을 선택하면 완성한 영상과 결과 폴더를 열 수 있습니다.</p><div class="row"><button class="primary" onclick="openWork('video')">최종 영상 열기</button><button onclick="openWork('assets')">결과 폴더 열기</button></div></div></div>
 <!-- ═══ 단계 카드 ═══ -->
-<div id="workBody">
+<div id="workBody" data-advanced>
 <div class="panel stage" id="stage-script">
   <div class="panel-head"><span class="num n1">1</span><b>대본</b><span class="stat" data-stage-stat="script">대기</span><span class="spacer"></span><button class="mini" onclick="openWork('script')">파일 열기</button></div>
   <div class="mini-bar"><i data-stage-bar="script"></i></div>
@@ -105,6 +109,7 @@
     <select id="galFile" class="hidden" onchange="onGalFileChange()"></select>
     <div class="row"><button class="primary" onclick="galStart()">▶ 빠진 장면 이어서 만들기</button><span class="hint">멈추려면 제작 현황의 [■ 중단]</span></div>
     <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
+    <details class="hint"><summary>접수 여부를 확인할 수 없다는 오류가 나왔나요?</summary><p>KIE 작업 내역에서 해당 장면이 접수됐는지 확인한 뒤 아래 버튼으로 작업 번호를 연결하세요. 접수되지 않은 경우에만 새 요청을 허용하세요.</p><button onclick="recoverImageTask()">KIE 작업 기록 복구</button></details>
     <div class="gal" id="advGal"></div>
   </div>
 </div>
@@ -113,8 +118,7 @@
   <div class="panel-head"><span class="num n4">4</span><b>영상변환</b><span class="stat" data-stage-stat="motion">대기</span><span class="spacer"></span><span id="kieStatus" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="showView('settings')">키 설정</button></div>
   <div class="mini-bar"><i data-stage-bar="motion"></i></div>
   <div class="inner">
-    <p class="hint">앞 7장 이미지를 움직이는 영상으로 바꿉니다. 제작 시작에서 자동으로 하지만, 여기서 따로 할 수도 있습니다.</p>
-    <div class="row"><label>변환 방식</label><div class="seg videoEngineSeg"><button data-engine="auto" onclick="setVideoEngine('auto')">자동 (KIE → 드롭샷)</button><button data-engine="kie" onclick="setVideoEngine('kie')">KIE AI</button><button data-engine="dropshot" onclick="setVideoEngine('dropshot')">드롭샷 AI</button></div><span class="hint videoEngineHint"></span></div>
+    <p class="hint">앞 7장 이미지를 움직이는 영상으로 바꿉니다. 선택 기능이며 KIE 크레딧이 추가로 사용됩니다.</p>
     <div class="row"><button class="primary" onclick="startFirstSevenVideos()">▶ 앞 7장 영상으로 변환</button><span class="hint">멈추려면 제작 현황의 [■ 중단]</span></div>
     <div id="kieProgress" style="font-weight:700;margin:8px 0"></div><div class="hint" id="kieScenes"></div>
   </div>
@@ -138,7 +142,7 @@
     <div class="row"><button class="primary" id="composeBtn" onclick="composeThumbnails()">✍ 원본에 문구 넣어 완성하기</button><button onclick="makeWorkspaceThumbnails()">🖼 새 이미지로 3장 다시 만들기</button><button class="mini" onclick="openWork('thumbs')">썸네일 폴더 열기</button></div>
     <details class="box soft" id="adv-video" style="margin-top:12px"><summary>영상·자막 설정 (글꼴·크기·색상) — 편집프로그램 화면</summary><div>
       <div id="videoStatus" class="banner info">대본을 고르지 않아도 자막 설정은 저장할 수 있습니다.</div>
-      <div class="row"><button class="primary" onclick="prepareVideoEditor()">🎬 보고 있는 작업 연결·새로고침</button></div>
+      <div class="row"><button class="primary" onclick="prepareVideoEditor()">🎬 완성한 작업 연결·새로고침</button></div>
       <iframe id="frVideo" class="editor" src="about:blank" data-src="http://127.0.0.1:8765/"></iframe>
     </div></details>
   </div>
@@ -146,13 +150,13 @@
 </div>
 
 <!-- ═══ 파일 메뉴 ═══ -->
-<div class="panel" id="filePanel">
+<div class="panel" id="filePanel" data-advanced>
   <div class="panel-head"><span class="num nf">📁</span><b>파일 메뉴</b><span class="spacer"></span><button class="mini" onclick="loadWorkspace(false)">새로고침</button><button class="mini danger" onclick="deleteCurrentWork()">이 작업 휴지통으로</button><button class="mini danger" onclick="resetEverything()">🗑 전체 초기화</button><span class="hint" id="trashStat"></span><button class="mini" onclick="emptyTrash()">휴지통 비우기</button></div>
   <div class="inner"><div class="files" id="fileList"><div class="hint">작업을 고르면 만들어진 파일이 여기에 나옵니다.</div></div></div>
 </div>
 
 <!-- ═══ 로그 ═══ -->
-<div class="panel" id="logPanel">
+<div class="panel" id="logPanel" data-advanced>
   <div class="panel-head"><span class="tag-lbl">로그</span><span class="hint" id="pgLines"></span><span class="spacer"></span><label class="chk"><input type="checkbox" id="pgFollow" checked> 새 로그 따라가기</label></div>
   <div class="inner"><div class="log" id="pgLog"></div></div>
 </div>
@@ -162,15 +166,15 @@
 
 
 <!-- ═══════════ 설정 ═══════════ -->
-<section id="view-settings" class="hidden">
+<section id="view-settings" class="hidden"><div class="row"><button onclick="toggleAdvanced()">고급 설정 표시 / 접기</button></div>
   <div class="card">
     <h2>⚙ 처음 한 번만 설정하면 됩니다</h2>
     <p class="lead">위에서부터 순서대로 저장하세요. 저장된 값은 그대로 남아 있으니 바꿀 때만 다시 넣으면 됩니다.</p>
     <div class="ready-bar" id="setupReady" style="padding:0;margin:0"></div>
   </div>
 
-  <div class="card" id="profileCard">
-    <h2>1. 내 채널 프로필 <span class="stat ok" id="profStat"></span></h2>
+  <div class="card" id="profileCard" data-advanced>
+    <h2>내 채널 프로필 <span class="stat ok" id="profStat"></span></h2>
     <p class="lead">채널 이름·소개·시청자·마스코트를 여기서 정하면 대본·주제 추천·제목·설명·이미지·썸네일 프롬프트가 전부 이 내용에 맞춰집니다. 채널이 바뀌면 여기만 고치면 됩니다.</p>
     <div class="row"><div class="seg" id="profSeg"><button data-slot="person" class="on" onclick="setProfileSlot('person')">정보형 채널</button><button data-slot="mindam" onclick="setProfileSlot('mindam')">이야기형 채널</button></div><span class="hint" id="profTypeHint"></span></div>
     <div class="keyrow"><b>채널 이름</b><input type="text" id="pf_이름" placeholder="예: 심리해독소"></div>
@@ -190,7 +194,7 @@
         <div class="keyrow"><b>이름</b><input type="text" id="pf_마스코트_이름" placeholder="예: 해" style="max-width:160px"><b style="min-width:auto">그림 파일</b><input type="text" id="pf_마스코트_이미지" placeholder="assets/캐릭터/해.png"></div>
         <div class="keyrow"><b>생김새(한글)</b><input type="text" id="pf_마스코트_설명" placeholder="지침에 들어가는 한글 설명"></div>
         <div class="keyrow"><b>영어 문구</b><input type="text" id="pf_마스코트_프롬프트" placeholder="이미지 프롬프트에 그대로 들어갈 영어 캐릭터 문구"></div>
-        <p class="hint">이미지는 드롭샷이 만들기 때문에 <b>드롭샷 References 패널에 이 그림을 올리고 Subject로 지정</b>해 두어야 장면·썸네일에서 같은 캐릭터가 나옵니다 (한 번만 하면 됨).</p>
+        <p class="hint">KIE Z-Image는 마스코트의 <b>외형·색상 설명</b>을 사용합니다. 설명을 구체적으로 적어 주세요. 그림은 미리보기용이며 외형이 매번 정확히 같지는 않을 수 있습니다.</p>
       </div></div>
     <h3>나만의 색깔 (브랜드) <span class="hint">썸네일·이미지에 매번 같은 색과 표식이 들어가 채널을 알아보게 합니다</span></h3>
     <div class="keyrow"><b>주색</b><input type="color" id="pf_브랜드_주색" style="width:56px;min-width:56px;padding:2px"><b style="min-width:auto">강조색</b><input type="color" id="pf_브랜드_강조색" style="width:56px;min-width:56px;padding:2px"><b style="min-width:auto">바탕색</b><input type="color" id="pf_브랜드_바탕색" style="width:56px;min-width:56px;padding:2px"><b style="min-width:auto">보조색</b><input type="color" id="pf_브랜드_보조색" style="width:56px;min-width:56px;padding:2px"><span class="hint">주색=어두운 바탕·글자 테두리, 강조색=둘째 줄 글씨·선, 바탕색=카드·한지, 보조색=낙관·둘째 글씨</span></div>
@@ -206,7 +210,7 @@
   </div>
 
   <div class="card">
-    <h2>2. 대본을 쓰는 AI <span class="stat" id="aiStat"></span></h2>
+    <h2>1. 대본을 쓰는 AI <span class="stat" id="aiStat"></span></h2>
     <div class="row"><label>AI <select id="sAI" onchange="saveAI()"><option value="deepseek-web">딥시크 웹 (무료 · 크롬 확장 필요)</option><option value="deepseek">딥시크 API</option><option value="gemini">제미나이 API</option><option value="claude">클로드 API</option></select></label><label>모델 <input type="text" id="sModel" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
     <p class="hint" id="sStatus"></p>
     <details class="box soft" id="webHelp" open><summary>딥시크 웹(무료) 쓰는 법</summary><div><ol class="guide hint">
@@ -214,54 +218,31 @@
       <li>크롬에서 <code>https://chat.deepseek.com</code> 을 열고 로그인 (탭을 닫지 말고 두세요 — 최소화는 괜찮음)</li>
       <li>위 AI를 <b>딥시크 웹</b>으로 저장. 아래 상태가 "확장 연결됨"이면 끝.</li></ol><div class="hint" id="sWeb"></div></div></details>
     <div class="row"><button class="mini" onclick="testWeb()">🧪 딥시크 응답 테스트</button><span class="hint" id="webTestHint"></span></div>
-    <h3>API 키</h3>
+    <h3>선택한 대본 AI의 API 키</h3>
     <div class="keyrow"><b>딥시크</b><span class="stat" id="k_deepseek"></span><input type="password" id="key_deepseek" placeholder="sk-…  (platform.deepseek.com)"><button class="mini" onclick="saveKey('deepseek')">저장</button></div>
     <div class="keyrow"><b>제미나이</b><span class="stat" id="k_gemini"></span><input type="password" id="key_gemini" placeholder="AIza…  (aistudio.google.com/apikey)"><button class="mini" onclick="saveKey('gemini')">저장</button></div>
     <div class="keyrow"><b>클로드</b><span class="stat" id="k_claude"></span><input type="password" id="key_claude" placeholder="sk-ant-…  (console.anthropic.com)"><button class="mini" onclick="saveKey('claude')">저장</button></div>
-    <div class="keyrow"><b>인월드 (나레이션)</b><span class="stat" id="k_inworld"></span><input type="password" id="key_inworld" placeholder="Basic 키  (platform.inworld.ai)"><button class="mini" onclick="saveKey('inworld')">저장</button></div>
-    <div class="keyrow"><b>KIE (움직이는 영상)</b><span class="stat" id="sKieStat">확인 중…</span><input type="password" id="sKieKey" placeholder="KIE AI API 키" autocomplete="off"><button class="mini" onclick="saveKieKey()">저장</button></div>
+
   </div>
 
   <div class="card">
-    <h2>3. 나레이션 목소리 (인월드)</h2>
-    <p class="lead">위 채널 프로필에서 제작 언어를 고른 뒤, 그 언어를 지원하는 목소리 ID만 채널별로 넣으세요. 자막은 대본 언어로 자동 생성됩니다.</p>
+    <h2>2. 나레이션 목소리 (인월드)</h2>
+    <p class="lead">제작할 언어를 지원하는 목소리 ID를 넣고 저장하세요. 이야기형은 비워 두면 정보형 목소리를 사용합니다. 자막은 대본 언어로 자동 생성됩니다.</p>
+    <div class="keyrow"><b>인월드 (나레이션)</b><span class="stat" id="k_inworld"></span><input type="password" aria-label="인월드 API 키" id="key_inworld" placeholder="Basic 키  (platform.inworld.ai)"><button class="mini" onclick="saveKey('inworld')">저장</button></div>
     <div class="row"><label>모델 <select id="sInworldModel"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>
-    <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="vPerson"></span><input type="text" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
-    <div class="keyrow"><b class="pname-mindam">이야기형</b><span class="stat" id="vMindam"></span><input type="text" id="sVoiceM" placeholder="비우면 정보형 채널 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>
+    <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="vPerson"></span><input type="text" aria-label="정보형 목소리 ID" id="sVoiceP" placeholder="목소리 ID (예: Sarah)"><label>속도 <input type="number" id="sSpeedP" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('person')">저장</button></div>
+    <div class="keyrow"><b class="pname-mindam">이야기형</b><span class="stat" id="vMindam"></span><input type="text" aria-label="이야기형 목소리 ID" id="sVoiceM" placeholder="비우면 정보형 채널 목소리 사용"><label>속도 <input type="number" id="sSpeedM" value="0.9" step="0.05" min="0.5" max="1.5" style="width:80px"></label><button class="mini" onclick="saveVoice('mindam')">저장</button></div>
     <div class="keyrow"><b>분당 글자수</b><span class="stat ok" id="vCpm"></span><label>영상 길이 계산용 <input type="number" id="sCpm" value="270" min="150" max="400" step="10" style="width:90px"></label><button class="mini" onclick="saveCpm()">저장</button></div>
   </div>
 
-  <div class="card">
-    <h2>4. 드롭샷 이미지 생성 좌표</h2>
-    <p class="lead">이미지는 드롭샷 AI 화면을 자동으로 클릭해서 만듭니다. 입력창과 다운로드 버튼 위치를 한 번만 잡아 두세요.</p>
-    <div class="row"><button class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board','_blank','noopener')">↗ 드롭샷 AI 열기</button><label>창 제목 <input type="text" id="sWindowKeyword" value="드롭샷" style="width:140px"></label><span class="xy-countdown" id="xyCountdown">6</span></div>
-    <p class="hint">[6초 좌표 잡기]를 누르면 숫자가 6부터 줄어듭니다. 1이 끝날 때까지 드롭샷 창의 해당 위치에 마우스를 올려 두세요. 자동 저장됩니다.</p>
-    <div class="keyrow"><b>프롬프트 입력창</b><label>X <input type="number" id="s_prompt_x" style="width:90px"></label><label>Y <input type="number" id="s_prompt_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('prompt')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('prompt')">위치 확인</button></div>
-    <div class="keyrow"><b>생성하기 버튼</b><label>X <input type="number" id="s_generate_x" style="width:90px"></label><label>Y <input type="number" id="s_generate_y" style="width:90px"></label><button class="mini primary" onclick="detectGenerateButton()">자동 찾기</button><button class="mini" onclick="captureEditorXY('generate')">6초 좌표 잡기</button></div>
-    <div class="keyrow"><b>이미지 다운로드</b><label>X <input type="number" id="s_download_x" style="width:90px"></label><label>Y <input type="number" id="s_download_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('download')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('download')">위치 확인</button></div>
-    <div class="row"><button onclick="saveEditorXY()">좌표 저장</button><button class="mini" onclick="loadEditorSettings()">저장값 다시 읽기</button></div>
-    <p class="hint" id="sXyStatus">저장된 좌표를 읽는 중…</p>
+  <div class="card" id="kieCard">
+    <h2>3. 이미지 연결 · KIE Z-Image</h2>
+    <p class="lead">KIE API 키 하나로 이미지와 선택한 움직이는 영상을 만듭니다. 이미지 생성에도 크레딧이 사용됩니다.</p>
+    <div class="keyrow"><b>KIE AI (이미지·영상)</b><span class="stat" id="sKieStat">확인 중…</span><input type="password" aria-label="KIE API 키" id="sKieKey" placeholder="KIE AI API 키" autocomplete="off"><button class="mini" onclick="saveKieKey()">저장</button></div>
+    <p class="hint"><a href="https://kie.ai/api-key" target="_blank" rel="noopener">KIE API 키 발급</a> · 저장 후 연결 상태를 확인하세요. 마우스 위치를 맞출 필요가 없습니다.</p>
   </div>
-
-  <div class="card">
-    <h2>5. 영상 변환 (앞 7장 움직이는 영상)</h2>
-    <div class="row"><label>변환 방식</label><div class="seg videoEngineSeg"><button data-engine="auto" onclick="setVideoEngine('auto')">자동 (KIE → 드롭샷)</button><button data-engine="kie" onclick="setVideoEngine('kie')">KIE AI</button><button data-engine="dropshot" onclick="setVideoEngine('dropshot')">드롭샷 AI</button></div><span class="hint videoEngineHint"></span></div>
-    <p class="lead">드롭샷 AI 를 고르면 드롭샷의 <b>영상 생성</b> 화면을 자동으로 클릭해서 만듭니다. 아래 네 곳의 위치를 한 번만 잡아 두세요. (자동은 KIE 키·크레딧이 있으면 KIE, 없으면 드롭샷)</p>
-    <div class="row"><button class="primary" onclick="window.open('https://aistudio.dropshot.io/ko/workspace/board','_blank','noopener')">↗ 드롭샷 AI 열기</button><label>드롭샷 창 제목 <input type="text" id="sVideoWindowKeyword" value="드롭샷" style="width:120px"></label><span class="xy-countdown">6</span></div>
-    <p class="hint"><b>드롭샷 창에 [영상 생성] 화면을 열어 두고</b> 그 화면에서 좌표 4개를 잡으세요 (모델·16:9·길이도 미리 골라 두기). 프로그램은 제목에 "드롭샷"이 들어간 창을 앞으로 가져와 클릭합니다. 드롭샷 창이 여러 개면 첫 번째 창을 쓰니, 영상 변환 중에는 드롭샷 창을 하나만 두세요.</p>
-    <div class="keyrow"><b>이미지 업로드 버튼</b><label>X <input type="number" id="s_vupload_x" style="width:90px"></label><label>Y <input type="number" id="s_vupload_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vupload')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vupload')">위치 확인</button></div>
-    <div class="keyrow"><b>움직임 프롬프트 입력창</b><label>X <input type="number" id="s_vprompt_x" style="width:90px"></label><label>Y <input type="number" id="s_vprompt_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vprompt')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vprompt')">위치 확인</button></div>
-    <div class="keyrow"><b>생성하기 버튼</b><label>X <input type="number" id="s_vgenerate_x" style="width:90px"></label><label>Y <input type="number" id="s_vgenerate_y" style="width:90px"></label><button class="mini primary" onclick="captureEditorXY('vgenerate')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vgenerate')">위치 확인</button></div>
-    <div class="keyrow"><b>영상 다운로드 버튼</b><label>X <input type="number" id="s_vdownload_x" style="width:90px"></label><label>Y <input type="number" id="s_vdownload_y" style="width:90px"></label><button class="mini primary" onclick="detectVideoDownload()">자동 찾기</button><button class="mini" onclick="captureEditorXY('vdownload')">6초 좌표 잡기</button><button class="mini" onclick="testEditorXY('vdownload')">위치 확인</button></div>
-    <div class="row"><label class="chk"><input type="checkbox" id="s_video_manual" checked> <b>다운로드는 내가 직접 누른다</b> <span class="hint">(영상이 완성되면 드롭샷의 ⬇를 누르세요 — 프로그램은 다운로드 폴더에 새 영상이 생기면 가져가서 다음 장면으로 넘어갑니다)</span></label></div>
-    <div class="row"><label>생성 뒤 처음 확인까지 <input type="number" id="s_video_wait_min" value="60" min="10" style="width:80px"> 초</label><label>최대 대기 <input type="number" id="s_video_wait_max" value="360" min="60" style="width:80px"> 초</label><button onclick="saveEditorXY()">좌표 저장</button><button class="mini primary" onclick="testVideoUpload()">🧪 업로드 시험</button></div>
-    <p class="hint">[업로드 시험]은 지금 고른 작업의 001 이미지를 업로드 좌표로 한 번 올려 봅니다. 파일 선택 창이 뜨고 시작 프레임에 그림이 들어가면 성공입니다.</p>
-    <p class="hint">업로드 버튼을 누르면 뜨는 파일 창에 이미지 경로를 자동으로 넣습니다. 영상이 만들어지는 동안(장면당 1~5분) 드롭샷 창을 가리거나 마우스를 쓰지 마세요. 다운로드 버튼은 [자동 찾기]를 누르면 드롭샷 화면에서 스스로 찾습니다 (영상이 하나 이상 만들어져 있어야 함). 변환 중에도 매번 자동으로 다시 찾고, 못 찾을 때만 저장된 좌표를 씁니다.</p>
-    <p class="hint" id="sVxyStatus"></p>
-  </div>
-
-  <div class="card" id="chanCard">
-    <h2>6. 내 유튜브 채널 연동</h2>
+  <div class="card" id="chanCard" data-advanced>
+    <h2>유튜브 연동 · 내 유튜브 채널 연동</h2>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>
     <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px;white-space:pre-wrap"></p>
@@ -279,8 +260,8 @@
     <div id="chAnalysis" class="hint">채널을 연동하면 여기에 분석이 나옵니다.</div>
   </div>
 
-  <div class="card">
-    <h2>7. 텔레그램 완성 알림 <span class="stat">선택</span></h2>
+  <div class="card" data-advanced>
+    <h2>텔레그램 완성 알림 <span class="stat">선택</span></h2>
     <p class="hint">① BotFather에서 받은 봇 토큰 저장 → ② 텔레그램에서 그 봇에게 아무 메시지 보내기 → ③ 채팅 자동 찾기 → 저장 → 테스트</p>
     <div class="keyrow"><b>봇 토큰</b><span class="stat" id="tgTokenStat"></span><input type="password" id="tgToken" placeholder="123456:ABC…"><button class="mini" onclick="saveTelegramToken()">저장</button></div>
     <div class="row"><button onclick="findTelegramChats()">🔎 채팅 자동 찾기</button><select id="tgChats" style="min-width:220px"><option value="">먼저 채팅을 찾으세요</option></select><button onclick="saveTelegramChat()">선택한 채팅 저장</button><button class="primary" onclick="testTelegram()">테스트 메시지</button></div>

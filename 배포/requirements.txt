@@ -8,6 +8,3 @@ fastapi==0.141.1
 uvicorn==0.52.4
 pydantic==2.13.5
 pillow==12.3.0
-pyautogui==0.9.54
-pyperclip==1.11.0
-pywinauto==0.6.9
