@@ -144,7 +144,10 @@ def main():
         except Exception as exc:  # noqa: BLE001
             editor_integrations_ok = False
             print("편집프로그램 연결 적용에 실패해 원상 복구했습니다:", exc)
-    if editor and editor_integrations_ok and not ready(8765):
+    from editor_connection import select_editor_port, is_editor
+    editor_port = select_editor_port() if editor and editor_integrations_ok else 8765
+    env["YOUTUBE_EDITOR_PORT"] = str(editor_port)
+    if editor and editor_integrations_ok and not is_editor(editor_port):
         log = open_log("로그_편집프로그램.txt")
         logs.append(log)
         children.append(subprocess.Popen([sys.executable, "app.py", "--no-browser"],
@@ -179,7 +182,7 @@ def main():
             pass
         print("대본 만들기 화면이 열렸습니다: http://127.0.0.1:8766/")
         if editor and editor_integrations_ok:
-            print("편집프로그램 준비:", "완료" if ready(8765) else "시작 중")
+            print("편집프로그램 준비:", "완료" if is_editor(editor_port) else "시작 중")
         if not background:
             print("이 창은 닫아도 됩니다 — 프로그램은 계속 돌아갑니다. 완전히 끝내려면 화면의 [종료] 버튼을 누르세요. (Enter: 이 창만 닫기)")
             try:

@@ -1,7 +1,7 @@
 // 유튜브 영상 자동 제작 — 화면 동작 (백엔드: 대본선택.py 8766, 편집프로그램 8765)
 'use strict';
 const $ = id => document.getElementById(id);
-const EDITOR = 'http://127.0.0.1:8765';
+const EDITOR = '/api/editor';
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const js = s => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 const pad3 = n => String(n).padStart(3, '0');

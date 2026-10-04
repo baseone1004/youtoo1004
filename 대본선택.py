@@ -152,14 +152,14 @@ def shutdown_program(server):
     if job and job.status == "running":
         job.cancel_requested = True
     try:
-        _rq.post("http://127.0.0.1:8765/api/gen/stop", json={}, timeout=3)
+        _rq.post(editor_url() + "/api/gen/stop", json={}, timeout=3)
     except _rq.RequestException:
         pass  # The editor may already be closed.
     # The editor runs as a separate pythonw process. Only stop the process
     # listening on its dedicated local port after checking its command line.
-    if os.name == "nt":
+    if os.name == "nt" and is_editor(editor_port()):
         script = (
-            "$conn=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8765 "
+            f"$conn=Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort {editor_port()} "
             "-State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; "
             "if($conn){$proc=Get-CimInstance Win32_Process "
             "-Filter \"ProcessId=$($conn.OwningProcess)\"; "
@@ -1310,7 +1310,8 @@ def tts_groups(script_file, sents):
 
 
 # ── 편집프로그램(8765) 연동 ─────────────────────────────────────
-AIP = "http://127.0.0.1:8765"
+from editor_connection import editor_url, editor_port, is_editor
+AIP = editor_url()
 
 def aip(path, body=None, method=None, timeout=90):
     try:
@@ -2281,11 +2282,23 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
 
+    def _editor_proxy(self, path, body=None):
+        if not is_editor(editor_port()):
+            self._json({"detail": "편집프로그램 연결을 확인하지 못했습니다. 시작 파일을 다시 실행하세요."}, 503)
+            return
+        try:
+            response = _rq.request("POST" if body is not None else "GET", editor_url() + path, json=body, timeout=90)
+            self._json(response.json(), response.status_code)
+        except (_rq.RequestException, ValueError):
+            self._json({"detail": "편집프로그램 응답을 받지 못했습니다. 잠시 뒤 다시 시도하세요."}, 502)
+
     def do_GET(self):
         u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
         if not self._allow_browser(u.path):
             return
         try:
+            if u.path.startswith("/api/editor/api/"):
+                self._editor_proxy(u.path[len("/api/editor"):] + ("?" + u.query if u.query else "")); return
             if u.path == "/" or u.path.startswith("/static/"):
                 data, mime = static_file("index.html" if u.path == "/" else u.path[len("/static/"):])
                 if data is None:
@@ -2406,6 +2419,8 @@ class H(BaseHTTPRequestHandler):
             return
         try:
             body = self._body()
+            if u.path.startswith("/api/editor/api/"):
+                self._editor_proxy(u.path[len("/api/editor"):], body); return
             if u.path == "/api/script":
                 run_job("script", lambda job: make_person_script(job, body)); self._json({"ok": True})
             elif u.path == "/api/mindam":

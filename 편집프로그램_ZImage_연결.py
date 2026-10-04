@@ -76,7 +76,7 @@ def apply(editor_dir):
     editor = Path(editor_dir)
     target = editor / "app.py"
     source = target.read_text(encoding="utf-8")
-    updated = source
+    updated = source.replace('HOST, PORT = "127.0.0.1", 8765', 'HOST, PORT = "127.0.0.1", int(__import__("os").environ.get("YOUTUBE_EDITOR_PORT", "8765"))')
     marker = "# KIE_ZIMAGE_INTEGRATION_V1"
     if marker not in updated:
         start = updated.index("class GenStart(BaseModel):")
