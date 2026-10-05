@@ -363,6 +363,7 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
         with wave.open(silence) as wav:
             gap_duration = wav.getnframes() / wav.getframerate()
     # 길이 계산 + SRT + concat 목록
+    log("   음성 생성 완료 → 쉼 정리와 자막 싱크 계산 중 (추가 API 사용 없음)")
     t = 0.0
     srt, lst, flow = [], [], ["# 이미지번호: 자막번호 (긴 문장은 짧은 한 줄 자막으로 나눔)"]
     for a, b in groups:
@@ -425,10 +426,13 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
             flow.append(f"{a + k}: {cue_start}" if cue_start == cue_end else f"{a + k}: {cue_start}-{cue_end}")
         lst.append(f"file '{p.replace(os.sep, '/')}'"); lst.append(f"file '{silence.replace(os.sep, '/')}'")
         t += total + gap_duration
+        if len(lst) // 2 % 5 == 0 or b == n:
+            log(f"      음성·자막 정리 {len(lst) // 2}/{len(groups)}묶음")
     list_path = os.path.join(part_dir, "_list.txt")
     with open(list_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lst) + "\n")
     mp3 = os.path.join(out_dir, f"{name}.mp3")
+    log("   최종 나레이션 파일을 합치는 중 (추가 API 사용 없음)")
     subprocess.run([ffmpeg, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", list_path,
                     "-c:a", "libmp3lame", "-b:a", "192k", "-ar", "24000", mp3], check=True)
     srt_path = os.path.join(out_dir, f"{name}.srt")
