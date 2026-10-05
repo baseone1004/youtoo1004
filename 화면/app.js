@@ -577,7 +577,7 @@ async function rerunTTS() {
   const current = await api('/api/state');
   if (current.job?.status === 'running') { startPolling(true); return toast('현재 작업이 진행 중입니다: ' + (current.job.stage || '제작 중') + '. 완료 후 다시 생성하세요.', true); }
   if (!confirm('이 대본의 나레이션과 자막을 처음부터 다시 만들까요?\n(문장을 묶어 자연스럽게 읽습니다 · 인월드 사용량이 듭니다 · 그림 번호는 그대로)')) return;
-  try { await saveWorkspaceText('script'); await api('/api/tts', {script_file: WORK.script_file}); startPolling(true); toast('고친 대본으로 나레이션을 다시 만듭니다.'); } catch (e) { toast(e.message, true); }
+  try { await saveWorkspaceText('script'); await api('/api/tts', {script_file: WORK.script_file, force: true}); startPolling(true); toast('현재 목소리로 음성과 자막을 새로 만듭니다.'); } catch (e) { toast(e.message, true); }
 }
 async function loadTrash() {
   try { const t = await api('/api/trash'); $('trashStat').textContent = t.items ? `휴지통 ${t.items}개 · ${t.gb} GB (${t.keep_days}일 지나면 자동 삭제)` : '휴지통 비어 있음'; } catch (e) {}

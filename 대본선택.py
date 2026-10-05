@@ -1268,13 +1268,16 @@ def voice_for(cfg, channel):
 def narration_settings(cfg, channel):
     voice, speed = voice_for(cfg, channel)
     japanese = 채널_프로필.language_code(channel) == "ja"
-    return dict(voice=voice, speed=speed, model="inworld-tts-2" if japanese else cfg.get("인월드_모델", "inworld-tts-1.5-max"),
-                language="ja-JP" if japanese else "", timestamps=japanese)
+    settings = dict(voice=voice, speed=speed, model="inworld-tts-2" if japanese else cfg.get("인월드_모델", "inworld-tts-1.5-max"),
+                    language="ja-JP" if japanese else "", timestamps=japanese)
+    if 채널_프로필.language_code(channel) == "ko":
+        settings["number_normalization"] = 나레이션.korean_numbers.VERSION
+    return settings
 
 def narration_cache_matches(assets, cfg, channel):
     saved = load_json(os.path.join(assets, "나레이션_설정.json"), None)
     expected = narration_settings(cfg, channel)
-    return saved == expected if saved is not None else not expected["timestamps"]
+    return saved == expected if saved is not None else not expected["timestamps"] and "number_normalization" not in expected
 
 def check_narration_sync(script_file):
     if script_file not in {item["path"] for item in script_files()}:
@@ -1294,9 +1297,11 @@ def make_tts(job, req):
         raise SystemExit("대본 파일을 고르세요.")
     with open(path, encoding="utf-8-sig") as f:
         body = fix_script_sentences(script_body(f.read()))
+    channel = req.get("channel") or channel_of(path)
+    if 채널_프로필.language_code(channel) == "ko":
+        body = 나레이션.korean_numbers.normalize(body)
     sents = split_sentences(body, path)
     out = req.get("out_dir") or assets_dir(path)
-    channel = req.get("channel") or channel_of(path)
     settings = narration_settings(cfg, channel)
     voice, speed = voice_for(cfg, channel)
     if req.get("voice_id"):
@@ -1313,6 +1318,7 @@ def make_tts(job, req):
                          log=job.add, cancel=lambda: job.cancel_requested,
                          subtitle_lines=2 if channel == "mindam" else 1, groups=groups,
                          language=settings["language"], timestamps=settings["timestamps"],
+                         normalize_numbers="number_normalization" in settings, force=bool(req.get("force")),
                          temperature=(float(cfg["인월드_온도"]) if cfg.get("인월드_온도") not in (None, "", 0) else None))   # 감정 변화폭 (비우면 인월드 기본)
     settings.update(voice=voice, speed=speed)
     if not settings["timestamps"] and req.get("model"):

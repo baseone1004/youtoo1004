@@ -15,6 +15,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BASE = os.path.dirname(os.path.abspath(__file__)); os.chdir(BASE)
 import requests
+import korean_numbers
 
 INWORLD_URL = "https://api.inworld.ai/tts/v1/voice"
 # 프로그램 폴더 안의 bin/ → 같이 배포되는 편집프로그램의 bin/ → (개발용) 다운로드 폴더의 편집프로그램 순으로 찾는다. PATH 에 있으면 그것을 먼저 쓴다.
@@ -50,11 +51,11 @@ def split_sentences(body, quotes=True):
     if quotes:
         def protect_dialogue(match):
             opening, inner, closing = match.group(0)[0], match.group(0)[1:-1], match.group(0)[-1]
-            inner = re.sub(r"([.。])(?!\s*$)\s*", "\\1" + _붙임, inner)
+            inner = re.sub(r"([.。])(?!\d|\s*$)\s*", "\\1" + _붙임, inner)
             return opening + inner + closing
         body = re.sub(r'["“「]([^"“”「」]{1,400})["”」]', protect_dialogue, body)
         body = re.sub(r'["“”‘’「」]', "", body)
-    parts = re.split(r"(?<=[.。])(?!" + re.escape(_붙임) + r")\s*", body)
+    parts = re.split(r"(?<=[.。])(?!(?<=\d\.)\d)(?!" + re.escape(_붙임) + r")\s*", body)
     return [p.replace(_붙임, " ").strip() for p in parts if p.strip() and re.search(r"[가-힣ぁ-んァ-ン一-龯a-zA-Z0-9]", p)]
 
 
@@ -287,10 +288,16 @@ def verify_subtitle_sync(srt_path, audio_duration, method="estimated"):
 
 
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,
-               temperature=None, name="나레이션", subtitle_lines=1, groups=None, language="", timestamps=False):
+               temperature=None, name="나레이션", subtitle_lines=1, groups=None, language="", timestamps=False, normalize_numbers=False, force=False):
     """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 부분 파일은 (같은 문장이면) 재사용.
     groups: [(첫 문장 번호, 끝 문장 번호)] — 이 범위의 문장을 한 번에 읽혀 억양이 이어지게 한다 (문장마다 따로 읽으면 매 문장이 새로 시작하는 느낌).
             None 이면 문장마다 따로 읽는다 (예전 방식). 문장별 자막 시각은 음성 안의 쉼(무음)으로 되찾는다."""
+    if normalize_numbers:
+        normalized = [korean_numbers.normalize(s) for s in sentences]
+        changed = sum(a != b for a, b in zip(sentences, normalized))
+        if changed:
+            log(f"   한국어 숫자 읽기 보정 · {changed}개 문장 (음성·자막에 함께 적용)")
+        sentences = normalized
     ffmpeg, ffprobe = find_ffmpeg("ffmpeg"), find_ffmpeg("ffprobe")
     out_dir = os.path.abspath(out_dir)          # concat 목록은 절대 경로여야 함 (목록 파일 기준 상대경로로 해석되므로)
     os.makedirs(out_dir, exist_ok=True)
@@ -326,7 +333,7 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
             same_text = False
         identity_path = Path(p + ".identity")
         same_identity = identity_path.read_text(encoding="utf-8") == identity if identity_path.exists() else not (language or timestamps)
-        if os.path.exists(p) and os.path.getsize(p) > 500 and same_text and same_identity:
+        if not force and os.path.exists(p) and os.path.getsize(p) > 500 and same_text and same_identity:
             done[0] += 1; return
         try:
             tts.synth(text, p)
