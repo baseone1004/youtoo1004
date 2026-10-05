@@ -190,7 +190,7 @@
     <div class="keyrow"><b>면책 문구</b><input type="text" id="pf_면책" placeholder="설명글 끝에 붙는 안내 문구 (비워도 됨)"></div>
     <div class="keyrow"><b>업로드 폴더</b><input type="text" id="pf_업로드_폴더" placeholder="업로드/ 아래 폴더 이름" style="max-width:220px"></div>
     <h3>마스코트 (레퍼런스 캐릭터) <span class="stat" id="mascotStat"></span><span class="hint">없으면 비워 두세요</span></h3>
-    <div class="row" style="align-items:flex-start"><img id="mascotImg" class="hidden" style="width:120px;height:120px;object-fit:contain;background:#fff;border-radius:12px" alt="">
+    <div class="row" style="align-items:flex-start"><img id="mascotImg" class="hidden" style="width:120px;height:120px;object-fit:contain;background:var(--bg);border-radius:12px" alt="">
       <div style="flex:1;min-width:260px">
         <div class="keyrow"><b>이름</b><input type="text" id="pf_마스코트_이름" placeholder="예: 해" style="max-width:160px"><b style="min-width:auto">그림 파일</b><input type="text" id="pf_마스코트_이미지" placeholder="assets/캐릭터/해.png"></div>
         <div class="keyrow"><b>생김새(한글)</b><input type="text" id="pf_마스코트_설명" placeholder="지침에 들어가는 한글 설명"></div>
@@ -247,7 +247,7 @@
     <h2>레퍼런스 이미지 <span class="stat" id="referenceStatus"></span></h2>
     <p class="lead">캐릭터나 원하는 그림을 올리면 장면 이미지·썸네일을 만들 때 직접 참조합니다.</p>
     <div class="row"><label for="referenceChannel">적용할 채널</label><select id="referenceChannel" onchange="renderReference()"><option value="person">정보형 채널</option><option value="mindam">이야기형 채널</option></select></div>
-    <div class="row" style="align-items:flex-start"><img id="referencePreview" class="hidden" alt="저장된 레퍼런스 이미지" style="width:160px;height:160px;object-fit:contain;border-radius:12px;background:#f5f7fb">
+    <div class="row" style="align-items:flex-start"><img id="referencePreview" class="hidden" alt="저장된 레퍼런스 이미지" style="width:160px;height:160px;object-fit:contain;border-radius:12px;background:var(--bg)">
       <div><label class="primary" style="display:inline-block;padding:12px;border-radius:10px;cursor:pointer" for="referenceFile">이미지 선택</label>
         <input id="referenceFile" type="file" accept="image/png,image/jpeg,image/webp" onchange="uploadReference(this)" style="max-width:100%">
         <p class="hint">PNG·JPG·WEBP · 최대 10MB. 이미지 선택 시 해당 채널에 저장됩니다.</p>

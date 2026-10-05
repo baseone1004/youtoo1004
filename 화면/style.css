@@ -1,16 +1,16 @@
-/* 유튜브 영상 자동 제작 — 밝은 스튜디오 테마 */
+/* 유튜브 영상 자동 제작 — 눈부심을 줄인 다크 스튜디오 */
 :root{
-  --bg:#F5F7FB;--surface:#FFFFFF;--line:#E2E7EF;--line-strong:#C7D1DF;
-  --ink:#18243B;--muted:#56657B;--faint:#6B7699;
-  --blue:#345DE3;--blue-dark:#2446B8;--blue-soft:#EDF2FF;
-  --cyan:#345DE3;--purple:#345DE3;
-  --green:#21734E;--green-soft:#EDF8F1;--red:#BB3545;--red-soft:#FFF0F1;--amber:#93650F;--amber-soft:#FFF7E8;
-  --radius:16px;--shadow:0 4px 20px rgba(24,36,59,.05);
+  --bg:#10151E;--surface:#19212E;--line:#2B3647;--line-strong:#465570;
+  --ink:#E5EBF4;--muted:#ABB8CB;--faint:#91A0B7;
+  --blue:#93B1FF;--blue-dark:#BBCFFF;--blue-soft:#222F4A;--blue-fill:#4162BF;--blue-hover:#3554A6;
+  --cyan:#93B1FF;--purple:#93B1FF;
+  --green:#7EDAB1;--green-soft:#1C342D;--red:#FFA1AD;--red-soft:#3A252E;--amber:#EBC887;--amber-soft:#362F23;
+  --radius:16px;--shadow:0 8px 28px rgba(0,0,0,.16);
   --sans:'Pretendard','Pretendard Variable','Noto Sans KR',system-ui,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;
   --mono:'JetBrains Mono','Consolas','D2Coding',monospace;
 }
 *{box-sizing:border-box}
-html{color-scheme:light}
+html{color-scheme:dark}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;letter-spacing:-.01em;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
 a{color:var(--blue)}
@@ -19,7 +19,7 @@ a{color:var(--blue)}
 code{font-family:var(--mono);font-size:.85em;background:var(--bg);padding:1px 6px;border-radius:5px;word-break:break-all}
 
 /* ── 상단 ─────────────────────────────────────────── */
-.top{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top{position:sticky;top:0;z-index:30;background:rgba(16,21,30,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
 .top-inner{max-width:1000px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .brand{font-weight:800;font-size:19px;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .brand small{font-weight:500;font-size:13px;color:var(--muted)}
@@ -111,7 +111,7 @@ button.ghost:hover:not(:disabled){background:var(--bg);color:var(--ink)}
 .topics .t{flex:1;font-weight:600;font-size:16px;line-height:1.45}
 .topics .m{display:block;font-weight:400;font-size:13px;color:var(--muted);margin-top:2px}
 .topics .tag{font-size:12px;font-weight:700;color:var(--blue-dark);background:var(--blue-soft);border-radius:6px;padding:2px 8px;white-space:nowrap;margin-top:4px}
-.topics .tag.custom{color:#7C3AED;background:#F3E8FF}
+.topics .tag.custom{color:var(--blue-dark);background:var(--blue-soft)}
 .topics li.empty{cursor:default;color:var(--muted);border-style:dashed}
 .topics li.empty:hover{border-color:var(--line)}
 .topics .x{border:0;background:transparent;color:var(--faint);font-size:18px;padding:0 4px;line-height:1}
@@ -310,7 +310,7 @@ input,select,textarea{background:var(--surface)}
 input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #9BB2FA;outline-offset:3px}
 .sel-summary{background:var(--blue-soft);border-color:var(--line)}
 .pipe div.now{box-shadow:none}.pipe div{background:var(--bg)}
-.pill.ok{border-color:#CBE8D6}.pill.bad{border-color:#F0CFD3}.pill.bad:hover{background:var(--red-soft)}
+.pill.ok{border-color:#365E4E}.pill.bad{border-color:#6A3D47}.pill.bad:hover{background:#462A34}
 .banner,.errbox{border-color:var(--line)}.file{background:var(--bg)}
 @media(max-width:600px){
  .wrap{padding:16px 14px 48px}.welcome h1{font-size:24px}.top-inner{padding:12px 14px;gap:8px}.brand{font-size:16px}.brand small{display:none}
@@ -320,3 +320,20 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 }
 
 .tag-lbl{background:var(--blue-soft);border-color:var(--line);color:var(--blue)}.startrow .big{background:var(--blue);box-shadow:none}.n1,.n2,.n3,.n4,.n5,.n6{background:var(--blue);color:white}
+
+/* 밝은 글자와 버튼 바탕의 대비를 각각 유지한다. */
+button.primary,.startrow .big,.steps li.on,.stepbar span.now,.order .n,.quick-styles button.on,.lenbtns button.on,.n1,.n2,.n3,.n4,.n5,.n6,.stat.now{background:var(--blue-fill);color:#F5F8FF}
+button.primary:hover:not(:disabled),.startrow .big:hover:not(:disabled){background:var(--blue-hover)}
+input[type=text],input[type=number],input[type=password],select,textarea,.topic-input{background:#121A26}
+input::placeholder,textarea::placeholder{color:var(--faint);opacity:1}
+button:hover:not(:disabled){background:#253145;border-color:#60718D}
+button.ghost:hover:not(:disabled){background:#253145}
+button.danger:hover:not(:disabled){background:#462A34}
+.seg button.on{background:var(--blue-soft);box-shadow:none}
+.card,.panel{background:linear-gradient(145deg,#1B2533,var(--surface));border-color:var(--line)}
+.panel-head{background:rgba(147,177,255,.035)}
+.toast.err{background:var(--red-soft);color:var(--red)}
+.steps li.done .n{background:var(--green-soft);color:var(--green);border-color:#365E4E}
+.steps li.busy .n{background:var(--amber-soft);color:var(--amber);border-color:#6D5835}
+::selection{background:#38548E;color:#F5F8FF}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
