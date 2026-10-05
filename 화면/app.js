@@ -770,7 +770,13 @@ if (kieJobId) { kieTimer = setInterval(pollKieJob, 2000); setTimeout(pollKieJob,
 // ── 고급: 영상·자막 설정 (편집프로그램 iframe) ─────────────
 async function prepareVideoEditor() {
   const fr = $('frVideo'), status = $('videoStatus'), script = $('galFile').value;
-  fr.src = fr.dataset.src + '?settings=' + Date.now();
+  status.textContent = '편집프로그램 연결을 확인하는 중…';
+  try {
+    const connection = await api('/api/editor/connection');
+    if (!connection.ready) throw new Error('편집프로그램이 실행되지 않았습니다. 프로그램 시작 파일을 다시 실행하세요.');
+    fr.dataset.src = connection.url;
+    fr.src = connection.url + '?settings=' + Date.now();
+  } catch (e) { fr.src = 'about:blank'; status.textContent = '연결 실패: ' + e.message; toast(e.message, true); return; }
   if (!script) { status.textContent = '자막 글꼴·크기·색상을 설정할 수 있습니다. 이미지 수정 탭에서 대본을 고르면 이미지·음성·자막이 자동 연결됩니다.'; return; }
   status.textContent = '선택한 대본의 나레이션·자막·이미지를 연결하는 중…';
   try {

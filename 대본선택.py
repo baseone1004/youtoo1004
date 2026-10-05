@@ -2364,6 +2364,8 @@ class H(BaseHTTPRequestHandler):
         if not self._allow_browser(u.path):
             return
         try:
+            if u.path == "/api/editor/connection":
+                self._json(dict(url=editor_url() + "/", ready=is_editor(editor_port()))); return
             if u.path.startswith("/api/editor/api/"):
                 self._editor_proxy(u.path[len("/api/editor"):] + ("?" + u.query if u.query else "")); return
             if u.path == "/" or u.path.startswith("/static/"):
