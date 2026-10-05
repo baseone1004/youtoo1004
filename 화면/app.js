@@ -137,6 +137,11 @@ async function refresh() {
   document.querySelectorAll('[data-ch="mindam"],[data-slot="mindam"],[data-ach="mindam"],#mindamLenRow').forEach(el => el.classList.toggle('hidden', hideM));
   document.querySelectorAll('.pname-mindam').forEach(el => { const row = el.closest('.keyrow,.row'); if (row) row.classList.toggle('hidden', hideM); });
   if (hideM && channel === 'mindam') channel = 'person';
+  if (hideM && profileSlot === 'mindam') profileSlot = 'person';
+  if (hideM) for (const [id, item] of selection) if (item.channel === 'mindam') selection.delete(id);
+  const referenceSlot = $('referenceChannel').value;
+  $('referenceChannel').innerHTML = `<option value="person">${esc(pname('person'))}</option>` + (hideM ? '' : `<option value="mindam">${esc(pname('mindam'))}</option>`);
+  $('referenceChannel').value = !hideM && referenceSlot === 'mindam' ? 'mindam' : 'person';
   // 1단계
   renderTopics();
   // 2단계
@@ -978,7 +983,7 @@ let profileSlot = 'person';
 function pname(slot) { const p = (STATE && STATE.profiles && STATE.profiles[slot]) || {}; return p.이름 || (slot === 'mindam' ? '이야기형' : '정보형'); }
 function renderProfileNames() {
   const P = STATE.profiles || {}; if (!P.person) return;
-  $('brandSub').textContent = `${pname('person')} · ${pname('mindam')}`;
+  $('brandSub').textContent = (STATE.hidden_channels || []).includes('mindam') ? pname('person') : `${pname('person')} · ${pname('mindam')}`;
   document.querySelectorAll('#chSeg button, [data-ach]').forEach(b => { const k = b.dataset.ch || b.dataset.ach; b.textContent = pname(k); });
   document.querySelectorAll('.pname-person').forEach(el => el.textContent = pname('person'));
   document.querySelectorAll('.pname-mindam').forEach(el => el.textContent = pname('mindam'));
