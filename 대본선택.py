@@ -1254,6 +1254,24 @@ def save_workspace(body):
         raise ValueError("저장할 항목을 선택하세요.")
     return {"ok": True}
 
+def open_workspace_path(path):
+    if not path_inside(BASE, path):
+        raise ValueError("프로그램 작업 폴더 밖의 경로는 열 수 없습니다.")
+    absolute = os.path.abspath(path)
+    if os.path.isfile(absolute):
+        if Path(absolute).suffix.lower() in {".mp3", ".wav", ".m4a", ".mp4"}:
+            try:
+                os.startfile(absolute)
+            except OSError:
+                raise ValueError("파일을 재생할 수 없습니다. Windows 기본 앱에서 음악·영상 재생 프로그램을 지정하세요.") from None
+        else:
+            subprocess.Popen(["explorer", "/select,", absolute])
+    elif os.path.isdir(absolute):
+        os.startfile(absolute)
+    else:
+        raise ValueError("파일이 아직 만들어지지 않았거나 이동되었습니다. 작업 목록을 새로고침하세요.")
+
+
 def voice_for(cfg, channel):
     """채널별 목소리·속도. 채널 전용 값이 없으면 공통(인월드_목소리/인월드_속도)을 쓴다."""
     if 채널_프로필.language_code(channel) == "ja":
@@ -2688,12 +2706,7 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": True})
             elif u.path == "/api/open":
                 p = body.get("path", "")
-                if not path_inside(BASE, p):
-                    raise ValueError("프로그램 작업 폴더 밖의 경로는 열 수 없습니다.")
-                if os.path.isfile(p):
-                    subprocess.Popen(["explorer", "/select,", os.path.abspath(p)])
-                elif os.path.isdir(p):
-                    os.startfile(os.path.abspath(p))
+                open_workspace_path(p)
                 self._json({"ok": True})
             else:
                 self._json({"detail": "not found"}, 404)

@@ -57,7 +57,7 @@ function toast(msg, err) {
   const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
   $('toastBox').appendChild(t); setTimeout(() => t.remove(), err ? 6000 : 3500);
 }
-async function openPath(p) { if (!p) return toast('열 폴더가 없습니다.', true); await api('/api/open', {path: p}); }
+async function openPath(p) { if (!p) return toast('열 파일이나 폴더가 없습니다.', true); try { await api('/api/open', {path: p}); } catch (e) { toast('열기 실패: ' + e.message, true); } }
 async function showFile(p) { const j = await api('/api/file?path=' + encodeURIComponent(p)); const v = $('pgPreview'); v.textContent = j.text; v.classList.remove('hidden'); }
 function showBig(src) { const lb = document.createElement('div'); lb.className = 'lightbox'; lb.innerHTML = `<img src="${src}">`; lb.onclick = () => lb.remove(); document.body.appendChild(lb); }
 function fill(sel, items, val) { sel.innerHTML = items.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join(''); if (val && items.includes(val)) sel.value = val; }
