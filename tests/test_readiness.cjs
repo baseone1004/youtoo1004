@@ -6,7 +6,7 @@ const fn = source.slice(source.indexOf('async function checkReady()'), source.in
 async function check(channels, config, credit, profiles = {}) {
   const nodes = {};
   const ctx = { STATE: { config, profiles }, selection: new Map(channels.map((ch, i) => [i, {channel: ch}])), channel: 'mindam',
-    api: async () => credit, get8765: async () => ({kie_key_saved: true, image_model: 'z-image'}),
+    api: async path => path === '/api/state' ? {config, profiles} : credit, get8765: async () => ({kie_key_saved: true, image_model: 'z-image'}),
     $: id => nodes[id] || (nodes[id] = {}), esc: x => x };
   vm.createContext(ctx); vm.runInContext(fn, ctx);
   return await ctx.checkReady();

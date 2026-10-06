@@ -105,10 +105,11 @@ function renderStepBar() {
 }
 
 // ── 준비 상태 ─────────────────────────────────────────
+let readinessIssues = [];
 async function checkReady() {
   const items = [];
   try {
-    const info = STATE || await api('/api/state');
+    const info = await api('/api/state');
     const selectedChannels = [...new Set([...selection.values()].map(x => x.channel))];
     const requiredChannels = selectedChannels.length ? selectedChannels : [channel];
     const v = requiredChannels.every(ch => (info.profiles?.[ch]?.언어 === 'ja') ? String(info.config.인월드_목소리_일본 || '').trim() : String(info.config[ch === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || info.config.인월드_목소리 || '').trim());
@@ -125,6 +126,7 @@ async function checkReady() {
     items.push([true, '편집프로그램 연결', null]);
   } catch (e) { items.push([false, '편집프로그램 꺼짐 — 시작 파일을 다시 실행하세요', null]); }
   const html = '<span class="lbl">준비 상태</span>' + items.map(([ok, label, tab]) => `<span class="pill ${ok ? 'ok' : 'bad'}" ${(!ok && tab) ? `onclick="showView('${tab}')"` : ''}>${ok ? '✓' : '!'} ${esc(label)}${(!ok && tab) ? ' → 고치기' : ''}</span>`).join('');
+  readinessIssues = items.filter(x => !x[0]).map(x => x[1]);
   $('readyBar').innerHTML = html; $('setupReady').innerHTML = html; return items.every(x => x[0]);
 }
 
@@ -337,7 +339,7 @@ async function startProduction() {
   await addCustomTopic(true);                       // 입력칸에 적어 둔 주제도 함께
   if (!selection.size) { $('customTitle').focus(); return toast('주제를 체크하거나 적어 주세요.', true); }
   const options = productionOptions();
-  if (!await checkReady()) { showView('settings'); return toast('처음 설정에서 대본 AI·나레이션·KIE 연결을 먼저 확인하세요.', true); }
+  if (!await checkReady()) { showView('settings'); return toast('확인할 항목: ' + readinessIssues.join(' · '), true); }
   if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 선택한 영상변환 → 썸네일 → 최종 영상 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
   try {
     const q = await api('/api/queue/start', {items: [...selection.values()], options});
