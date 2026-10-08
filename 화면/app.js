@@ -48,7 +48,7 @@ const IDLE = {status: 'idle', current: 0, total: 0, failed: []};
 const norm = p => String(p || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
 // 편집프로그램의 생성 상태 + 지금 어느 폴더에 만드는지 (다른 폴더의 상태를 이 갤러리에 잘못 표시하지 않도록)
 async function genStatus() {
-  try { const [st, info] = await Promise.all([get8765('/api/gen/status'), get8765('/api/info')]); const gen = (info.config || {}).gen || {}; return {...st, output_dir: gen.output_dir || '', prompts_file: gen.prompts_file || ''}; }
+  try { const [st, info] = await Promise.all([get8765('/api/gen/status'), get8765('/api/info')]); const gen = (info.config || {}).gen || {}; const model = st.image_model || (gen.reference_image ? gen.reference_model || 'seedream/4.5-edit' : 'z-image'); return {...st, image_model:model, credits_per_image:st.credits_per_image || ({'z-image':0.8,'bytedance/seedream-v4-edit':5,'seedream/4.5-edit':6.5}[model]), output_dir: gen.output_dir || '', prompts_file: gen.prompts_file || ''}; }
   catch (e) { return {...IDLE, output_dir: ''}; }
 }
 // 대본 파일 → 이미지 폴더 (서버 assets_dir 규칙과 동일)
@@ -134,6 +134,9 @@ async function checkReady() {
 async function refresh() {
   STATE = await api('/api/state');
   const c = STATE.config;
+  const nextImagePrice = imagePrice(channel);
+  $('quickImageCost').textContent = `다음 이미지 생성: ${nextImagePrice.name} · 1장 ${nextImagePrice.credits} 크레딧 · 100장 ${(nextImagePrice.credits * 100).toFixed(0)} 크레딧 (장수는 대본 작성 후 결정, 썸네일·영상 변환 별도)`;
+  await refreshYtAccounts();
   // 이야기형(민담) 채널 숨김: 설정.json "이야기형_숨김": true — 버튼·줄·목록을 감추고 정보형만 쓴다 (다시 쓰려면 false)
   const hideM = (STATE.hidden_channels || []).includes('mindam');
   document.querySelectorAll('[data-ch="mindam"],[data-slot="mindam"],[data-ach="mindam"],#mindamLenRow').forEach(el => el.classList.toggle('hidden', hideM));
@@ -659,6 +662,10 @@ async function updateGallery(dir, pr) {
     galFilled = total ? Math.round(Object.keys(imgs).length / total * 100) : 0; renderStageCards();
     genBusyNow = busyGen(st); if (genBusyNow) $('cancelJob').classList.remove('hidden');
     $('galStat').textContent = `${Object.keys(imgs).length}/${total} · ${({running: '생성 중', paused: '잠시 멈춤', done: '완료', stopped: '중단', error: '오류', idle: '대기'})[st.status] || st.status}${st.current ? ' · 지금 ' + pad3(st.current) + '번' : ''}${st.failed && st.failed.length ? ' · 실패 ' + st.failed.join(',') : ''}`;
+    const price = imagePrice($('galFile').value.endsWith('final.txt') ? 'mindam' : 'person');
+    const missingCount = Math.max(0, (galPrompts.count || total) - Object.keys(imgs).filter(n => +n <= (galPrompts.count || total)).length);
+    const activePrice = busyGen(st) && st.image_model ? {name:st.image_model, credits:st.credits_per_image} : price;
+    $('imageCost').textContent = `현재 모델: ${activePrice.name} · 장당 ${activePrice.credits} 크레딧 · 남은 ${missingCount}장 예상 ${(missingCount * activePrice.credits).toFixed(1)} 크레딧${st.estimated_submitted_credits ? ' · 이번 실행 요청 비용 약 ' + st.estimated_submitted_credits.toFixed(1) + ' 크레딧' : ''} · 재생성·썸네일 별도 / 실제 청구는 KIE 내역 확인`;
     if (key === galKey) return; galKey = key;
     const busy = st.status === 'running' || st.status === 'paused', failed = new Set(st.failed || []); const out = [];
     for (let i = 1; i <= total; i++) {
@@ -677,7 +684,7 @@ async function genBodyFromUI() {
   if (!info.kie_key_saved) throw new Error('설정에서 KIE API 키를 먼저 저장하세요');
   return {prompts_file: galPromptsPath, output_dir: galDir, start_no: 1, end_no: 0,
     skip_existing: true, aspect_ratio: '16:9', style_prefix: (STATE.style_prefixes || {})[styleValue] || '',
-    reference_image: referencePathFor($('galFile').value.endsWith('final.txt') ? 'mindam' : 'person')};
+    reference_image: referencePathFor($('galFile').value.endsWith('final.txt') ? 'mindam' : 'person'), reference_model: ((((STATE.profiles || {})[$('galFile').value.endsWith('final.txt') ? 'mindam' : 'person'] || {}).마스코트 || {}).생성_모델 || 'bytedance/seedream-v4-edit')};
 }
 async function galStart() {
   try {
@@ -687,14 +694,17 @@ async function galStart() {
     const have = new Set((await listImages(galDir)).filter(x => !x.video).map(x => x.no));
     const missing = []; for (let i = 1; i <= (galPrompts.count || 0); i++) if (!have.has(i)) missing.push(i);
     if (galPrompts.count && !missing.length) return toast('빠진 장면이 없습니다. 특정 장면을 바꾸려면 그 그림의 [다시 만들기]를 누르세요.');
+    const price = imagePrice($('galFile').value.endsWith('final.txt') ? 'mindam' : 'person');
+    if (!confirm(`${price.name} · 장당 ${price.credits} 크레딧\n${missing.length || '확인 중인'}장 생성 · 예상 ${missing.length ? (missing.length * price.credits).toFixed(1) : '장수 확인 후 계산'} 크레딧\n이미 접수된 작업은 조회하여 이어갑니다. 생성할까요?`)) return;
     await post8765('/api/gen/start', body); galKey = '';
-    toast((missing.length ? `빠진 장면 ${missing.length}장(${pad3(missing[0])}번부터)을 이어서 만듭니다` : '빠진 장면부터 이어서 만듭니다') + ' — KIE Z-Image로 만듭니다');
+    toast((missing.length ? `빠진 장면 ${missing.length}장(${pad3(missing[0])}번부터)을 이어서 만듭니다` : '빠진 장면부터 이어서 만듭니다') + ` — ${price.name} · 장당 ${price.credits} 크레딧`);
   } catch (e) { toast(e.message, true); }
 }
 async function regenScene(no) {
   let busy = false; try { const st = await get8765('/api/gen/status'); busy = st.status === 'running' || st.status === 'paused'; } catch (e) {}
   // 생성 중이면 편집프로그램이 예약해 두었다가 남은 장면을 다 만든 뒤 이 장면을 새로 만든다
-  if (!confirm(busy ? `지금 이미지를 만드는 중입니다. 남은 장면을 다 만든 뒤 ${pad3(no)}번을 다시 만들까요?` : pad3(no) + '번 장면을 다시 만들까요? (KIE 크레딧 사용)')) return;
+  const scenePrice = imagePrice($('galFile').value.endsWith('final.txt') ? 'mindam' : 'person');
+  if (!confirm(busy ? `지금 이미지를 만드는 중입니다. 남은 장면을 다 만든 뒤 ${pad3(no)}번을 다시 만들까요?` : `${pad3(no)}번 장면을 다시 만들까요? (${scenePrice.name} · 약 ${scenePrice.credits} 크레딧)`)) return;
   try {
     const body = await genBodyFromUI(); Object.assign(body, {scene: no, start_no: no, end_no: no, skip_existing: false}); delete body.auto_generate;
     const r = await post8765('/api/gen/regen', body); toast(pad3(no) + (r.queued ? '번 다시 만들기 예약됨 — 남은 장면 뒤에 만듭니다' : '번 다시 만들기 시작')); galKey = '';
@@ -939,7 +949,8 @@ function renderReference() {
   $('referenceEnabled').checked = !!m.레퍼런스_사용;
   $('referenceEnabled').disabled = !has;
   $('referenceStatus').textContent = m.레퍼런스_사용 ? '생성에 적용' : has ? '사용 안 함' : '이미지 없음';
-  $('referenceModelHint').textContent = m.레퍼런스_사용 ? '사용 모델: Seedream 4.5 Edit · 장면·재생성·썸네일에 적용' : '사용 모델: Z-Image';
+  $('imageMode').value = m.레퍼런스_사용 ? (m.생성_모델 || 'bytedance/seedream-v4-edit') : 'z-image';
+  $('referenceModelHint').textContent = m.레퍼런스_사용 ? '사용 모델: ' + (m.생성_모델 === 'seedream/4.5-edit' ? 'Seedream 4.5 · 6.5 크레딧/장' : 'Seedream 4.0 · 5 크레딧/장') + ' · 장면·재생성·썸네일에 적용' : '사용 모델: Z-Image';
 }
 async function uploadReference(input) {
   const file = input.files[0]; if (!file) return;
@@ -1059,4 +1070,25 @@ async function recoverImageTask() {
   if (!id && !confirm('KIE 작업 내역에서 접수되지 않은 것을 확인했나요? 이어서 만들기를 누르면 새 요청으로 크레딧이 사용됩니다.')) return;
   try { await post8765('/api/gen/recover', {output_dir: galDir, scene: no, task_id: id, confirmed_not_created: !id}); toast('작업 기록 복구 완료. 이어서 만들기를 누르세요.'); }
   catch (e) { toast(e.message, true); }
+}
+
+async function saveImageMode() {
+  const mode = $('imageMode').value;
+  if (mode !== 'z-image' && !(((STATE.profiles || {})[$('referenceChannel').value] || {}).마스코트 || {}).이미지) { toast('레퍼런스 이미지를 먼저 올려 주세요.', true); return renderReference(); }
+  try { await api('/api/profile', {slot:$('referenceChannel').value, data:{마스코트:{레퍼런스_사용:mode !== 'z-image', 생성_모델:mode === 'z-image' ? 'bytedance/seedream-v4-edit' : mode}}}); await refresh(); toast('이미지 모드 저장됨 · 다음 생성부터 적용'); } catch(e) { toast(e.message,true); }
+}
+async function refreshYtAccounts() {
+  try { const response = await fetch('/api/youtube/accounts'); if (response.status === 404) { $('ytAccounts').innerHTML='<option>제작 완료 후 프로그램 재시작 필요</option>'; return; } if (!response.ok) return; const r = await response.json(); const previous=$('ytAccounts').value; $('ytAccounts').innerHTML=r.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.url)}${a.key_saved ? ' · 키 저장됨' : ''}</option>`).join(''); if(previous) $('ytAccounts').value=previous; } catch(e) { toast(e.message,true); }
+}
+async function saveYtAccount() {
+  try { await api('/api/youtube/accounts',{name:$('ytAccountName').value,url:$('ytAccountUrl').value,api_key:$('ytAccountKey').value}); $('ytAccountKey').value=''; await refreshYtAccounts(); toast('유튜브 계정 저장됨'); } catch(e) { toast(e.message,true); }
+}
+async function useYtAccount() {
+  try { await api('/api/youtube/accounts/select',{id:$('ytAccounts').value,slot:channel}); await refresh(); toast('선택한 유튜브 계정 적용됨'); } catch(e) { toast(e.message,true); }
+}
+
+function imagePrice(slot) {
+  const m = (((STATE || {}).profiles || {})[slot] || {}).마스코트 || {};
+  if (!m.레퍼런스_사용) return {name:'Z-Image', credits:0.8};
+  return m.생성_모델 === 'seedream/4.5-edit' ? {name:'Seedream 4.5', credits:6.5} : {name:'Seedream 4.0', credits:5};
 }

@@ -2435,6 +2435,9 @@ class H(BaseHTTPRequestHandler):
                 self._json(채널_연동.analysis(cfg, q.get("channel", ["person"])[0]))
             elif u.path == "/api/trash":
                 self._json(trash_status())
+            elif u.path == "/api/youtube/accounts":
+                from youtube_accounts import public_accounts
+                self._json({"accounts": public_accounts(load_json("설정.json", {}))})
             elif u.path == "/api/kie/credit":
                 self._json(kie_credit())
             elif u.path == "/api/channel":
@@ -2597,6 +2600,17 @@ class H(BaseHTTPRequestHandler):
                 slot = body.get("slot") or "person"
                 saved = 채널_프로필.save(slot, body.get("data") or {})
                 self._json(dict(ok=True, profile=saved))
+            elif u.path in ("/api/youtube/accounts", "/api/youtube/accounts/select"):
+                from youtube_accounts import save_account, select_account, public_accounts
+                cfg = load_json("설정.json", {})
+                if u.path.endswith("/select"):
+                    select_account(cfg, body.get("id"), body.get("slot", "person"))
+                else:
+                    save_account(cfg, body)
+                atomic_write_json("설정.json", cfg)
+                if u.path.endswith("/select"):
+                    채널_연동.fetch_in_background(cfg, body.get("slot", "person"), force=True)
+                self._json({"ok": True, "accounts": public_accounts(cfg)})
             elif u.path == "/api/youtube/test":
                 cfg = load_json("설정.json", {})
                 key = str(cfg.get("유튜브_API_키", "") or "").strip()

@@ -49,7 +49,7 @@
     <div id="mindamLenRow" data-advanced class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
     <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상 (추가 크레딧) <input type="number" id="optHook" value="0" min="0" max="30" style="width:70px"> 장면</label></div>
     <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
-    <div id="startHint" class="hint" style="margin-top:8px"></div>
+    <p id="quickImageCost" class="hint"></p><div id="startHint" class="hint" style="margin-top:8px"></div>
     <ol class="order" id="orderList" style="margin-top:8px"></ol><span class="hidden" id="orderCount"></span>
     <div class="row" data-advanced style="margin-top:12px"><span class="tag-lbl">이미 만든 대본으로 이어서</span><select id="contFile" style="min-width:min(100%,380px)"></select><button onclick="continuePipeline()">이어서 만들기</button></div>
   </div>
@@ -108,7 +108,7 @@
   <div class="mini-bar"><i data-stage-bar="image"></i></div>
   <div class="inner" id="galleryBlock">
     <select id="galFile" class="hidden" onchange="onGalFileChange()"></select>
-    <div class="row"><button class="primary" onclick="galStart()">▶ 빠진 장면 이어서 만들기</button><span class="hint">멈추려면 제작 현황의 [■ 중단]</span></div>
+    <p id="imageCost" class="hint" aria-live="polite"></p><div class="row"><button class="primary" onclick="galStart()">▶ 빠진 장면 이어서 만들기</button><span class="hint">멈추려면 제작 현황의 [■ 중단]</span></div>
     <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
     <details class="hint"><summary>접수 여부를 확인할 수 없다는 오류가 나왔나요?</summary><p>KIE 작업 내역에서 해당 장면이 접수됐는지 확인한 뒤 아래 버튼으로 작업 번호를 연결하세요. 접수되지 않은 경우에만 새 요청을 허용하세요.</p><button onclick="recoverImageTask()">KIE 작업 기록 복구</button></details>
     <div class="gal" id="advGal"></div>
@@ -116,7 +116,7 @@
 </div>
 
 <div class="panel stage" id="stage-motion">
-  <div class="panel-head"><span class="num n4">4</span><b>영상변환</b><span class="stat" data-stage-stat="motion">대기</span><span class="spacer"></span><span id="kieStatus" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="showView('settings')">키 설정</button></div>
+  <p class="hint">영상 변환은 이미지 생성과 별도 비용입니다. Veo 3.1 1080p 기준: Lite 35 / Fast 65 / Quality 255 크레딧/개. 현재 연결은 세부 모드를 지정하지 않으므로 실제 청구는 KIE 작업 내역에서 확인하세요. 정지 이미지로 최종 영상을 편집하는 데에는 KIE 영상 변환 비용이 들지 않습니다.</p><div class="panel-head"><span class="num n4">4</span><b>영상변환</b><span class="stat" data-stage-stat="motion">대기</span><span class="spacer"></span><span id="kieStatus" class="hint">KIE 키 확인 중…</span><button class="mini" onclick="showView('settings')">키 설정</button></div>
   <div class="mini-bar"><i data-stage-bar="motion"></i></div>
   <div class="inner">
     <p class="hint">앞 7장 이미지를 움직이는 영상으로 바꿉니다. 선택 기능이며 KIE 크레딧이 추가로 사용됩니다.</p>
@@ -255,12 +255,12 @@
         <button class="mini ghost" onclick="removeReference()">연결 해제</button>
       </div>
     </div>
-    <p id="referenceModelHint" class="hint"></p>
-    <p class="hint">레퍼런스 사용 시 <b>Seedream 4.5 Edit</b>로 생성하며 해당 모델의 KIE 크레딧이 사용됩니다. 제작 시 이미지를 KIE에 전송합니다. 외형의 완전한 일치는 보장되지 않습니다. 사용을 끄면 Z-Image로 만듭니다.</p>
+    <div class="row"><label>이미지 생성 모드</label><select aria-label="이미지 생성 모드" style="max-width:100%;min-width:0" id="imageMode" onchange="saveImageMode()"><option value="z-image">절약 · Z-Image · 0.8 크레딧/장 (레퍼런스 끔)</option><option value="bytedance/seedream-v4-edit">레퍼런스 절약 · Seedream 4.0 · 5 크레딧/장</option><option value="seedream/4.5-edit">레퍼런스 고급 · Seedream 4.5 · 6.5 크레딧/장</option></select></div><p id="referenceModelHint" class="hint"></p>
+    <p class="hint">선택한 모델의 KIE 크레딧이 사용됩니다. 가격은 2026-10-08 확인 기준이며 변경될 수 있습니다. 제작 시 이미지를 KIE에 전송합니다. 외형의 완전한 일치는 보장되지 않습니다. 사용을 끄면 Z-Image로 만듭니다.</p>
   </div>
 
   <div class="card" id="chanCard" data-advanced>
-    <h2>유튜브 연동 · 내 유튜브 채널 연동</h2>
+    <h2>유튜브 연동 · 내 유튜브 채널 연동</h2><div class="row"><select aria-label="저장된 유튜브 계정" style="max-width:100%;min-width:0" id="ytAccounts"></select><button onclick="useYtAccount()">선택 계정 적용</button></div><div class="keyrow"><input type="text" id="ytAccountName" placeholder="계정 이름 (예: 일본 채널)"><input type="text" id="ytAccountUrl" placeholder="유튜브 채널 주소"><input id="ytAccountKey" type="password" placeholder="API 키 (비우면 현재 키 사용)"><button onclick="saveYtAccount()">새 계정 저장</button></div><p class="hint">채널 주소와 API 키를 여러 개 저장합니다. 선택 계정 적용 시 현재 채널과 조회용 키가 변경됩니다.</p>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>
     <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px;white-space:pre-wrap"></p>

@@ -141,6 +141,23 @@ class ZImageTest(unittest.TestCase):
             self.assertEqual(payload["input"]["quality"], "basic")
             self.assertNotIn("test-secret", str(self.journal()))
 
+    def test_seedream_four_single_image_and_cost(self):
+        reference = self.out / "reference.png"
+        reference.write_bytes(self.download.content)
+        self.s.reference_image = str(reference)
+        self.s.reference_model = "bytedance/seedream-v4-edit"
+        uploaded = response({"code":200,"data":{"downloadUrl":"https://tempfile.redpandaai.co/ref.png"}})
+        with patch.object(gen.requests, "post", return_value=uploaded), patch.object(gen.requests, "request", side_effect=[self.created,self.success]*2) as api, patch.object(gen.requests,"get",return_value=self.download):
+            runner = self.run_sync()
+            self.assertEqual(runner.state.status,"done")
+            payload = api.call_args_list[0].kwargs["json"]
+            self.assertEqual(payload["model"],"bytedance/seedream-v4-edit")
+            self.assertEqual(payload["input"]["max_images"],1)
+            self.assertEqual(payload["input"]["image_size"],"landscape_16_9")
+            self.assertNotIn("quality",payload["input"])
+            self.assertEqual(runner.state.estimated_submitted_credits,10)
+            self.assertEqual(runner.state.credits_per_image,5)
+
     def test_reference_upload_failure_does_not_submit_generation(self):
         reference = self.out / "reference.png"
         reference.write_bytes(self.download.content)

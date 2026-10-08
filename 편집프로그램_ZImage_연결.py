@@ -10,6 +10,7 @@ REQUEST = '''class GenStart(BaseModel):
     style_prefix: str = ""
     aspect_ratio: str = "16:9"
     reference_image: str = ""
+    reference_model: str = "seedream/4.5-edit"
 
 
 '''
@@ -19,7 +20,7 @@ SETTINGS = '''    cfg = load_config()
         api_key=cfg.get("kie_api_key") or os.environ.get("KIE_API_KEY", ""),
         start_no=req.start_no, end_no=req.end_no, skip_existing=req.skip_existing,
         style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,
-        reference_image=req.reference_image,
+        reference_image=req.reference_image, reference_model=req.reference_model,
     )
 '''
 REGEN = '''@app.post("/api/gen/regen")
@@ -41,7 +42,7 @@ def api_gen_regen(req: RegenRequest):
         api_key=cfg.get("kie_api_key") or os.environ.get("KIE_API_KEY", ""),
         start_no=req.scene, end_no=req.scene, skip_existing=False,
         style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,
-        reference_image=req.reference_image,
+        reference_image=req.reference_image, reference_model=req.reference_model,
     )
     try:
         imagegen.runner.start(s)
@@ -120,7 +121,9 @@ def info():''')
         updated += "\n" + marker + "\n"
     if "running.reference_image != req.reference_image" not in updated:
         updated = updated.replace('or Path(running.prompts_file).resolve() != Path(req.prompts_file).resolve()):',
-            'or Path(running.prompts_file).resolve() != Path(req.prompts_file).resolve()\n                or running.reference_image != req.reference_image):')
+            'or Path(running.prompts_file).resolve() != Path(req.prompts_file).resolve()\n                or running.reference_image != req.reference_image or running.reference_model != req.reference_model):')
+    updated = updated.replace('or running.reference_image != req.reference_image):',
+                              'or running.reference_image != req.reference_image or running.reference_model != req.reference_model):')
     # Upgrade existing V1 installations as well as new editor copies.
     start = updated.index("class GenStart(BaseModel):")
     end = updated.index("class HookRequest(BaseModel):", start)
@@ -131,7 +134,9 @@ def info():''')
         block = updated[start:end]
         if "reference_image=req.reference_image" not in block:
             block = block.replace("style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,",
-                                  "style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,\n        reference_image=req.reference_image,")
+                                  "style_prefix=req.style_prefix, aspect_ratio=req.aspect_ratio,\n        reference_image=req.reference_image, reference_model=req.reference_model,")
+        if "reference_model=req.reference_model" not in block:
+            block = block.replace("reference_image=req.reference_image,", "reference_image=req.reference_image, reference_model=req.reference_model,")
         updated = updated[:start] + block + updated[end:]
     compile(updated, str(target), "exec")
     runner = Path(__file__).with_name("kie_imagegen.py").read_text(encoding="utf-8")

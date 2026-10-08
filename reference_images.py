@@ -56,4 +56,4 @@ def reference_options(slot):
         raise ValueError("프로그램 안에 저장된 레퍼런스 이미지를 선택하세요.") from None
     if not path.is_file():
         raise ValueError("레퍼런스 이미지가 없습니다. 다시 올리거나 레퍼런스 사용을 꺼 주세요.")
-    return {"reference_image": str(path)}
+    return {"reference_image": str(path), "reference_model": mascot.get("생성_모델", "bytedance/seedream-v4-edit")}

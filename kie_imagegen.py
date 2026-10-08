@@ -77,6 +77,7 @@ class GenSettings:
     end_no: int = 0
     skip_existing: bool = True
     reference_image: str = ""
+    reference_model: str = "seedream/4.5-edit"
     style_prefix: str = ""
     aspect_ratio: str = "16:9"
     poll_interval: float = 3
@@ -94,6 +95,9 @@ class GenState:
     error: str = ""
     files: dict = field(default_factory=dict)
     queued: list = field(default_factory=list)
+    image_model: str = ""
+    credits_per_image: float = 0
+    estimated_submitted_credits: float = 0
 
     def add(self, text):
         self.log.append(time.strftime("%H:%M:%S ") + text)
@@ -249,7 +253,11 @@ class Runner:
     def _generate(self, scene, s, out, records, journal, regen=False):
         # Legacy @image references are unsupported; character descriptions come from the prompt/profile.
         prompt = re.sub(r"@image\s*\d+", "the described character", s.style_prefix + " " + scene.prompt).strip()
-        model = "seedream/4.5-edit" if s.reference_image else "z-image"
+        model = s.reference_model if s.reference_image else "z-image"
+        self.state.image_model = model
+        self.state.credits_per_image = {"z-image": 0.8, "bytedance/seedream-v4-edit": 5, "seedream/4.5-edit": 6.5}.get(model, 0)
+        if model not in {"z-image", "seedream/4.5-edit", "bytedance/seedream-v4-edit"}:
+            raise KieImageError("지원하지 않는 이미지 모델입니다.")
         reference_hash = hashlib.sha256(Path(s.reference_image).read_bytes()).hexdigest() if s.reference_image else ""
         fingerprint = hashlib.sha256((s.aspect_ratio + prompt + (model + reference_hash if s.reference_image else "")).encode()).hexdigest()
         slot = str(scene.no)
@@ -269,8 +277,13 @@ class Runner:
                     prompt="Use the reference image to preserve the character design, colors and style. Create a NEW scene following this description, rather than copying the reference background. Only include the character when the scene calls for it. " + prompt)
                 if not self._wait(0):
                     return None
+            if model == "bytedance/seedream-v4-edit":
+                input_data.pop("quality", None)
+                input_data.pop("aspect_ratio", None)
+                input_data.update(image_size="landscape_16_9", image_resolution="2K", max_images=1)
             # A lost POST response cannot safely be retried without provider idempotency.
-            records[slot] = {"status": "submitting", "fingerprint": fingerprint}
+            self.state.estimated_submitted_credits += self.state.credits_per_image
+            records[slot] = {"status": "submitting", "fingerprint": fingerprint, "model": model, "estimated_credits": self.state.credits_per_image}
             self._save(journal, records)
             try:
                 data = self._request("POST", "/createTask", s.api_key,
@@ -374,7 +387,7 @@ class Runner:
                 if s.skip_existing and not regen and existing:
                     dest = existing[0]
                 else:
-                    st.add(f"{sc.no:03d} KIE {'Seedream 4.5 레퍼런스' if s.reference_image else 'Z-Image'} 생성 중")
+                    st.add(f"{sc.no:03d} KIE {('Seedream 4.0 레퍼런스' if s.reference_model == 'bytedance/seedream-v4-edit' else 'Seedream 4.5 레퍼런스') if s.reference_image else 'Z-Image'} 생성 중")
                     dest = self._generate(sc, s, out, records, journal, regen)
                 if dest is None:
                     break
