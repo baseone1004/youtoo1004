@@ -28,7 +28,7 @@ JALNAN = os.path.join(FONT_DIR, "Jalnan2.ttf")          # 여기어때 잘난체
 YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#000000"
 
 레이아웃_이름 = {
-    "jp_pop": "일본어 · 흰색+따뜻한 노랑 두 줄 · 남색 대비",
+    "jp_pop": "일본어 · 흰색·빨강·형광노랑·형광연두·보라 자동 조합",
     "navy_mint": "아래 두 줄 · 배지 · 강조선 (정보형 추천)",
     "cream_card": "왼쪽 카드 + 오른쪽 인물 (차분한 책 느낌)",
     "coral_ribbon": "아래 두 줄 · 사선 리본",
@@ -38,7 +38,7 @@ YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#
     "scroll": "왼쪽 세로쓰기 두루마리",
     "band": "먹빛 띠 + 붓글씨 + 빨간 태그 (예전 방식)",
     "pop_bold": "굵은 고딕 큰 글씨 · 낱말마다 노랑·흰색·초록·분홍 · 검정 테두리 (요즘 야담 채널식, 이야기형 추천)",
-    "jalnan_pop": "잘난체 큰 글씨 두 줄 · 윗줄 하늘색 · 아랫줄 노랑 · 굵은 검정 테두리 (정보형 추천)",
+    "jalnan_pop": "잘난체 큰 글씨 · 흰색·빨강·형광노랑·형광연두·보라 자동 조합",
 }
 기본_브랜드 = {
     "person": {"주색": "#0F1B3D", "강조색": "#4BE3C4", "바탕색": "#FFF4DC", "보조색": "#E6543C", "배지": "", "사진_톤": "warm"},
@@ -312,7 +312,7 @@ POP_STRONG_WORDS = ("소름", "충격", "절대", "손절", "경고", "거짓말
 
 
 def layout_jalnan_pop(im, top, bottom, b=None):
-    """잘난체 두 줄: 윗줄 하늘색, 아랫줄 노랑, 굵은 검정 테두리 + 그림자. 그림은 가득 채우고 아래를 살짝 어둡게."""
+    """잘난체 두 줄: 다섯 색 자동 조합, 굵은 검정 테두리 + 그림자."""
     im = _shade_bottom(im, 0.45, 0.55)
     d = ImageDraw.Draw(im)
     top, bottom = _clean_marks(top), _clean_marks(bottom)
@@ -320,26 +320,14 @@ def layout_jalnan_pop(im, top, bottom, b=None):
         top, bottom = "", top
     max_w = W - 80
     lines = ([top] if top else []) + _wrap(bottom, 13)
-    import random as _rd, zlib as _zl
-    rng = _rd.Random(_zl.crc32((top + "|" + bottom).encode("utf-8")))          # 문구마다 다르게, 같은 문구는 늘 같은 색
-    # 규칙: 아랫줄(핵심)은 노랑 또는 형광연두 · 윗줄은 하늘색 또는 흰색 · 센 낱말이 든 줄만 빨강
-    strong = any(w in (top + bottom) for w in POP_STRONG_WORDS)
-    color_bottom = rng.choice(("#FFE23A", "#B4FF3A"))
-    color_top = rng.choice(("#7DDCFF", "#FFFFFF"))
-    if strong:
-        if any(w in bottom for w in POP_STRONG_WORDS):
-            color_bottom = "#FF3B3B"
-        elif top:
-            color_top = "#FF3B3B"
-    colors = ([color_top] if top else []) + [color_bottom] * (len(lines) - (1 if top else 0))
     fonts = [_fit(d, ln, 124 if i == 0 and top else 136, max_w, 60, JALNAN) for i, ln in enumerate(lines)]
     total_h = sum(int(f.size * 1.12) for f in fonts)
     y = H - 40 - total_h
-    for ln, f, c in zip(lines, fonts, colors):
+    for i, (ln, f) in enumerate(zip(lines, fonts)):
         x = (W - d.textlength(ln, font=f)) / 2
         sw = max(10, f.size // 9)
         d.text((x + 5, y + 7), ln, font=f, fill=BLACK, stroke_width=sw, stroke_fill=BLACK)      # 그림자
-        d.text((x, y), ln, font=f, fill=c, stroke_width=sw, stroke_fill=BLACK)
+        _neon_text(d, (x, y), ln, f, top + "|" + bottom, i, sw)
         y += int(f.size * 1.12)
     return im
 
@@ -500,9 +488,36 @@ def layout_band(im, top, bottom, tag_text="옛이야기", b=None):
     return im
 
 
+NEON_COLORS = ("#FFFFFF", "#FF3434", "#F5FF00", "#9DFF00", "#C977FF")
+
+
+def neon_segments(text, seed, line_no=0):
+    """문구마다 색 순서를 정하고, 한 줄은 최대 세 덩어리로 칠한다."""
+    import zlib
+    palette = list(NEON_COLORS)
+    random.Random(zlib.crc32(seed.encode("utf-8"))).shuffle(palette)
+    words = list(re.finditer(r"\S+\s*", text))
+    if len(words) >= 3:
+        cuts = [0, words[len(words)//3].start(), words[2*len(words)//3].start(), len(text)]
+    else:
+        count = min(3, len(text))
+        cuts = [len(text)*i//count for i in range(count+1)] if count else [0]
+    return [(text[a:b], palette[(line_no*3+i)%len(palette)]) for i,(a,b) in enumerate(zip(cuts,cuts[1:]))]
+
+
+def _neon_text(draw, xy, text, font, seed, line_no=0, stroke=8):
+    x,y = xy
+    prefix = ""
+    for segment,color in neon_segments(text,seed,line_no):
+        px = x + draw.textlength(prefix,font=font)
+        _outlined(draw,(px,y),segment,font,color,stroke=stroke)
+        prefix += segment
+
+
 def layout_jp_pop(im, top, bottom, b):
     im = _shade_bottom(im, 0.48, 0.82, _hex(b["주색"]))
     d = ImageDraw.Draw(im)
+    top, bottom = _clean_marks(top), _clean_marks(bottom)
     lines = ([top] if top else []) + ([bottom] if bottom else [])
     if len(lines) == 1:
         lines = _wrap(lines[0], 14)
@@ -510,7 +525,7 @@ def layout_jp_pop(im, top, bottom, b):
     y = H - 36 - sum(int(f.size * 1.18) for f in fonts)
     for i, (line, font) in enumerate(zip(lines, fonts)):
         x = (W - d.textlength(line, font=font)) / 2
-        _outlined(d, (x,y), line, font, WHITE if i == 0 else b["강조색"], stroke=max(5,font.size//14))
+        _neon_text(d, (x,y), line, font, top + "|" + bottom, i, stroke=max(6,font.size//12))
         y += int(font.size*1.18)
     if b.get("배지"):
         _pill(d,(32,28),b["배지"],_font(30),b["주색"],WHITE)

@@ -42,6 +42,20 @@ class LocalizationTest(unittest.TestCase):
             self.assertEqual(thumbs.compose(str(src),str(out),"いい人なのに","一緒にいると疲れる",brand=brand,layout="jalnan_pop"),"jp_pop")
             with Image.open(out) as im: self.assertEqual(im.size,(1280,720))
             self.assertFalse(thumbs._JAPANESE.get())
+    def test_neon_colors_preserve_copy_and_use_requested_palette(self):
+        lines = ["いい人なのに", "一緒にいると疲れる"]
+        seed = "|".join(lines)
+        colors = set()
+        for i,line in enumerate(lines):
+            segments = thumbs.neon_segments(line,seed,i)
+            self.assertEqual("".join(text for text,color in segments),line)
+            self.assertEqual(segments,thumbs.neon_segments(line,seed,i))
+            colors.update(color for text,color in segments)
+        self.assertEqual(colors,set(thumbs.NEON_COLORS))
+        korean = "좋은 사람인데 함께 있으면 피곤하다"
+        self.assertEqual("".join(t for t,c in thumbs.neon_segments(korean,korean)),korean)
+        self.assertEqual(thumbs.neon_segments("",""),[])
+
     def test_japanese_wrap_avoids_leading_punctuation(self):
         token=thumbs._JAPANESE.set(True)
         try:
