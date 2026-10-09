@@ -498,6 +498,34 @@ function renderQueue(q) {
 async function refreshQueue() { try { const q = await api('/api/queue'); if (STATE) STATE.queue = q; renderQueue(q); renderStepBar(); } catch (e) {} }
 
 // ── 4단계: 완성 확인 ────────────────────────────────────
+async function loadProductionLibrary() {
+  const box = $('productionLibrary');
+  try {
+    const r = await api('/api/library');
+    box.innerHTML = (r.items || []).map(x => {
+      const state = x.package ? '업로드 준비 완료' : `${x.script_exists ? '대본 있음' : '대본 없음'} · ${x.audio ? '음성 있음' : '음성 대기'} · 장면 파일 ${x.media_count}개`;
+      return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">작업 선택</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}</div>`;
+    }).join('') || '<p class="hint">저장된 작업이 없습니다.</p>';
+  } catch (e) { box.textContent = e.message; }
+}
+async function selectLibraryWork(path) {
+  await refresh();
+  const match = (STATE.scripts || []).find(s => path.replaceAll('\\','/').endsWith(s.path.replaceAll('\\','/')));
+  if (!match) return toast('대본 파일을 찾지 못했습니다. 보관함에서 문서 복원을 확인하세요.', true);
+  $('workFile').value = match.path; onWorkChange();
+}
+async function restoreLibraryWork(id) {
+  try { const r = await api('/api/library/restore', {id}); toast(`없는 문서 ${r.count}개를 복원했습니다.`); await refresh(); await loadProductionLibrary(); }
+  catch (e) { toast(e.message,true); }
+}
+async function checkMediaMatching() {
+  if (!WORK) return toast('작업을 먼저 고르세요.',true);
+  const el = $('mediaMatchingStatus'); el.textContent = '장면 파일을 검사하는 중…';
+  try {
+    const r = await api('/api/media/check?script=' + encodeURIComponent(WORK.script_file));
+    el.textContent = r.ok ? `✓ ${r.expected}개 장면 연결 정상 · 같은 번호의 영상 파일을 이미지보다 우선 사용합니다.` : `장면 파일 확인 필요 · 누락: ${r.missing.join(', ') || '없음'} · 중복: ${r.duplicates.join(', ') || '없음'}`;
+  } catch (e) { el.textContent = e.message; }
+}
 function onWorkChange() { const f = $('workFile').value; if (f) { $('galFile').value = f; localStorage.setItem('selectedScript', f); refreshGallery(true); } loadWorkspace(true); }
 let lastWorkLoad = 0, lastListRefresh = 0;
 async function loadWorkspace(showToast) {
@@ -587,7 +615,8 @@ function renderAudioRegenerationHint() {
   el.textContent = `${language === 'ja' ? '일본어' : '현재 채널'} 목소리: ${voice || '설정에서 목소리를 저장하세요'} · 음성과 자막을 새로 만듭니다. 인월드 사용량이 발생합니다. 완성 영상에는 다시 렌더해야 반영됩니다.`;
 }
 async function rerunTTS() {
-  if (!WORK) return toast('작업을 먼저 고르세요.', true);
+  if (!WORK && $('workFile').value) await loadWorkspace(false);
+  if (!WORK) return toast('위의 [완성한 작업]에서 음성을 다시 만들 대본을 선택하세요.', true);
   if (audioRegenerationPending) return;
   const scriptFile = WORK.script_file;
   const scriptText = $('workScript').value;

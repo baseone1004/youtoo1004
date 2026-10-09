@@ -24,6 +24,7 @@ import 채널_연동
 import 채널_프로필
 import 주제_추천
 import 유튜브_API
+import production_library
 import 썸네일_합성
 import requests as _rq
 from 제작대기열 import QueueStore, recent_chats, send_telegram
@@ -65,9 +66,25 @@ def local_host_allowed(host):
     return name in {"127.0.0.1", "localhost", "::1"}
 
 
+def backup_work_text(path=None):
+    """제작 문서만 백업한다. 개인 설정·키·미디어는 대상에서 제외한다."""
+    try:
+        if path is not None:
+            try:
+                production_library._allowed(BASE, path)
+            except ValueError:
+                return
+            production_library.backup_file(BASE, path)
+        else:
+            production_library.snapshot(BASE)
+    except Exception as exc:
+        print(f"작업 문서 백업 실패: {type(exc).__name__}", file=sys.__stderr__)
+
+
 def atomic_write_text(path, text, encoding="utf-8"):
     """전원 종료 중에도 기존 파일이 반쪽으로 남지 않게 같은 폴더에서 교체한다."""
     target = Path(path)
+    backup_work_text(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, temp = tempfile.mkstemp(prefix=target.name + ".", suffix=".tmp", dir=target.parent)
     try:
@@ -75,6 +92,7 @@ def atomic_write_text(path, text, encoding="utf-8"):
             handle.write(text)
             handle.flush(); os.fsync(handle.fileno())
         os.replace(temp, target)
+        backup_work_text(target)
     finally:
         if os.path.exists(temp):
             os.unlink(temp)
@@ -194,6 +212,7 @@ def run_job(kind, fn):
         except Exception as e:     # noqa: BLE001
             job.status, job.error = "error", f"{e.__class__.__name__}: {e}"
         finally:
+            backup_work_text()
             sys.stdout = REAL
     threading.Thread(target=_t, daemon=True).start()
     return job
@@ -365,7 +384,7 @@ def empty_trash(older_than_days=None):
 
 def delete_script(script_file):
     """화면의 대본 목록에서 선택된 파일만 삭제한다."""
-    if script_file not in {item["path"] for item in script_files()}:
+    if os.path.normcase(os.path.realpath(script_file)) not in {os.path.normcase(os.path.realpath(item["path"])) for item in script_files()}:
         raise ValueError("대본 목록에서 파일을 다시 선택하세요.")
     root = os.path.realpath(대본_폴더)
     selected = os.path.realpath(script_file)
@@ -546,6 +565,7 @@ def make_person_script(job, req):
         path = os.path.join(대본_폴더, f"{today}_{대본생성.safe_name(t['제목'])}({n}).txt"); n += 1
     with open(path, "w", encoding="utf-8") as f:
         f.write(full)
+    backup_work_text(path)
     # 계획.json 에 기록
     plan = load_json("계획.json", [])
     for p in plan:
@@ -1123,7 +1143,7 @@ def make_image_prompts(job, req):
 
 def restyle_script_prompts_2d(script_file):
     """기존 파스텔 프롬프트를 2D+레퍼런스 지시로 바꾸고 원본을 백업한다."""
-    if script_file not in {item["path"] for item in script_files()}:
+    if os.path.normcase(os.path.realpath(script_file)) not in {os.path.normcase(os.path.realpath(item["path"])) for item in script_files()}:
         raise ValueError("대본 목록에서 파일을 다시 선택하세요.")
     prompts = (os.path.join(os.path.dirname(script_file), "이미지프롬프트.txt")
                if os.path.basename(script_file) == "final.txt"
@@ -1204,7 +1224,7 @@ def upload_description(description, tags=""):
 
 def workspace_data(script_file):
     """선택 대본의 편집 가능한 제작 결과와 업로드 정보를 모은다."""
-    if script_file not in {item["path"] for item in script_files()}:
+    if os.path.normcase(os.path.realpath(script_file)) not in {os.path.normcase(os.path.realpath(item["path"])) for item in script_files()}:
         raise ValueError("대본 목록에서 파일을 다시 선택하세요.")
     assets = assets_dir(script_file)
     prompts = (os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script_file) == "final.txt"
@@ -1300,7 +1320,7 @@ def narration_cache_matches(assets, cfg, channel):
     return saved == expected if saved is not None else not expected["timestamps"] and "number_normalization" not in expected
 
 def check_narration_sync(script_file):
-    if script_file not in {item["path"] for item in script_files()}:
+    if os.path.normcase(os.path.realpath(script_file)) not in {os.path.normcase(os.path.realpath(item["path"])) for item in script_files()}:
         raise ValueError("목록에서 대본을 선택하세요.")
     folder = assets_dir(script_file)
     audio, srt = os.path.join(folder, "나레이션.mp3"), os.path.join(folder, "나레이션.srt")
@@ -1311,6 +1331,7 @@ def check_narration_sync(script_file):
     return 나레이션.verify_subtitle_sync(srt, duration, "character" if settings.get("timestamps") else "estimated")
 
 def make_tts(job, req):
+    backup_work_text()
     cfg = 대본생성.load_cfg()
     path = req.get("script_file", "")
     if not path or not os.path.exists(path):
@@ -1600,6 +1621,8 @@ def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
 
 
 def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
+    report = production_library.require_render_media(flow, images_dir, os.path.join(os.path.dirname(flow), "장면_매칭_검사.json"))
+    job.add(f"   ✓ 편집 전 검사 · 장면 {report['matched']}개 연결 · 영상 파일 우선 사용")
     # 편집프로그램 화면에서 마지막으로 쓴 자막 글꼴·색·위치·화면 설정을 그대로 가져와 쓴다
     ui = ((aip("/api/info").get("config") or {}).get("ui") or {})
     keep = {k: ui[k] for k in ("width", "height", "fps", "fit", "ken_burns", "kb_zoom", "transition", "transition_duration", "crf", "preset",
@@ -2482,6 +2505,15 @@ class H(BaseHTTPRequestHandler):
                                 prompts=os.path.abspath(pr) if os.path.exists(pr) else "",
                                 narration=os.path.abspath(os.path.join(a, "나레이션.mp3")) if os.path.exists(os.path.join(a, "나레이션.mp3")) else "",
                                 video=os.path.abspath(os.path.join(a, "최종.mp4")) if os.path.exists(os.path.join(a, "최종.mp4")) else ""))
+            elif u.path == "/api/library":
+                self._json({"items": production_library.library(BASE)})
+            elif u.path == "/api/media/check":
+                sf = q.get("script", [""])[0]
+                data = workspace_data(sf)
+                folder = data["assets"]
+                report = production_library.media_report(os.path.join(folder, "플로우.txt"), data["images"])
+                atomic_write_json(os.path.join(folder, "장면_매칭_검사.json"), report)
+                self._json(report)
             elif u.path == "/api/workspace":
                 self._json(workspace_data(q.get("script", [""])[0]))
             elif u.path == "/api/narration/sync":
@@ -2518,6 +2550,10 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/web/beat":
                 웹큐.extension_ping("hidden" if body.get("hidden") else "visible")
                 self._json({"ok": 웹큐.heartbeat(body.get("id", ""), body.get("progress", ""), body.get("claim", ""))})
+            elif u.path == "/api/library/restore":
+                if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
+                    raise ValueError("제작 중에는 복원할 수 없습니다. 현재 제작이 끝난 뒤 다시 누르세요.")
+                self._json(production_library.restore_missing(BASE, str(body.get("id", ""))))
             elif u.path == "/api/tts":
                 run_job("tts", lambda job: make_tts(job, body)); self._json({"ok": True})
             elif u.path == "/api/workspace/save":
@@ -2813,6 +2849,7 @@ def main():
                 time.sleep(0.25)
             except OSError:
                 break
+    backup_work_text()
     cfg = load_json("설정.json", {})
     for ch in 채널_연동.CONFIG_KEY:
         채널_연동.fetch_in_background(cfg, ch)      # 내 채널 제목을 미리 받아 둔다 (없거나 오래됐을 때만)

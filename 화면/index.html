@@ -82,7 +82,9 @@
 
 <!-- ═══ 작업 선택 ═══ -->
 <div class="panel" id="step-4">
-  <div class="panel-head"><span class="tag-lbl">완성한 작업</span><select id="workFile" style="min-width:min(100%,420px)" onchange="onWorkChange()"></select><button class="mini" onclick="refresh()">새로고침</button><button class="mini" onclick="checkSubtitleSync()">자막 싱크 확인</button><span class="spacer"></span><span class="hint">제작 중이면 지금 만드는 작업이 자동으로 보입니다</span></div>
+  <div class="panel-head"><span class="tag-lbl">완성한 작업</span><select id="workFile" style="min-width:min(100%,420px)" onchange="onWorkChange()"></select><button class="mini" onclick="refresh()">새로고침</button><button class="mini" onclick="checkSubtitleSync()">자막 싱크 확인</button><button class="mini" onclick="checkMediaMatching()">장면 누락·중복 검사</button><span class="spacer"></span><span class="hint">제작 중이면 지금 만드는 작업이 자동으로 보입니다</span></div>
+  <details class="inner" ontoggle="if(this.open) loadProductionLibrary()"><summary>📁 작업 보관함 · 완성 영상 · 문서 복구</summary><p class="hint">제작 자료와 업로드 영상을 한곳에서 확인합니다. 시작·저장·제작 시 대본·프롬프트·자막을 최대 3개 버전으로 자동 백업합니다. 복원은 없는 파일만 복구하며 기존 파일을 덮어쓰지 않습니다.</p><button class="mini" onclick="loadProductionLibrary()">보관함 새로고침</button><div id="productionLibrary" style="max-height:420px;overflow:auto;margin-top:12px"></div></details>
+  <p class="hint" id="mediaMatchingStatus" role="status"></p>
   <p class="hint" id="subtitleSyncStatus" role="status"></p>
   <div id="workEmpty" class="hint" style="padding:0 18px 14px">아직 만든 작업이 없습니다. 위에서 주제를 넣고 제작을 시작하세요.</div>
 </div>

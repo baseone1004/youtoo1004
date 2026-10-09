@@ -10,6 +10,21 @@ import 대본선택 as app
 
 
 class WorkspaceEditorTest(unittest.TestCase):
+    def test_absolute_workspace_path_matches_relative_script_listing(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td); (root/"대본").mkdir()
+            script=root/"대본"/"선택한 대본.txt"
+            script.write_text("[대본]\n본문",encoding="utf-8")
+            cwd=os.getcwd(); os.chdir(root)
+            try:
+                with patch.object(app,"대본_폴더","대본"):
+                    data=app.workspace_data(str(script))
+                    app.save_workspace({"script_file":data["script_file"],"kind":"script","text":"[대본]\n수정한 본문"})
+                    self.assertIn("수정한 본문",script.read_text(encoding="utf-8"))
+                    outside=root/"다른 파일.txt"; outside.write_text("x",encoding="utf-8")
+                    with self.assertRaises(ValueError): app.workspace_data(str(outside))
+            finally: os.chdir(cwd)
+
     def test_thumbnail_seo_context_uses_each_videos_metadata(self):
         optimized = """[추천 제목]\n1번 — 검색 의도와 궁금증\n[설명글]\n나이 들수록 친구가 줄어드는 이유\n관계 심리를 이야기합니다\n[태그]\n인간관계, 친구관계, 중년심리\n"""
         script = "[제목]\n친구가 줄어드는 진짜 이유\n[대본]\n본문"
