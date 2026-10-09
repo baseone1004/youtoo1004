@@ -113,7 +113,7 @@
     <select id="galFile" class="hidden" onchange="onGalFileChange()"></select>
     <p id="imageCost" class="hint" aria-live="polite"></p><div class="row"><button class="primary" onclick="galStart()">▶ 빠진 장면 이어서 만들기</button><span class="hint">멈추려면 제작 현황의 [■ 중단]</span></div>
     <p class="hint">그림을 클릭하면 크게 보입니다 · <b>다시 만들기</b> = 그 장면만 새로 · <b>움직이기</b> = KIE로 그 장면을 영상으로 (크레딧 사용)</p>
-    <details class="hint"><summary>접수 여부를 확인할 수 없다는 오류가 나왔나요?</summary><p>KIE 작업 내역에서 해당 장면이 접수됐는지 확인한 뒤 아래 버튼으로 작업 번호를 연결하세요. 접수되지 않은 경우에만 새 요청을 허용하세요.</p><button onclick="recoverImageTask()">KIE 작업 기록 복구</button></details>
+    <p id="imageError" class="hint" role="alert"></p><details id="imageRecovery" class="hint"><summary>접수 여부를 확인할 수 없다는 오류가 나왔나요?</summary><p>KIE 작업 내역이 진행 중·완료라면 작업 번호를 연결하세요. 실패·미접수로 확인한 경우에는 기록을 정리한 뒤 없는 장면만 새로 만들 수 있습니다.</p><button onclick="recoverImageTask()">KIE 작업 기록 복구</button></details>
     <div class="gal" id="advGal"></div>
   </div>
 </div>

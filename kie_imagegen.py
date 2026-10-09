@@ -177,7 +177,7 @@ class Runner:
         except (OSError, ValueError, SyntaxError):
             return False
 
-    def recover_submission(self, output_dir, scene, task_id="", confirmed_not_created=False):
+    def recover_submission(self, output_dir, scene, task_id="", confirmed_not_created=False, confirmed_failed=False):
         """접수 응답을 잃은 요청만 사람이 KIE 작업 내역으로 확인해 복구한다."""
         with self._lock:
             if self._thread and self._thread.is_alive():
@@ -192,7 +192,7 @@ class Runner:
                 if not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", task_id):
                     raise KieImageError("KIE 작업 번호 형식을 확인하세요.")
                 record.update(task_id=task_id, status="pending")
-            elif confirmed_not_created:
+            elif confirmed_not_created or confirmed_failed:
                 records.pop(slot)
             else:
                 raise KieImageError("KIE 작업 번호를 입력하거나 접수되지 않은 것을 확인하세요.")
@@ -299,7 +299,7 @@ class Runner:
             record = records[slot] = {"task_id": task, "fingerprint": fingerprint, "status": "pending"}
             self._save(journal, records)
         if not record.get("task_id"):
-            raise KieImageError("이전 요청의 접수 여부를 확인할 수 없습니다. KIE 작업 내역 확인 후 해당 장면의 작업 기록을 정리해 주세요.")
+            raise KieImageError(f"{scene.no:03d}번 장면의 이전 요청 접수 여부를 확인할 수 없습니다. KIE 작업 내역이 진행 중·완료라면 작업 번호를 연결하고, 실패·미접수로 확인되면 작업 기록 복구에서 정리하세요.")
         deadline = time.monotonic() + s.timeout
         interval = s.poll_interval
         while self._wait(0):

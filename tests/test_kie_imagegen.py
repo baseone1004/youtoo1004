@@ -43,6 +43,18 @@ class ZImageTest(unittest.TestCase):
     def journal(self):
         return json.loads((self.out / ".kie-image-tasks.json").read_text(encoding="utf-8"))
 
+    def test_confirmed_failed_unknown_submission_recovers_without_api_call(self):
+        records = {"1": {"status": "submitting"}, "2": {"status": "pending", "task_id": "keep"}}
+        gen.Runner._save(self.out / ".kie-image-tasks.json", records)
+        runner = gen.Runner()
+        with patch.object(gen.requests, "request") as api:
+            with self.assertRaises(gen.KieImageError):
+                runner.recover_submission(self.out, 1)
+            self.assertEqual(self.journal(), records)
+            runner.recover_submission(self.out, 1, confirmed_failed=True)
+            self.assertEqual(self.journal(), {"2": records["2"]})
+            api.assert_not_called()
+
     def test_generation_download_and_skip_existing(self):
         with patch.object(gen.requests, "request", side_effect=[self.created, self.success] * 2) as api, \
                 patch.object(gen.requests, "get", return_value=self.download) as download:

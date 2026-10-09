@@ -730,6 +730,8 @@ async function updateGallery(dir, pr) {
     const missingCount = Math.max(0, (galPrompts.count || total) - Object.keys(imgs).filter(n => +n <= (galPrompts.count || total)).length);
     const activePrice = busyGen(st) && st.image_model ? {name:st.image_model, credits:st.credits_per_image} : price;
     $('imageCost').textContent = `현재 모델: ${activePrice.name} · 장당 ${activePrice.credits} 크레딧 · 남은 ${missingCount}장 예상 ${(missingCount * activePrice.credits).toFixed(1)} 크레딧${st.estimated_submitted_credits ? ' · 이번 실행 요청 비용 약 ' + st.estimated_submitted_credits.toFixed(1) + ' 크레딧' : ''} · 재생성·썸네일 별도 / 실제 청구는 KIE 내역 확인`;
+    $('imageError').textContent = st.status === 'error' ? (st.error || '이미지 생성 오류가 발생했습니다.') : '';
+    if (st.status === 'error' && /접수 여부/.test(st.error || '')) $('imageRecovery').open = true;
     if (key === galKey) return; galKey = key;
     const busy = st.status === 'running' || st.status === 'paused', failed = new Set(st.failed || []); const out = [];
     for (let i = 1; i <= total; i++) {
@@ -1130,13 +1132,14 @@ function toggleAdvanced() { const on = document.body.classList.toggle("advanced"
 
 async function recoverImageTask() {
   if (!galDir) return toast('복구할 작업을 먼저 선택하세요.', true);
-  const no = Number(prompt('접수 여부를 확인할 장면 번호를 입력하세요. 예: 1'));
+  const status = await genStatus();
+  const no = Number(prompt('접수 여부를 확인할 장면 번호를 입력하세요.', status.current || '1'));
   if (!Number.isInteger(no) || no < 1) return;
-  const task = prompt('KIE 작업 내역에서 확인한 작업 번호를 입력하세요. 접수되지 않은 것을 확인했다면 비워 두세요.');
+  const task = prompt('KIE 작업이 진행 중·완료라면 작업 번호를 입력하세요. 실패·미접수로 확인했다면 비워 두세요.');
   if (task === null) return;
   const id = task.trim();
-  if (!id && !confirm('KIE 작업 내역에서 접수되지 않은 것을 확인했나요? 이어서 만들기를 누르면 새 요청으로 크레딧이 사용됩니다.')) return;
-  try { await post8765('/api/gen/recover', {output_dir: galDir, scene: no, task_id: id, confirmed_not_created: !id}); toast('작업 기록 복구 완료. 이어서 만들기를 누르세요.'); }
+  if (!id && !confirm('KIE 작업 내역에서 해당 요청이 실패 또는 미접수 상태인 것을 확인했나요? 진행 중·완료인 요청은 작업 번호를 연결해야 합니다. 이어서 만들기를 누르면 새 요청으로 크레딧이 사용됩니다.')) return;
+  try { await post8765('/api/gen/recover', {output_dir: galDir, scene: no, task_id: id, confirmed_failed: !id, confirmed_not_created: !id}); toast('작업 기록 복구 완료. 이어서 만들기를 누르세요.'); }
   catch (e) { toast(e.message, true); }
 }
 

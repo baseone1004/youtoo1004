@@ -60,12 +60,13 @@ RECOVERY = '''class RecoverImageTask(BaseModel):
     scene: int
     task_id: str = ""
     confirmed_not_created: bool = False
+    confirmed_failed: bool = False
 
 
 @app.post("/api/gen/recover")
 def recover_image_task(req: RecoverImageTask):
     try:
-        imagegen.runner.recover_submission(req.output_dir, req.scene, req.task_id, req.confirmed_not_created)
+        imagegen.runner.recover_submission(req.output_dir, req.scene, req.task_id, req.confirmed_not_created, req.confirmed_failed)
     except (OSError, ValueError):
         raise HTTPException(400, "작업 기록을 읽지 못했습니다. 이미지 폴더를 확인하세요.")
     except RuntimeError as e:
@@ -138,6 +139,9 @@ def info():''')
         if "reference_model=req.reference_model" not in block:
             block = block.replace("reference_image=req.reference_image,", "reference_image=req.reference_image, reference_model=req.reference_model,")
         updated = updated[:start] + block + updated[end:]
+    if "confirmed_failed: bool" not in updated:
+        updated = updated.replace("    confirmed_not_created: bool = False", "    confirmed_not_created: bool = False\n    confirmed_failed: bool = False")
+        updated = updated.replace("req.scene, req.task_id, req.confirmed_not_created)", "req.scene, req.task_id, req.confirmed_not_created, req.confirmed_failed)")
     compile(updated, str(target), "exec")
     runner = Path(__file__).with_name("kie_imagegen.py").read_text(encoding="utf-8")
     gen = editor / "core" / "imagegen.py"
