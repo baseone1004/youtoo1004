@@ -11,6 +11,7 @@ import shutil
 
 _LOCK = threading.RLock()
 MEDIA = re.compile(r"^(\d{1,4})\.(jpg|jpeg|png|webp|mp4)$", re.I)
+LANGUAGE_FOLDERS = {"ko":"한국어", "ja":"일본어", "en":"영어", "es":"스페인어", "zh":"중국어"}
 
 
 def _write(path, data):
@@ -73,6 +74,9 @@ def snapshot(root):
     scripts = root / "대본"
     paths = list(scripts.glob("*.txt"))
     paths += list(scripts.glob("*_자료/*.srt"))
+    for language in LANGUAGE_FOLDERS.values():
+        paths += list((scripts / language).glob("*.txt"))
+        paths += list((scripts / language).glob("*_자료/*.srt"))
     paths += list(scripts.glob("민담/*/*.txt")) + list(scripts.glob("민담/*/*.srt"))
     return sum(backup_file(root, p) for p in paths)
 
@@ -111,8 +115,13 @@ def library(root):
     with _LOCK:
         index = _index(root)
     paths = set(scripts.glob("*.txt")) | set(scripts.glob("민담/*/final.txt"))
+    for language in LANGUAGE_FOLDERS.values():
+        folder = scripts / language
+        paths |= set(folder.glob("*.txt"))
+        paths |= {folder / (p.name[:-3] + ".txt") for p in folder.glob("*_자료") if p.is_dir()}
     paths |= {scripts / (p.name[:-3] + ".txt") for p in scripts.glob("*_자료") if p.is_dir()}
-    paths |= {scripts / key for key in index if "/" not in key or key.endswith("/final.txt")}
+    paths |= {scripts / key for key in index if "/" not in key or key.endswith("/final.txt") or
+              (len(Path(key).parts) == 2 and Path(key).parts[0] in LANGUAGE_FOLDERS.values())}
     rows = []
     for p in paths:
         name = p.name

@@ -142,6 +142,8 @@ async function refresh() {
   if (activeAccount) $('referenceAccount').value = activeAccount.id;
   $('productionAccount').innerHTML = $('referenceAccount').innerHTML;
   if (activeAccount) $('productionAccount').value = activeAccount.id;
+  $('customTitle').placeholder = ((STATE.profiles || {}).person || {}).언어 === 'ja' ? '例：いい人なのに、会ったあと疲れるのはなぜ？' : '예: 좋은 사람인데 만나고 나면 피곤한 이유';
+  renderBeginnerGuide();
   // 이야기형(민담) 채널 숨김: 설정.json "이야기형_숨김": true — 버튼·줄·목록을 감추고 정보형만 쓴다 (다시 쓰려면 false)
   const hideM = (STATE.hidden_channels || []).includes('mindam');
   document.querySelectorAll('[data-ch="mindam"],[data-slot="mindam"],[data-ach="mindam"],#mindamLenRow').forEach(el => el.classList.toggle('hidden', hideM));
@@ -253,7 +255,7 @@ function renderTopics() {
     const meta = (t._custom ? '' : channel === 'mindam' ? `${t.장르 || ''} · ${t.채널 || ''} · 조회수 ${((t.조회수 || 0) / 10000).toFixed(1)}만 (평소의 ${t.배수}배)` : (t.카테고리 || '') + (t.날짜 ? ` · ${t.날짜} 계획` : ' · 추천 후보')) + near;
     return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}${meta ? `<span class="m">${esc(meta)}</span>` : ''}</span>${t._custom ? `<span class="tag custom">직접 입력</span><button class="x" onclick="removeCustom('${channel}',${i},event)" title="목록에서 지우기">×</button>` : `<span class="tag">추천</span><button class="x" onclick="hideTopic('${channel}',${i},event)" title="이미 올린 주제 — 목록에서 빼고 다시 추천하지 않기">×</button>`}</li>`;
   });
-  $('topicList').innerHTML = rows.join('') || `<li class="empty">추천 주제가 아직 없습니다. ${channel === 'mindam' ? '민담_주제뽑기.bat' : '실행.bat'} 으로 주제를 먼저 뽑거나, 아래에 직접 적어 추가하세요.</li>`;
+  $('topicList').innerHTML = rows.join('') || '<li class="empty">‘새 주제 추천’을 누르거나 아래에 만들고 싶은 주제를 적어 주세요.</li>';
   renderSelection();
 }
 function toggleTopic(ch, i, ev) {
@@ -294,6 +296,7 @@ async function hideTopic(ch, i, ev) {
 }
 function removeSel(key) { selection.delete(key); renderTopics(); if (!selection.size && currentStep === 2) goStep(1); }
 function renderSelection() {
+  renderBeginnerGuide();
   const n = selection.size, items = [...selection.entries()];
   $('selCount').textContent = n;
   $('selText').textContent = n ? `편 제작 예정 — 그림체를 확인하고 시작하세요` : '개 선택 — 위에서 주제를 체크하거나 적으세요';
@@ -390,10 +393,11 @@ function humanStage(j) {
   const s = j.stage || '';
   const map = [[/대본/, '대본을 쓰고 있습니다'], [/프롬프트/, '장면별 이미지 설명을 만들고 있습니다'], [/나레이션/, '나레이션 음성과 자막을 만들고 있습니다'], [/이미지 자동|이미지 생성/, 'KIE Z-Image로 이미지를 만들고 있습니다'], [/후킹/, '앞부분 움직이는 영상을 만들고 있습니다'], [/썸네일/, '썸네일을 만들고 있습니다'], [/최종|렌더/, '최종 영상을 합치고 있습니다']];
   const hit = map.find(([re]) => re.test(s));
-  return (hit ? hit[1] : (s || '준비 중')) + (s ? ` (${s})` : '');
+  return (hit ? hit[1] : (s || '준비 중')) + (s && document.body.classList.contains('advanced') ? ` (${s})` : '');
 }
 async function poll() {
   let j; try { j = await api('/api/job'); } catch (e) { return; }
+  renderBeginnerGuide(j);
   if (!j || j.status === 'none') { $('pgStage').textContent = '지금은 진행 중인 작업이 없습니다.'; $('liveDot').classList.remove('on'); if (!genBusyNow && !kieJobId) $('cancelJob').classList.add('hidden'); return; }
   if (STATE) STATE.job = j;
   renderOverview(j); renderStepBar();
@@ -751,6 +755,9 @@ async function updateGallery(dir, pr) {
 }
 async function genBodyFromUI() {
   if (!galDir || !galPromptsPath) throw new Error('대본과 이미지 프롬프트를 먼저 고르세요');
+  const work = await api('/api/workspace?script=' + encodeURIComponent($('galFile').value));
+  const slot = $('galFile').value.endsWith('final.txt') ? 'mindam' : 'person';
+  if (work.language && work.language !== ((STATE.profiles || {})[slot] || {}).언어) throw new Error('선택한 작업의 언어와 제작 채널이 다릅니다. 맨 위에서 해당 채널을 선택하세요.');
   const info = await get8765('/api/info');
   if (!info.kie_key_saved) throw new Error('설정에서 KIE API 키를 먼저 저장하세요');
   return {prompts_file: galPromptsPath, output_dir: galDir, start_no: 1, end_no: 0,
@@ -1133,7 +1140,17 @@ async function testWeb() {
   catch (e) { h.textContent = '✗ ' + e.message + ' → 크롬에서 chat.deepseek.com 탭을 새로고침하고 로그인·"서버 사용량 많음" 안내가 없는지 확인하세요. 계속 실패하면 제미나이 키 방식으로 바꾸세요.'; toast(e.message, true); }
 }
 
-function toggleAdvanced() { const on = document.body.classList.toggle("advanced"); $("advancedToggle").textContent = on ? "간편 화면으로" : "고급 편집 열기"; }
+function toggleAdvanced() { const on = document.body.classList.toggle("advanced"); $("advancedToggle").textContent = on ? "간편 화면" : "고급 설정"; }
+function renderBeginnerGuide(job = STATE && STATE.job) {
+  const guide = $('beginnerGuide'); if (!guide) return;
+  if (job && job.status === 'running') guide.textContent = '제작 중입니다. ' + humanStage(job) + ' · 끝날 때까지 기다려 주세요.';
+  else if (job && job.status === 'done') guide.textContent = '제작이 끝났습니다. 아래에서 완성한 작업을 고르고 영상을 확인하세요.';
+  else if (job && job.status === 'error') guide.textContent = '작업이 멈췄습니다. 아래 오류 안내를 확인한 뒤 이어서 제작할 수 있습니다.';
+  else {
+    const p = ((STATE || {}).profiles || {}).person || {};
+    guide.textContent = `${p.이름 || '채널'} · ${p.언어 === 'ja' ? '일본어' : '한국어'} 제작 — 주제를 적거나 추천에서 고른 뒤 ‘제작 시작’을 누르세요.`;
+  }
+}
 
 async function recoverImageTask() {
   if (!galDir) return toast('복구할 작업을 먼저 선택하세요.', true);

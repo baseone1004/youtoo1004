@@ -236,27 +236,50 @@ def guideline_files():
 
 def script_files():
     out = []
-    for p in glob.glob(os.path.join(대본_폴더, "*.txt")) + glob.glob(os.path.join(대본_폴더, "민담", "*", "final.txt")):
+    paths = glob.glob(os.path.join(대본_폴더, "*.txt")) + glob.glob(os.path.join(대본_폴더, "민담", "*", "final.txt"))
+    for folder in production_library.LANGUAGE_FOLDERS.values():
+        paths += glob.glob(os.path.join(대본_폴더, folder, "*.txt"))
+    for p in paths:
         base = os.path.basename(p)
         if any(base.endswith(x) for x in ("_이미지프롬프트.txt", "_플로우.txt", "_유튜브최적화.txt", "_썸네일.txt", "_메타.txt", "_테스트.txt"))                 or "프롬프트" in base or "썸네일" in base:
             continue       # 대본 본문 파일만
-        out.append(dict(path=p, name=(os.path.basename(os.path.dirname(p)) + "/final.txt") if p.endswith("final.txt") else os.path.basename(p),
+        language = script_language(p)
+        label = production_library.LANGUAGE_FOLDERS.get(language, "이야기")
+        out.append(dict(path=p, language=language, name=(os.path.basename(os.path.dirname(p)) + "/final.txt") if p.endswith("final.txt") else f"[{label}] {os.path.basename(p)}",
                         mtime=os.path.getmtime(p)))
     out.sort(key=lambda x: -x["mtime"])
     return out
+
+
+def script_language(path):
+    selected, root = Path(path).resolve(), Path(대본_폴더).resolve()
+    if not selected.is_relative_to(root) or selected.name == "final.txt":
+        return None
+    parts = selected.relative_to(root).parts
+    if len(parts) > 1:
+        return next((code for code, folder in production_library.LANGUAGE_FOLDERS.items() if parts[0] == folder), None)
+    return "ko"  # Older flat-folder works remain available without moving their assets.
+
+
+def ensure_script_language(path):
+    language = script_language(path)
+    if language and language != 채널_프로필.language_code(channel_of(path)):
+        name = production_library.LANGUAGE_FOLDERS[language]
+        raise ValueError(f"이 작업은 {name} 제작물입니다. 맨 위에서 {name} 채널을 선택한 뒤 다시 제작하세요.")
 
 
 def reset_items():
     """대본과 중간 생성물을 삭제 대상으로 나열한다. 폴더 밖 경로는 받지 않는다."""
     root = os.path.realpath(대본_폴더)
     out = []
-    for p in glob.glob(os.path.join(root, "*.txt")):
+    roots = [root] + [os.path.join(root, folder) for folder in production_library.LANGUAGE_FOLDERS.values()]
+    for p in [p for folder in roots for p in glob.glob(os.path.join(folder, "*.txt"))]:
         name = os.path.basename(p)
         if any(name.endswith(s) for s in ("_이미지프롬프트.txt", "_이미지프롬프트_플로우.txt",
                                            "_유튜브최적화.txt", "_썸네일.txt", "_메타.txt", "_테스트.txt")):
             continue
         out.append(dict(id=os.path.relpath(p, root), label=name, kind="person", partial=False))
-    for p in glob.glob(os.path.join(root, "*_자료")):
+    for p in [p for folder in roots for p in glob.glob(os.path.join(folder, "*_자료"))]:
         if os.path.isdir(p) and not os.path.isfile(p[:-3] + ".txt"):
             out.append(dict(id=os.path.relpath(p, root), label=os.path.basename(p) + " (대본 없는 작업 자료)",
                             kind="person", partial=True))
@@ -558,13 +581,14 @@ def make_person_script(job, req):
     job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {guideline}")
     job.add(f"▶ {t['제목']}")
     full, body = 대본생성.generate(ai, system, t, target, n_parts)
-    os.makedirs(대본_폴더, exist_ok=True)
+    storage = os.path.join(대본_폴더, production_library.LANGUAGE_FOLDERS[채널_프로필.language_code("person")])
+    os.makedirs(storage, exist_ok=True)
     today = datetime.date.today().isoformat()
     name = f"{today}_{대본생성.safe_name(t['제목'])}.txt"
-    path = os.path.join(대본_폴더, name)
+    path = os.path.join(storage, name)
     n = 2
     while os.path.exists(path):
-        path = os.path.join(대본_폴더, f"{today}_{대본생성.safe_name(t['제목'])}({n}).txt"); n += 1
+        path = os.path.join(storage, f"{today}_{대본생성.safe_name(t['제목'])}({n}).txt"); n += 1
     with open(path, "w", encoding="utf-8") as f:
         f.write(full)
     backup_work_text(path)
@@ -646,6 +670,7 @@ def make_mindam_script(job, req):
 
 def make_optimize_only(job, req):
     """이미 만든 대본 파일 → 알고리즘 최적화만."""
+    ensure_script_language(req.get("script_file", ""))
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
     path = req.get("script_file", "")
@@ -1042,6 +1067,7 @@ def sheet_note(sheet):
 
 
 def make_image_prompts(job, req):
+    ensure_script_language(req.get("script_file", ""))
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
     path = req.get("script_file", "")
@@ -1253,7 +1279,7 @@ def workspace_data(script_file):
     title = saved.get("title") or _block(script_text, "제목") or _block(opt_text, "제목")
     if not title and os.path.basename(script_file) == "final.txt":
         title = re.sub(r"^\d{4}-\d{2}-\d{2}_", "", os.path.basename(os.path.dirname(script_file)))
-    return dict(script_file=os.path.abspath(script_file), assets=os.path.abspath(assets), script=script_text,
+    return dict(script_file=os.path.abspath(script_file), language=script_language(script_file), assets=os.path.abspath(assets), script=script_text,
                 prompts=Path(prompts).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(prompts) else "",
                 prompts_file=os.path.abspath(prompts),
                 srt=Path(srt).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(srt) else "",
@@ -1364,6 +1390,7 @@ def make_tts(job, req):
 
 
 def _make_tts(job, req):
+    ensure_script_language(req.get("script_file", ""))
     backup_work_text()
     cfg = 대본생성.load_cfg()
     path = req.get("script_file", "")
@@ -1829,6 +1856,7 @@ def raw_thumbnails(tdir):
 
 def compose_thumbnails(script, log=None):
     """이미 받아 둔 raw 원본에 문구만 얹어 썸네일_1~3.jpg 를 만든다 (AI 호출 없음)."""
+    ensure_script_language(script)
     assets = assets_dir(script)
     is_mindam = channel_of(script) == "mindam"
     tdir = os.path.abspath(os.path.join(assets, "썸네일"))
@@ -1872,6 +1900,7 @@ def fallback_thumbnails(script, images_dir, log=None):
 
 def make_thumbnails(job, req):
     """대본 폴더 → 썸네일 프롬프트 3개(딥시크) → 이미지 생성(KIE Z-Image API) → 문구 합성 → 썸네일_1~3.jpg"""
+    ensure_script_language(req.get("script_file", ""))
     cfg = 대본생성.load_cfg()
     ai = AI(cfg)
     script = req.get("script_file", "")
@@ -2031,6 +2060,8 @@ def final_video_is_current(video, images_dir, result):
 
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
+    if req.get("script_file"):
+        ensure_script_language(req["script_file"])
     def check_cancelled():
         if job.cancel_requested:
             raise RuntimeError("사용자가 연속 제작을 중단했습니다.")

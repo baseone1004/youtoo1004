@@ -11,6 +11,7 @@
   <nav class="top-nav">
     <button data-view="wizard" class="on" onclick="showView('wizard')">만들기</button>
     <button data-view="settings" onclick="showView('settings')">처음 설정</button>
+    <button id="advancedToggle" onclick="toggleAdvanced()">고급 설정</button>
     <button class="hidden" id="restartBtn" onclick="restartProgram()" style="color:var(--amber)">🔁 다시 시작</button>
     <button class="quit" onclick="exitProgram()">종료</button>
   </nav>
@@ -22,6 +23,7 @@
 <div id="envwarn" class="banner warn hidden"></div>
 
 <section id="view-wizard">
+<div class="beginner-guide" id="beginnerGuide" role="status">먼저 제작할 채널을 고르고, 아래에 영상 주제를 적어 주세요.</div>
 <div class="panel"><div class="inner row"><label for="productionAccount"><b>제작할 유튜브 채널</b></label><select id="productionAccount" style="min-width:0;max-width:100%" onchange="selectReferenceAccount(this.value)"></select><span class="hint">주제를 고르기 전에 채널을 선택하세요.</span></div></div>
 <div class="welcome"><p class="eyebrow">나의 영상 스튜디오</p><h1>주제만 정하면, 영상이 완성됩니다.</h1><p>1 주제 선택 <span>→</span> 2 제작 시작 <span>→</span> 3 완성 확인</p></div>
 
@@ -32,7 +34,7 @@
   <div class="inner">
     <h2>어떤 영상을 만들까요?</h2>
     <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
-    <div class="row">
+    <div class="row" data-advanced>
       <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">정보형</button><button data-ch="mindam" onclick="setChannel('mindam')">이야기형</button></div>
       <label><b>제작 언어</b> <select id="quickLanguage" onchange="saveQuickLanguage()" style="min-width:130px"></select></label>
       <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
@@ -42,10 +44,10 @@
     <div class="hint" id="chAnalysisLine" style="margin:0 0 6px"></div>
     <div id="benchBox" class="hidden" style="margin:4px 0 10px"><div class="row" style="margin:0 0 4px"><span class="hint" id="benchStat"></span><span class="spacer"></span><button class="mini ghost" onclick="$('benchGal').classList.toggle('hidden')">썸네일 참고 접기/펴기</button></div><div class="gal thumbs" id="benchGal"></div></div>
     <ul class="topics" id="topicList"></ul>
-    <div class="hint" style="margin:14px 0 4px">주제 또는 키워드 — 여러 편은 한 줄에 하나씩</div>
-    <textarea aria-label="만들 영상의 주제" id="customTitle" class="topic-input" rows="3" placeholder="예: 병원에 사주를 많이 보는 이유&#10;예: 비가 그친 골목에 남은 기억"></textarea>
+    <div class="hint" style="margin:14px 0 4px">직접 만들고 싶은 주제를 적어도 됩니다</div>
+    <textarea aria-label="만들 영상의 주제" id="customTitle" class="topic-input" rows="2" placeholder="예: 좋은 사람인데 만나고 나면 피곤한 이유"></textarea>
     <div class="chips hidden" id="genreChips"><span class="hint" style="align-self:center">장르만 고를 수도 있어요:</span></div>
-    <div class="row" style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
+    <div class="row" data-advanced style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
     <div class="row" data-advanced id="personLenRow" style="margin-top:10px"><label><b class="pname-person">정보형</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
     <div id="mindamLenRow" data-advanced class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
     <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상 (추가 크레딧) <input type="number" id="optHook" value="7" min="0" max="30" style="width:70px"> 장면</label></div>
@@ -60,7 +62,7 @@
 <!-- ═══ 상단: 제작 현황 + 시작 ═══ -->
 <div class="panel" id="step-3">
   <div class="panel-head"><span class="tag-lbl">2. 제작 시작 · 진행 상황</span><span class="stat" id="pgKind">대기 중</span><span class="spacer"></span><span id="queueSummary" class="hint">대기열 없음</span><button class="mini" data-advanced onclick="$('stage-image').scrollIntoView({behavior:'smooth',block:'start'})">🖼 이미지 칸으로</button></div>
-  <div class="pipe" id="pipe">
+  <div class="pipe" id="pipe" data-advanced>
     <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
   </div>
   <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div>
@@ -68,7 +70,7 @@
   <div class="bar"><i id="pgBar"></i></div>
   <div id="pgWeb" class="hint hidden"></div>
   <div class="startrow">
-    <button class="primary big" id="startBtn" onclick="startProduction()">🚀 입력한 주제로 제작 시작</button>
+    <button class="primary big" data-advanced id="startBtn" onclick="startProduction()">🚀 입력한 주제로 제작 시작</button>
     <span id="queueManage" class="row hidden" style="margin:0"><button onclick="queueControl('pause')">❚❚ 잠시 멈춤</button><button onclick="queueControl('resume')">▶ 이어 만들기</button></span>
     <button class="danger hidden" id="cancelJob" onclick="stopAll()">■ 중단</button>
   </div>
@@ -76,7 +78,7 @@
   <div id="styleBox" class="hidden"></div>
   <div class="qlist" id="queueList"></div>
   <div class="row hidden" id="topThumbsRow" style="align-items:flex-start"><span class="tag-lbl">썸네일</span><div class="gal thumbs" id="topThumbs" style="flex:1;margin-top:0"></div></div>
-  <div id="pgResult" class="result hidden"></div>
+  <div id="pgResult" class="result hidden" data-advanced></div>
   <div id="pgErr" class="banner err hidden"></div>
   <div id="pgPreview" class="preview hidden"></div>
 </div>
@@ -90,7 +92,7 @@
   <div id="workEmpty" class="hint" style="padding:0 18px 14px">아직 만든 작업이 없습니다. 위에서 주제를 넣고 제작을 시작하세요.</div>
 </div>
 
-<div class="row"><button id="advancedToggle" onclick="toggleAdvanced()">고급 편집 열기</button><span class="hint">이미지 수정 · 자막 · 썸네일 · 채널 프로필</span></div>
+<p class="hint" data-advanced>세부 편집 화면입니다. 맨 위의 ‘간편 화면’으로 기본 화면에 돌아갈 수 있습니다.</p>
 <div class="panel" id="simpleResult"><div class="inner"><h2>3. 완성 확인</h2><p class="hint">위에서 작업을 선택하면 완성한 영상과 결과 폴더를 열 수 있습니다. 유튜브 업로드가 끝났으면 정리 버튼으로 해당 작업 파일을 삭제하세요.</p><div class="row"><button class="primary" onclick="openWork('video')">최종 영상 열기</button><button onclick="openWork('assets')">결과 폴더 열기</button><button onclick="markSelectedUploaded()">업로드 완료 후 정리</button></div></div></div>
 <!-- ═══ 단계 카드 ═══ -->
 <div id="workBody" data-advanced>

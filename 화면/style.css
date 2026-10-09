@@ -302,6 +302,13 @@ button.primary{background:var(--blue)}button.primary:hover:not(:disabled){backgr
 
 /* 간편 화면에는 제작에 필요한 정보만 표시한다. */
 body:not(.advanced) [data-advanced]{display:none!important}
+.beginner-guide{padding:18px 22px;margin-bottom:18px;background:var(--blue-soft);border:1px solid var(--line);border-radius:14px;font-size:16px;line-height:1.6;color:var(--text)}
+body:not(.advanced) #step-1 .panel-head .mini,body:not(.advanced) #chAnalysisLine{display:none}
+body:not(.advanced) #step-4 .panel-head .mini{display:none}
+body:not(.advanced) #step-4 .panel-head .hint{display:none}
+body:not(.advanced) #orderList{display:none}
+body:not(.advanced) #toStep2{min-height:54px;font-size:17px;padding:12px 24px}
+body:not(.advanced) #quickImageCost{line-height:1.8}
 .welcome{padding:22px 0 28px}.welcome h1{font-size:30px;line-height:1.35;margin:6px 0 12px;letter-spacing:-.04em}.welcome p{margin:0;color:var(--muted)}
 .welcome .eyebrow{color:var(--blue);font-size:13px;font-weight:750}.welcome span{padding:0 10px;color:var(--faint)}
 .panel,.card{border-radius:16px;box-shadow:var(--shadow);margin-bottom:24px}
