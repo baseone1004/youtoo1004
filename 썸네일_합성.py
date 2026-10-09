@@ -28,6 +28,7 @@ JALNAN = os.path.join(FONT_DIR, "Jalnan2.ttf")          # 여기어때 잘난체
 YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#000000"
 
 레이아웃_이름 = {
+    "jp_cozy": "일본어 · 굵은 흰색+노랑 두 줄 · 따뜻한 생활 그림",
     "jp_pop": "일본어 · 흰색·빨강·형광노랑·형광연두·보라 자동 조합",
     "navy_mint": "아래 두 줄 · 배지 · 강조선 (정보형 추천)",
     "cream_card": "왼쪽 카드 + 오른쪽 인물 (차분한 책 느낌)",
@@ -38,7 +39,7 @@ YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#
     "scroll": "왼쪽 세로쓰기 두루마리",
     "band": "먹빛 띠 + 붓글씨 + 빨간 태그 (예전 방식)",
     "pop_bold": "굵은 고딕 큰 글씨 · 낱말마다 노랑·흰색·초록·분홍 · 검정 테두리 (요즘 야담 채널식, 이야기형 추천)",
-    "jalnan_pop": "잘난체 큰 글씨 · 흰색·빨강·형광노랑·형광연두·보라 자동 조합",
+    "jalnan_pop": "잘난체 큰 글씨 두 줄 · 윗줄 하늘색 · 아랫줄 노랑 · 굵은 검정 테두리 (정보형 추천)",
 }
 기본_브랜드 = {
     "person": {"주색": "#0F1B3D", "강조색": "#4BE3C4", "바탕색": "#FFF4DC", "보조색": "#E6543C", "배지": "", "사진_톤": "warm"},
@@ -48,7 +49,7 @@ YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#
 
 # ── 기본 도구 ─────────────────────────────────────────
 def japanese_font():
-    for path in [os.path.join(FONT_DIR, "NotoSansJP-Bold.ttf"), os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothB.ttc"), os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothM.ttc")]:
+    for path in [os.path.join(FONT_DIR, "NotoSansJP-Black.ttf"), os.path.join(FONT_DIR, "NotoSansJP-Bold.ttf"), os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothB.ttc"), os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothM.ttc")]:
         if os.path.isfile(path):
             return path
     raise ValueError("일본어 썸네일 글꼴이 없습니다. Windows 일본어 글꼴을 설치하거나 assets/fonts/NotoSansJP-Bold.ttf를 넣어 주세요.")
@@ -312,7 +313,7 @@ POP_STRONG_WORDS = ("소름", "충격", "절대", "손절", "경고", "거짓말
 
 
 def layout_jalnan_pop(im, top, bottom, b=None):
-    """잘난체 두 줄: 다섯 색 자동 조합, 굵은 검정 테두리 + 그림자."""
+    """잘난체 두 줄: 윗줄 하늘색, 아랫줄 노랑, 굵은 검정 테두리 + 그림자. 그림은 가득 채우고 아래를 살짝 어둡게."""
     im = _shade_bottom(im, 0.45, 0.55)
     d = ImageDraw.Draw(im)
     top, bottom = _clean_marks(top), _clean_marks(bottom)
@@ -320,14 +321,26 @@ def layout_jalnan_pop(im, top, bottom, b=None):
         top, bottom = "", top
     max_w = W - 80
     lines = ([top] if top else []) + _wrap(bottom, 13)
+    import random as _rd, zlib as _zl
+    rng = _rd.Random(_zl.crc32((top + "|" + bottom).encode("utf-8")))          # 문구마다 다르게, 같은 문구는 늘 같은 색
+    # 규칙: 아랫줄(핵심)은 노랑 또는 형광연두 · 윗줄은 하늘색 또는 흰색 · 센 낱말이 든 줄만 빨강
+    strong = any(w in (top + bottom) for w in POP_STRONG_WORDS)
+    color_bottom = rng.choice(("#FFE23A", "#B4FF3A"))
+    color_top = rng.choice(("#7DDCFF", "#FFFFFF"))
+    if strong:
+        if any(w in bottom for w in POP_STRONG_WORDS):
+            color_bottom = "#FF3B3B"
+        elif top:
+            color_top = "#FF3B3B"
+    colors = ([color_top] if top else []) + [color_bottom] * (len(lines) - (1 if top else 0))
     fonts = [_fit(d, ln, 124 if i == 0 and top else 136, max_w, 60, JALNAN) for i, ln in enumerate(lines)]
     total_h = sum(int(f.size * 1.12) for f in fonts)
     y = H - 40 - total_h
-    for i, (ln, f) in enumerate(zip(lines, fonts)):
+    for ln, f, c in zip(lines, fonts, colors):
         x = (W - d.textlength(ln, font=f)) / 2
         sw = max(10, f.size // 9)
         d.text((x + 5, y + 7), ln, font=f, fill=BLACK, stroke_width=sw, stroke_fill=BLACK)      # 그림자
-        _neon_text(d, (x, y), ln, f, top + "|" + bottom, i, sw)
+        d.text((x, y), ln, font=f, fill=c, stroke_width=sw, stroke_fill=BLACK)
         y += int(f.size * 1.12)
     return im
 
@@ -532,7 +545,27 @@ def layout_jp_pop(im, top, bottom, b):
     return im
 
 
+def layout_jp_cozy(im, top, bottom, b):
+    """생활 일러스트 위에 묵직한 흰색·노랑 두 줄, 테두리와 그림자."""
+    im = _shade_bottom(im, 0.52, 0.68)
+    draw = ImageDraw.Draw(im)
+    top,bottom = _clean_marks(top),_clean_marks(bottom)
+    lines = ([top] if top else []) + ([bottom] if bottom else [])
+    if len(lines) == 1:
+        lines = _wrap(lines[0],14)
+    fonts = [_fit(draw,line,130 if i == 0 else 108,W-90,40) for i,line in enumerate(lines)]
+    y = H-38-sum(int(font.size*1.14) for font in fonts)
+    for i,(line,font) in enumerate(zip(lines,fonts)):
+        x = (W-draw.textlength(line,font=font))/2
+        stroke=max(5,font.size//16)
+        draw.text((x+4,y+5),line,font=font,fill=BLACK,stroke_width=stroke+2,stroke_fill=BLACK)
+        _outlined(draw,(x,y),line,font,WHITE if i == 0 else "#FFF000",stroke=stroke)
+        y += int(font.size*1.14)
+    return im
+
+
 LAYOUTS = {
+    "jp_cozy": (0.42, layout_jp_cozy),
     "jp_pop": (0.5, layout_jp_pop),
     "navy_mint": (0.6, layout_navy_mint), "cream_card": (0.5, layout_cream_card), "coral_ribbon": (0.6, layout_coral_ribbon),
     "bottom_two": (0.5, layout_bottom_two), "hanji_seal": (0.5, layout_hanji_seal), "ink_gold": (0.5, layout_ink_gold),
@@ -567,8 +600,8 @@ def compose(image, out, top, bottom, channel="person", layout=None, tag_text=Non
     japanese = (brand or {}).get("언어") == "ja" or bool(re.search(r"[ぁ-んァ-ン]", top + bottom))
     token = _JAPANESE.set(japanese)
     try:
-        if japanese and layout != "jp_pop":
-            layout = "jp_pop"
+        if japanese and layout not in ("jp_pop", "jp_cozy"):
+            layout = "jp_cozy"
         return _compose(image,out,top,bottom,channel,layout,tag_text,brand)
     finally:
         _JAPANESE.reset(token)

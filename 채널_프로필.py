@@ -213,7 +213,7 @@ def language_instruction(slot):
     if code == "ko":
         return ""
     lang = LANGUAGES[code]
-    native = " 일본어는 일본 시청자에게 말하듯 자연스러운 です・ます체로 쓴다. 한국식 직역, 과도한 당신 호칭, 번역투 문장 연결을 피한다. 공감하는 도입→일본 일상 사례→근거→부담 없는 실천 순서로 구성한다. 직장·전철·가족·이웃의 사례를 쓰되 성별·국민성 고정관념과 근거 없는 통계는 금지한다. 썸네일 문구는 각 줄 8~14자를 목표로 두 줄, 한 가지 궁금증이나 감정을 담고 대본 내용과 일치시킨다. 썸네일 글자는 흰색·빨강·형광노랑·형광연두·보라를 문구 덩어리별로 자동 조합하고, 어두운 배경과 검정 테두리로 가독성을 높인다. 조회수를 보장하거나 모든 일본인의 선호라고 단정하지 않는다." if code == "ja" else ""
+    native = " 일본어는 일본 시청자에게 말하듯 자연스러운 です・ます체로 쓴다. 한국식 직역, 과도한 당신 호칭, 번역투 문장 연결을 피한다. 공감하는 도입→일본 일상 사례→근거→부담 없는 실천 순서로 구성한다. 직장·전철·가족·이웃의 사례를 쓰되 성별·국민성 고정관념과 근거 없는 통계는 금지한다. 썸네일 문구는 각 줄 8~14자를 목표로 두 줄, 한 가지 궁금증이나 감정을 담고 대본 내용과 일치시킨다. 썸네일 기본은 굵은 일본어 고딕체 흰색 윗줄과 선명한 노랑 아랫줄, 검정 테두리와 그림자다. 따뜻한 생활 배경에 큰 인물 한두 명과 감정 하나를 배치한다. 선택한 다색 스타일에서는 흰색·빨강·형광노랑·형광연두·보라를 조합한다. 조회수를 보장하거나 모든 일본인의 선호라고 단정하지 않는다." if code == "ja" else ""
     return ("\n\n[출력 언어 — 최우선 규칙]\n"
             f"이 채널의 시청자 언어는 {lang['이름']}이다. 대본 본문, 제목, 설명, 태그, 고정댓글, 화면에 보이는 문구는 모두 {lang['지시']}로 작성한다. "
             "입력 주제가 한국어여도 자연스럽게 현지화한다. 직역투를 피하고 해당 언어권의 호칭·관용 표현·문장부호를 쓴다. "
@@ -267,8 +267,28 @@ def brand(slot):
     return b
 
 
+JAPANESE_COZY_STYLE = (
+    "warm hand-drawn 2D everyday-life illustration, simple rounded expressive characters with cream-colored faces, "
+    "bold clean dark outlines, minimal facial details and readable poses, soft amber sunlight and cozy lamps, "
+    "warm beige and honey-colored Japanese living rooms, kitchens or quiet neighborhoods, gently detailed painterly backgrounds, "
+    "one or two large foreground characters, a single clear emotional situation, no text, no logos, no photorealism, no 3D, "
+    "keep the channel's original mascot identity and reference design rather than copying another channel's character"
+)
+
+
+def thumbnail_profile(slot):
+    p = get(slot)
+    if language_code(slot) == "ja":
+        return dict({"레이아웃":"jp_cozy", "화풍":JAPANESE_COZY_STYLE,
+                     "구도":"인물 한두 명을 화면 위쪽 65%에 크게, 표정·자세로 감정 하나를 보여 준다. 따뜻한 일본 생활 배경, 아래 35%는 두 줄 문구를 위한 어둡고 단순한 공간", "띠_문구":""},
+                    **(p.get("썸네일_일본") or {}))
+    return p.get("썸네일") or {}
+
+
 def style_tail(slot):
     """이미지·썸네일 프롬프트 끝에 붙는 채널 고유 색감 문구."""
+    if language_code(slot) == "ja":
+        return JAPANESE_COZY_STYLE
     return (get(slot).get("화풍_접미") or "").strip()
 
 
@@ -276,7 +296,7 @@ def summary():
     """화면용: 자리별 이름·유형·마스코트 유무·업로드 폴더."""
     out = {}
     for slot, p in load().items():
-        out[slot] = dict(p, 적용_브랜드=brand(slot), 적용_검색어=benchmark_queries(slot), 마스코트_있음=bool((p.get("마스코트") or {}).get("이름")))
+        out[slot] = dict(p, 적용_브랜드=brand(slot), 적용_검색어=benchmark_queries(slot), 썸네일=thumbnail_profile(slot), 마스코트_있음=bool((p.get("마스코트") or {}).get("이름")))
     return out
 
 

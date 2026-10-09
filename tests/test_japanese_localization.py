@@ -39,9 +39,25 @@ class LocalizationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             src=Path(td,"source.png"); out=Path(td,"thumb.jpg")
             Image.new("RGB",(1280,720),"#FFF8ED").save(src)
-            self.assertEqual(thumbs.compose(str(src),str(out),"いい人なのに","一緒にいると疲れる",brand=brand,layout="jalnan_pop"),"jp_pop")
+            self.assertEqual(thumbs.compose(str(src),str(out),"いい人なのに","一緒にいると疲れる",brand=brand,layout="jalnan_pop"),"jp_cozy")
             with Image.open(out) as im: self.assertEqual(im.size,(1280,720))
             self.assertFalse(thumbs._JAPANESE.get())
+    def test_korean_and_japanese_thumbnail_settings_are_separate(self):
+        profile={"썸네일":{"레이아웃":"jalnan_pop","화풍":"original Korean"}}
+        with patch.object(profiles,"get",return_value=profile):
+            with patch.object(profiles,"language_code",return_value="ko"):
+                self.assertEqual(profiles.thumbnail_profile("person"),profile["썸네일"])
+            with patch.object(profiles,"language_code",return_value="ja"):
+                jp=profiles.thumbnail_profile("person")
+                self.assertEqual(jp["레이아웃"],"jp_cozy")
+                self.assertIn("warm hand-drawn",jp["화풍"])
+            self.assertEqual(profile["썸네일"]["화풍"],"original Korean")
+        with patch.object(thumbs,"_compose",return_value="chosen") as compose:
+            thumbs.compose("src","out","한국어","그대로",layout="jalnan_pop",brand={"언어":"ko"})
+            self.assertEqual(compose.call_args.args[5],"jalnan_pop")
+            thumbs.compose("src","out","日本語","そのまま",layout="jp_pop",brand={"언어":"ja"})
+            self.assertEqual(compose.call_args.args[5],"jp_pop")
+
     def test_neon_colors_preserve_copy_and_use_requested_palette(self):
         lines = ["いい人なのに", "一緒にいると疲れる"]
         seed = "|".join(lines)

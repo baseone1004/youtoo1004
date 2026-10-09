@@ -801,6 +801,8 @@ def image_style_lock(style, channel=None):
     if style not in 화풍:
         style = "밝은 애니 사극" if channel == "mindam" else "2D 일러스트"
     base = 화풍[style]
+    if channel and 채널_프로필.language_code(channel) == "ja" and style != "실사":
+        return "STRICT STYLE LOCK: " + 채널_프로필.style_tail(channel) + ". Maintain consistent character proportions and expressions across scenes. Modern everyday scenes are set in Japan. Fill the frame edge to edge. This style takes priority over conflicting scene descriptions."
     tail = (" " + 채널_프로필.style_tail(channel) + ".") if channel and 채널_프로필.style_tail(channel) else ""
     if style == "실사":
         return base + tail + " Every person shown is Korean with East Asian facial features; never Western faces."
@@ -1693,7 +1695,7 @@ def brand_preview(slot):
     if 채널_프로필.language_code(slot) == "ja":
         copies = [("いい人なのに", "一緒にいると疲れる"), ("年齢とともに", "友達が減る理由"), ("その笑顔の裏に", "隠れた本音") ]
     out_dir = os.path.join(BASE, "대본", "_상태", "브랜드_미리보기"); os.makedirs(out_dir, exist_ok=True)
-    tp = 채널_프로필.get(slot).get("썸네일") or {}
+    tp = 채널_프로필.thumbnail_profile(slot)
     outs = []
     for i, (src, (top, bottom)) in enumerate(zip(srcs[:3], copies), 1):
         out = os.path.join(out_dir, f"{slot}_{i}.jpg")
@@ -1750,7 +1752,7 @@ def compose_thumbnails(script, log=None):
     for i in sorted(raws):
         top, bottom, _ = copies[(i - 1) % len(copies)]
         out = os.path.join(tdir, f"썸네일_{i}.jpg")
-        tp = 채널_프로필.get("mindam" if is_mindam else "person").get("썸네일") or {}
+        tp = 채널_프로필.thumbnail_profile("mindam" if is_mindam else "person")
         layout = 썸네일_합성.compose(raws[i], out, top, bottom, "mindam" if is_mindam else "person",
                                  layout=tp.get("레이아웃") or None, tag_text=tp.get("띠_문구") or None,
                                  brand=채널_프로필.brand("mindam" if is_mindam else "person"))
@@ -1802,7 +1804,7 @@ def make_thumbnails(job, req):
         brief = open(bp, encoding="utf-8").read()[:1500]
     # 썸네일 화풍·구도는 채널 프로필에서 온다 (화풍을 비워 두면 장면 화풍을 그대로 쓴다)
     profile = 채널_프로필.get("mindam" if is_mindam else "person")
-    tp = profile.get("썸네일") or {}
+    tp = 채널_프로필.thumbnail_profile("mindam" if is_mindam else "person")
     style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "실사"), req.get("style", "실사")), 화풍["밝은 애니 사극" if is_mindam else "실사"])
     if 채널_프로필.style_tail("mindam" if is_mindam else "person"):
         style = style.rstrip(". ") + ", " + 채널_프로필.style_tail("mindam" if is_mindam else "person")

@@ -1034,6 +1034,9 @@ async function saveProfile() {
   for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더', '검색어', '기본_태그']) data[k] = $('pf_' + k).value;
   data.마스코트 = {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) data.마스코트[k] = $('pf_마스코트_' + k).value;
   data.썸네일 = {레이아웃: $('pf_썸네일_레이아웃').value}; for (const k of ['띠_문구', '화풍', '구도']) data.썸네일[k] = $('pf_썸네일_' + k).value;
+  const previousLanguage = ((STATE.profiles || {})[profileSlot] || {}).언어 || 'ko';
+  if (data.언어 === 'ja') { if (previousLanguage === 'ja') data.썸네일_일본 = data.썸네일; delete data.썸네일; }
+  else if (previousLanguage === 'ja') delete data.썸네일;
   data.브랜드 = {배지: $('pf_브랜드_배지').value, 사진_톤: $('pf_브랜드_사진_톤').value}; for (const k of ['주색', '강조색', '바탕색', '보조색']) data.브랜드[k] = $('pf_브랜드_' + k).value;
   data.화풍_접미 = $('pf_화풍_접미').value;
   if (!data.이름.trim()) return toast('채널 이름을 넣으세요.', true);
