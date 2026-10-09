@@ -119,6 +119,9 @@ YDL_OPTS = {"quiet": True, "no_warnings": True, "extract_flat": True, "skip_down
 
 def ydl_extract(url, playlistend=None):
     opts = dict(YDL_OPTS)
+    if 채널_프로필.language_code("person") == "ja":
+        opts["extractor_args"] = {"youtube": {"lang": ["ja"]}}
+    opts.update(socket_timeout=20, retries=1, extractor_retries=1)
     if playlistend:
         opts["playlistend"] = playlistend
     with yt_dlp.YoutubeDL(opts) as y:
@@ -181,7 +184,12 @@ def discover_channels(keywords, exclude_ids, exclude_words, want):
     agg = defaultdict(lambda: {"hits": 0, "views": [], "titles": [], "name": "", "url": ""})
     for kw in keywords:
         print(f"   · 검색: {kw}")
-        info = ydl_extract(f"ytsearch25:{kw}")
+        api_key = load_config().get("유튜브_API_키", "")
+        if api_key and 채널_프로필.language_code("person") == "ja":
+            import 유튜브_API
+            info = {"entries": 유튜브_API.search_videos(api_key, kw)}
+        else:
+            info = ydl_extract(f"ytsearch25:{kw}")
         if not info:
             continue
         for e in info.get("entries") or []:
@@ -229,6 +237,8 @@ def 관련있음(title):
     if any(w in t for w in 무관_낱말):
         return False
     if 채널_프로필.language_code("person") == "ja":
+        if any(w in t for w in ("食事", "食べ", "食え", "筋肉", "ダイエット", "レシピ", "投資", "株式", "仮想通貨", "政治", "選挙", "ニュース", "ゲーム", "サッカー", "野球", "トレーニング", "体力", "若返", "炎症")):
+            return False
         return any(w in t for w in ("心理", "心", "人間関係", "感情", "友", "家族", "夫婦", "言葉", "表情", "性格", "習慣", "本音", "不安", "人生"))
     return any(w in t for w in 관련_낱말)
 
@@ -1224,6 +1234,32 @@ def main():
             print(f"   (건너뜀 · 우리 소재 아님) {ch['name']} — 관련 영상 {int(ch.get('relevance', 0) * 100)}%")
             continue
         bench.append(ch)
+
+    if 채널_프로필.language_code("person") == "ja":
+        # 한국어 주제 은행·계획·리포트를 일본 채널 수집으로 덮어쓰지 않는다.
+        hits = []
+        for ch in bench:
+            selected = {v["id"]: v for v in ch.get("hits", [])}
+            for v in sorted(ch["videos"], key=lambda x: -x["views"]):
+                if v["views"] > 0 and is_korean(v["title"]) and 관련있음(v["title"]) and v.get("duration", 0) >= 120:
+                    selected.setdefault(v["id"], v)
+                if len(selected) >= 12:
+                    break
+            for v in selected.values():
+                hits.append(dict(title=v["title"], channel=ch["name"], views=v["views"], ratio=v.get("ratio", 0), url=v["url"],
+                                 thumb=f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg"))
+        hits.sort(key=lambda v: -v["views"])
+        if not hits:
+            raise RuntimeError("일본어 인기 영상을 찾지 못했습니다. 검색어나 참고 채널을 확인하세요. 이전 수집 결과는 유지합니다.")
+        target = 채널_프로필.benchmark_file("person")
+        with open(target + ".tmp", "w", encoding="utf-8") as f:
+            json.dump({"날짜": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), "언어": "ja",
+                       "채널": [dict(name=c["name"], url=c["url"], subs=c.get("subs", 0)) for c in bench], "히트": hits[:60]}, f, ensure_ascii=False, indent=1)
+        os.replace(target + ".tmp", target)
+        import 주제_추천
+        fresh = 주제_추천.seed_japanese(used + ([v["title"] for v in mine["videos"]] if mine else []))
+        print(f"완료! 일본어 인기 영상 {len(hits[:60])}개 · 일본어 기본 추천 {len(fresh)}개")
+        return
 
     print("④ 7일치 14편 고르는 중...")
     top, rest, dups, trends = build_recommendations(mine, bench, used)

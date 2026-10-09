@@ -41,14 +41,14 @@ class KiePipelineTest(unittest.TestCase):
             self.assertEqual(result["upload_dir"], td)
             self.assertIn("정지 이미지", str(job.log))
 
-    def test_automatic_video_uses_first_seven_in_script_order(self):
+    def test_automatic_video_uses_first_five_in_script_order(self):
         with tempfile.TemporaryDirectory() as td:
             prompts = Path(td) / "prompts.txt"
             prompts.write_text("\n".join(f"==={i:03d}===\n유형: A\n프롬프트: scene {i}" for i in range(10,0,-1)),encoding="utf-8")
-            self.assertEqual(app.first_hook_scenes(str(prompts),7),list(range(1,8)))
+            self.assertEqual(app.first_hook_scenes(str(prompts),5),list(range(1,6)))
             self.assertEqual(app.first_hook_scenes(str(prompts),0),[])
             prompts.write_text("===001===\n프롬프트: one\n===002===\n프롬프트: two",encoding="utf-8")
-            self.assertEqual(app.first_hook_scenes(str(prompts),7),[1,2])
+            self.assertEqual(app.first_hook_scenes(str(prompts),5),[1,2])
 
     def test_motion_scene_selection_still_prefers_people_over_diagrams(self):
         with tempfile.TemporaryDirectory() as td:

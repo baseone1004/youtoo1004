@@ -160,7 +160,7 @@ async function refresh() {
   renderProfileNames();
   const activeProfile = (STATE.profiles || {})[channel] || {};
   $('quickLanguage').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(activeProfile.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
-  if (!$('optHook').dataset.initialized) { $('optHook').value = 7; $('optHook').dataset.initialized = '1'; }
+  if (!$('optHook').dataset.initialized) { $('optHook').value = 5; $('optHook').dataset.initialized = '1'; }
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
   renderStyles(STATE.styles, c.화풍 || '실사');
@@ -251,7 +251,7 @@ function renderTopics() {
     const key = channel + '|' + t.제목, on = selection.has(key);
     const near = t.비슷한_내_영상 ? ` · ⚠ 내 채널의 "${t.비슷한_내_영상}"과 비슷함` : '';
     if (!t._custom && t.생성) { const key = channel + '|' + t.제목, on = selection.has(key);
-      return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}<span class="m">${esc([t.카테고리 || t.장르, t.한줄].filter(Boolean).join(' · '))}${near}</span></span><span class="tag" style="color:#F5B942;background:#3A2E12">AI 추천</span></li>`; }
+      return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}<span class="m">${esc([t.카테고리 || t.장르, t.한줄].filter(Boolean).join(' · '))}${near}</span></span><span class="tag" style="color:#F5B942;background:#3A2E12">${t.추천방식 === '기본' ? '기본 추천' : 'AI 추천'}</span></li>`; }
     const meta = (t._custom ? '' : channel === 'mindam' ? `${t.장르 || ''} · ${t.채널 || ''} · 조회수 ${((t.조회수 || 0) / 10000).toFixed(1)}만 (평소의 ${t.배수}배)` : (t.카테고리 || '') + (t.날짜 ? ` · ${t.날짜} 계획` : ' · 추천 후보')) + near;
     return `<li class="${on ? 'sel' : ''}" onclick="toggleTopic('${channel}',${i},event)"><input type="checkbox" ${on ? 'checked' : ''} tabindex="-1"><span class="t">${esc(t.제목)}${meta ? `<span class="m">${esc(meta)}</span>` : ''}</span>${t._custom ? `<span class="tag custom">직접 입력</span><button class="x" onclick="removeCustom('${channel}',${i},event)" title="목록에서 지우기">×</button>` : `<span class="tag">추천</span><button class="x" onclick="hideTopic('${channel}',${i},event)" title="이미 올린 주제 — 목록에서 빼고 다시 추천하지 않기">×</button>`}</li>`;
   });
@@ -824,9 +824,9 @@ async function refreshKieFiles() {
   if (!galDir) { $('kieScenes').textContent = ''; if (!kieJobId) $('kieProgress').textContent = ''; return; }
   try {
     const done = new Set((await listImages(galDir)).filter(x => x.video).map(x => x.no));
-    const count = [1, 2, 3, 4, 5, 6, 7].filter(n => done.has(n)).length;
-    $('kieScenes').textContent = [1, 2, 3, 4, 5, 6, 7].map(n => `${pad3(n)} ${done.has(n) ? '✓' : '대기'}`).join(' · ');
-    if (!kieJobId) $('kieProgress').textContent = count === 7 ? '✅ 앞 7장 영상 변환 완료' : `영상 ${count}/7개 완료`;
+    const count = [1, 2, 3, 4, 5].filter(n => done.has(n)).length;
+    $('kieScenes').textContent = [1, 2, 3, 4, 5].map(n => `${pad3(n)} ${done.has(n) ? '✓' : '대기'}`).join(' · ');
+    if (!kieJobId) $('kieProgress').textContent = count === 5 ? '✅ 앞 5장 영상 변환 완료' : `영상 ${count}/5개 완료`;
   } catch (e) {                                   // 서버가 잠깐 안 받을 때(다시 시작 중 등) — 5초 뒤 다시 읽는다
     $('kieScenes').textContent = '영상 파일을 다시 확인하는 중… (' + e.message + ')';
     if (!refreshKieFiles._retry) refreshKieFiles._retry = setTimeout(() => { refreshKieFiles._retry = null; refreshKieFiles(); }, 5000);
@@ -840,19 +840,19 @@ async function pollKieJob() {
     if (['done', 'error', 'cancelled'].includes(j.status)) { clearInterval(kieTimer); kieTimer = null; kieJobId = ''; sessionStorage.removeItem('kieJobId'); await refreshGallery(true); if (j.status === 'error') $('kieProgress').textContent = '❌ 영상화 오류: ' + (j.error || '로그를 확인하세요'); else if (j.status === 'cancelled') $('kieProgress').textContent = '■ 중단됨'; }
   } catch (e) { clearInterval(kieTimer); kieTimer = null; kieJobId = ''; sessionStorage.removeItem('kieJobId'); await refreshKieFiles(); }
 }
-async function startFirstSevenVideos() {
-  if (kieJobId) return toast('앞 7장 영상화가 이미 진행 중입니다', true);
+async function startFirstFiveVideos() {
+  if (kieJobId) return toast('앞 5장 영상화가 이미 진행 중입니다', true);
   if (!galDir || !galPromptsPath) return toast('대본과 이미지 프롬프트를 먼저 고르세요', true);
   const hasKey = await refreshKieStatus();
   try {
     const ready = new Set((await listImages(galDir)).filter(x => !x.video).map(x => x.no));
-    const missing = [1, 2, 3, 4, 5, 6, 7].filter(no => !ready.has(no));
-    if (missing.length) return toast('앞 7장 이미지가 먼저 필요합니다. 없는 장면: ' + missing.map(pad3).join(', '), true);
+    const missing = [1, 2, 3, 4, 5].filter(no => !ready.has(no));
+    if (missing.length) return toast('앞 5장 이미지가 먼저 필요합니다. 없는 장면: ' + missing.map(pad3).join(', '), true);
     if (!hasKey) { showView('settings'); return toast('설정에서 KIE API 키를 먼저 저장하세요.', true); }
-    if (!confirm('앞 7장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.')) return;
+    if (!confirm('앞 5장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.')) return;
     const info = await get8765('/api/info'), ui = (info.config || {}).gen_ui || {};
-    const j = await post8765('/api/hook/start', {api_key: '', images_dir: galDir, prompts_file: galPromptsPath, scenes: [1, 2, 3, 4, 5, 6, 7], model: ui.kie_model || 'veo-3-1', aspect_ratio: ui.kie_ratio || '16:9', duration: 0, motion_prompt: ui.motion_prompt || 'Subtle 2D motion, preserve characters and composition.', use_scene_prompt: true, output_dir: ''});
-    kieJobId = j.job_id; sessionStorage.setItem('kieJobId', kieJobId); clearInterval(kieTimer); kieTimer = setInterval(pollKieJob, 2000); pollKieJob(); toast('앞 7장 영상 변환을 시작했습니다');
+    const j = await post8765('/api/hook/start', {api_key: '', images_dir: galDir, prompts_file: galPromptsPath, scenes: [1, 2, 3, 4, 5], model: ui.kie_model || 'veo-3-1', aspect_ratio: ui.kie_ratio || '16:9', duration: 0, motion_prompt: ui.motion_prompt || 'Subtle 2D motion, preserve characters and composition.', use_scene_prompt: true, output_dir: ''});
+    kieJobId = j.job_id; sessionStorage.setItem('kieJobId', kieJobId); clearInterval(kieTimer); kieTimer = setInterval(pollKieJob, 2000); pollKieJob(); toast('앞 5장 영상 변환을 시작했습니다');
   } catch (e) { toast('영상화 실패: ' + e.message, true); }
 }
 if (kieJobId) { kieTimer = setInterval(pollKieJob, 2000); setTimeout(pollKieJob, 500); }
@@ -889,9 +889,11 @@ async function loadBench() {
     const b = await api('/api/bench?channel=' + encodeURIComponent(channel)); const hits = b.히트 || [];
     $('benchBox').classList.toggle('hidden', !hits.length || channel !== 'person');
     if (document.activeElement !== $('benchChannels')) $('benchChannels').value = (b.추가_채널 || []).join('\n');
-    if (!hits.length) return;
-    $('benchStat').textContent = `벤치마킹 ${b.날짜} · 채널 ${(b.채널 || []).length}곳 · 평소보다 몇 배 터진 영상 ${hits.length}개 — 제목·썸네일 참고`;
-    $('benchGal').innerHTML = hits.slice(0, 12).map(v => `<div class="g done" title="${esc(v.title)}"><div class="pic"><a href="${esc(v.url)}" target="_blank" rel="noopener"><img src="${esc(v.thumb)}" loading="lazy" referrerpolicy="no-referrer"></a></div><div class="st" style="white-space:normal;font-size:11.5px;line-height:1.3;color:var(--ink)">${esc(v.title.slice(0, 40))}</div><div class="hint" style="font-size:11px">${esc(v.channel)} · ${v.ratio}배</div></div>`).join('');
+    if (!hits.length) { $('benchGal').innerHTML = ''; return; }
+    $('benchStat').textContent = `${b.언어 === 'ja' ? '일본어 인기 영상' : '참고할 인기 영상'} · ${b.날짜} 수집 · 채널 ${(b.채널 || []).length}곳 · ${hits.length}개 (수집한 채널 기준)`;
+    const perChannel = new Map();
+    const shownHits = hits.filter(v => { const n = perChannel.get(v.channel) || 0; if (n >= 3) return false; perChannel.set(v.channel, n + 1); return true; }).slice(0, 12);
+    $('benchGal').innerHTML = shownHits.map(v => `<div class="g done" title="${esc(v.title)}"><div class="pic"><a href="${esc(v.url)}" target="_blank" rel="noopener"><img src="${esc(v.thumb)}" loading="lazy" referrerpolicy="no-referrer"></a></div><div class="st" style="white-space:normal;font-size:11.5px;line-height:1.3;color:var(--ink)">${esc(v.title.slice(0, 40))}</div><div class="hint" style="font-size:11px">${esc(v.channel)} · 조회수 ${fmtN(v.views || 0)}회 · 채널 중앙값의 ${v.ratio}배</div></div>`).join('');
   } catch (e) {}
 }
 async function runBenchmark() {
@@ -913,6 +915,7 @@ async function refreshTopics() {
     const r = await api('/api/topics/refresh', {channel, shown});
     if (channel === 'mindam') STATE.topics.mindam = r.items; else { STATE.topics.plan = []; STATE.topics.candidates = r.items; }
     renderTopics();
+    if (r.error) { stat.textContent = 'AI 연결 전에는 기본 추천을 표시합니다'; toast(r.error, true); return; }
     stat.textContent = r.generated ? `AI가 새 주제 ${r.generated}개를 만들었습니다` : '아직 안 본 추천 주제를 보여 줍니다';
     toast(r.generated ? `새 주제 ${r.items.length}개 (AI 생성 ${r.generated}개)` : `새 주제 ${r.items.length}개`);
   } catch (e) { stat.textContent = ''; toast('새 주제를 만들지 못했습니다: ' + e.message, true); }
@@ -924,7 +927,7 @@ async function loadAnalysis(ch) {
   if (ch) analysisChannel = ch;
   document.querySelectorAll('[data-ach]').forEach(b => b.classList.toggle('on', b.dataset.ach === analysisChannel));
   let a; try { a = await api('/api/channel/analysis?channel=' + analysisChannel); } catch (e) { $('chAnalysis').textContent = e.message; return; }
-  if (!a.ok) { $('chAnalysis').innerHTML = `<div class="hint">${esc(a.reason)}</div>`; $('chAnalysisLine').textContent = ''; return; }
+  if (!a.ok) { $('chAnalysis').innerHTML = `<div class="hint">${esc(a.reason)}</div>`; $('chAnalysisQuick').innerHTML = $('chAnalysis').innerHTML; $('chAnalysisLine').textContent = ''; return; }
   const row = v => `<div><span class="v">${fmtN(v.views)}회</span><span class="t">${esc(v.title)}</span>${v.published ? `<span class="hint">${esc(v.published)}</span>` : ''}</div>`;
   $('chAnalysis').innerHTML = `<div class="hint">${esc(a.name)} · ${a.source === 'api' ? '유튜브 API' : 'yt-dlp'} · ${esc(a.fetched)} 기준${a.first ? ` · ${esc(a.first)} ~ ${esc(a.last)}` : ''}</div>
     <div class="kpis"><div class="kpi"><b>${a.count}</b><small>영상 수</small></div><div class="kpi"><b>${fmtN(a.subs)}</b><small>구독자</small></div><div class="kpi"><b>${fmtN(a.avg)}</b><small>평균 조회수</small></div><div class="kpi"><b>${fmtN(a.median)}</b><small>중간 조회수</small></div><div class="kpi"><b>${a.above_avg}/${a.count}</b><small>평균 이상 영상</small></div>${a.avg_minutes ? `<div class="kpi"><b>${a.avg_minutes}분</b><small>평균 길이</small></div>` : ''}${a.best_weekday ? `<div class="kpi"><b>${a.best_weekday}요일</b><small>반응 좋은 게시 요일</small></div>` : ''}</div>
@@ -933,6 +936,7 @@ async function loadAnalysis(ch) {
     <div style="margin-top:8px"><b>잘 되는 키워드</b> ${a.keywords.length ? a.keywords.map(k => `<span class="kw good">${esc(k.word)} · 평균 ${fmtN(Math.round(k.avg))}회</span>`).join('') : '<span class="hint">(아직 영상이 적어 뚜렷한 키워드가 없습니다)</span>'}</div>
     ${a.weak.length ? `<div style="margin-top:6px"><b>반응이 약한 키워드</b> ${a.weak.map(k => `<span class="kw bad">${esc(k.word)}</span>`).join('')}</div>` : ''}
     <p class="hint" style="margin-top:8px">[새 주제 추천]을 누르면 AI가 이 분석(잘 된 영상·키워드)을 참고해서 주제를 만듭니다.</p>`;
+  $('chAnalysisQuick').innerHTML = $('chAnalysis').innerHTML;
   if (analysisChannel === channel) $('chAnalysisLine').textContent = `내 채널 분석: 영상 ${a.count}편 · 평균 조회수 ${fmtN(a.avg)}회` + (a.keywords.length ? ` · 잘 되는 키워드: ${a.keywords.slice(0, 5).map(k => k.word).join(', ')}` : '');
 }
 async function saveYtKey() {

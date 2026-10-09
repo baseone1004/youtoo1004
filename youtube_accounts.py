@@ -51,6 +51,19 @@ def select_account(cfg, account_id, slot):
     return account.get("language")
 
 
+def save_selected_api_key(cfg, key, slot="person"):
+    """처음 설정에서 바꾼 키도 현재 저장 계정에 보관한다."""
+    key = str(key or "").strip()
+    if not key:
+        return
+    cfg["유튜브_API_키"] = key
+    selected = cfg.get("유튜브_선택_" + slot)
+    for account in cfg.get("유튜브_계정", []):
+        if account["id"] == selected:
+            account["api_key"] = key
+            break
+
+
 def switch_profile(cfg, account_id, slot, current):
     """Keep each account's reference/model/branding separate when sharing a production slot."""
     migrate(cfg)

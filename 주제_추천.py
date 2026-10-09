@@ -11,6 +11,48 @@ from 공통_api import AI
 
 FILE = "추천_추가.json"
 
+# 직접 작성한 기본 기획안. 실제 조회수 근거와 AI 생성 여부는 별도로 표시한다.
+JAPANESE_TOPICS = [
+    ("人間関係", "いい人なのに、会ったあと疲れるのはなぜ？", ["疲", "人間関係"]),
+    ("家族", "大人になった子どもとの、心地よい距離の取り方", ["子", "親", "家族"]),
+    ("心のケア", "断ったあとに罪悪感が残る人へ、心を守る考え方", ["断", "罪悪感", "心"]),
+    ("会話", "「大丈夫」のあとに隠れた気持ちに気づくには", ["大丈夫", "本音", "言葉"]),
+    ("人間関係", "年齢とともに友達が減るのは、悪いこと？", ["友", "年齢", "孤独"]),
+    ("夫婦", "長く一緒にいる夫婦ほど、会話がすれ違う理由", ["夫婦", "会話"]),
+    ("心のケア", "夜になると昔の失敗を思い出すのはなぜ？", ["夜", "不安", "後悔"]),
+    ("家族", "親のひと言が、大人になっても気になるのはなぜ？", ["親", "言葉", "家族"]),
+    ("職場", "職場で気を使いすぎる人が、少し楽になる方法", ["職場", "気", "疲"]),
+    ("会話", "すぐに謝ってしまう人が、本当に伝えたいこと", ["謝", "言葉", "本音"]),
+    ("心のケア", "何もしたくない日に、自分を責めてしまう理由", ["やる気", "心", "責"]),
+    ("人間関係", "誘いを断っても、良い関係を続けるには", ["断", "人間関係", "友"]),
+]
+
+
+def seed_japanese(exclude=(), count=6):
+    """AI 接続前も使える日本語企画案。人気動画の実測値とは混同しない。"""
+    import 채널_프로필
+    if 채널_프로필.language_code("person") != "ja":
+        return []
+    data = load()
+    known = set(exclude) | {v.get("제목", "") for v in data["person"]}
+    hits = bench_hits(60)
+    ranked = []
+    for category, title, words in JAPANESE_TOPICS:
+        if title in known:
+            continue
+        related = [v for v in hits if sum(w in v["title"] for w in words) >= 2]
+        score = max((v.get("views", 0) for v in related), default=0)
+        item = {"제목": title, "카테고리": category, "한줄": "일본어 기본 기획안 · AI 미사용", "추천방식": "기본", "생성": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
+        if related:
+            item["한줄"] += " · 관련 소재의 인기 영상 참고 가능"
+            item["참고영상"] = related[0]["url"]
+        ranked.append((score, item))
+    ranked.sort(key=lambda x: -x[0])
+    fresh = [item for _, item in ranked[:count]]
+    data["person"] = fresh + data["person"]
+    save(data)
+    return fresh
+
 def storage_file():
     import 채널_프로필
     return "추천_추가_일본.json" if 채널_프로필.language_code("person") == "ja" else FILE

@@ -176,6 +176,9 @@ def analysis(cfg, channel):
     url = channel_url(cfg, channel)
     info = cached(channel)
     videos = info.get("videos") or []
+    if url and info.get("url") == url and info.get("fetched") and not info.get("error") and not videos:
+        return dict(ok=False, connected=True, count=0, name=info.get("name", ""),
+                    reason=f"{info.get('name', '')} · 유튜브 연결 완료. 공개 영상이 아직 없어 조회수 분석을 기다리고 있습니다. 영상을 공개한 뒤 다시 읽으면 분석이 표시됩니다.")
     if not url or info.get("url") != url or not videos:
         return dict(ok=False, count=len(info.get("titles") or []), reason="채널을 아직 읽지 않았습니다. [제목 다시 읽기]를 눌러 주세요.")
     if not any(v.get("views") for v in videos):
@@ -187,9 +190,13 @@ def analysis(cfg, channel):
     keywords = []
     if T is not None:
         agg = {}
+        import 채널_프로필
+        japanese = 채널_프로필.language_code(channel) == "ja"
         for v in videos:
-            for w in T.tokens(v["title"]):
-                if T.HANGUL.fullmatch(w):
+            words = ({w for w in ("人間関係", "心理", "心", "夫婦", "家族", "親", "子ども", "友達", "職場", "不安", "孤独", "疲れ", "本音", "言葉", "習慣", "会話", "人生", "自信", "後悔") if w in v["title"]}
+                     if japanese else T.tokens(v["title"]))
+            for w in words:
+                if japanese or T.HANGUL.fullmatch(w):
                     agg.setdefault(w, []).append(v["views"])
         rows = [dict(word=w, n=len(vs), avg=sum(vs) / len(vs)) for w, vs in agg.items() if len(vs) >= 2]
         keywords = sorted(rows, key=lambda r: -r["avg"])

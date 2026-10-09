@@ -68,6 +68,27 @@ def _duration_seconds(iso):
     return d * 86400 + h * 3600 + mi * 60 + s
 
 
+def search_videos(key, query, language="ja", region="JP", limit=25):
+    """공식 검색 결과와 실제 조회수를 함께 읽는다. 일본어 제목 여부는 호출자가 추가 검증한다."""
+    result = _get(key, "search", part="snippet", type="video", q=query,
+                  relevanceLanguage=language, regionCode=region, order="viewCount",
+                  maxResults=min(50, limit), videoDuration="long")
+    found = {v["id"]["videoId"]: v.get("snippet", {}) for v in result.get("items", [])
+             if v.get("id", {}).get("videoId")}
+    if not found:
+        return []
+    details = _get(key, "videos", part="statistics,contentDetails", id=",".join(found))
+    out = []
+    for v in details.get("items", []):
+        snippet = found.get(v["id"], {})
+        out.append(dict(id=v["id"], title=snippet.get("title", ""),
+                        channel_id=snippet.get("channelId", ""), channel=snippet.get("channelTitle", ""),
+                        channel_url="https://www.youtube.com/channel/" + snippet.get("channelId", ""),
+                        view_count=int(v.get("statistics", {}).get("viewCount", 0)),
+                        duration=_duration_seconds(v.get("contentDetails", {}).get("duration", ""))))
+    return out
+
+
 def fetch_channel(key, url_or_id, limit=300):
     """{name, id, subs, videos:[{id,title,views,likes,comments,duration,published,url}]}"""
     ch = _get(key, "channels", part="snippet,statistics,contentDetails", **_channel_query(url_or_id))

@@ -24,6 +24,7 @@ import 채널_연동
 import 채널_프로필
 import 주제_추천
 import 유튜브_API
+import youtube_accounts
 import production_library
 import 썸네일_합성
 import requests as _rq
@@ -438,6 +439,9 @@ def topics():
     mindam = [t for t in load_json("민담_후보.json", []) if t.get("제목", "").strip() not in used_mindam]
     # [새 주제] 로 AI 가 만들어 둔 추천도 후보에 더한다 (사용한 주제는 제외)
     extra = 주제_추천.load()
+    if 채널_프로필.language_code("person") == "ja" and not extra["person"]:
+        주제_추천.seed_japanese(used_person)
+        extra = 주제_추천.load()
     seen_titles = {t.get("제목", "").strip() for t in plan + cands}
     cands = [t for t in extra["person"] if t.get("제목", "").strip() not in used_person and t.get("제목", "").strip() not in seen_titles] + cands
     seen_m = {t.get("제목", "").strip() for t in mindam}
@@ -483,7 +487,9 @@ def run_benchmark(job, req):
         s.clear()
     hits = 주제_추천.bench_hits(60)
     job.add(f"   ✓ 벤치마킹 완료 · 히트 영상 {len(hits)}개")
-    if not mindam and hits:                          # 터진 영상을 근거로 새 주제 6개를 바로 만들어 추천 맨 위에 올린다
+    cfg = load_json("설정.json", {})
+    ai_ready = cfg.get("AI") != "deepseek-web" or 웹큐.extension_alive()
+    if not mindam and hits and ai_ready:             # 연결된 대본 AI로 인기 영상 기반 주제를 추가한다
         try:
             job.stage = "새 주제 만들기"
             cfg = load_json("설정.json", {})
@@ -493,6 +499,8 @@ def run_benchmark(job, req):
             job.add(f"   ✓ 터진 영상을 참고한 새 주제 {len(fresh)}개")
         except Exception as e:  # noqa: BLE001
             job.add(f"   ! 새 주제 만들기 실패(추천 목록은 그대로): {e}")
+    elif not mindam and not ai_ready:
+        job.add("   대본 AI가 연결되지 않아 저장된 기본 추천을 표시합니다. 처음 설정에서 연결하면 AI 추천도 받을 수 있습니다.")
     return dict(hits=len(hits), file=os.path.abspath(채널_프로필.benchmark_file("person")))
 
 
@@ -516,13 +524,17 @@ def refresh_topics(channel, shown):
         exclude += [s["name"] for s in script_files()]
         analysis = 채널_연동.analysis(cfg, channel)
         try:
+            if cfg.get("AI") == "deepseek-web" and not 웹큐.extension_alive():
+                raise ValueError("딥시크 웹 확장이 연결되지 않았습니다. 처음 설정에서 대본 AI를 연결하세요.")
             fresh = 주제_추천.generate(cfg, channel, 6 - len(have), list(dict.fromkeys(exclude)), analysis if analysis.get("ok") else None)
         except Exception as exc:  # noqa: BLE001      # AI 가 안 되면 본 것부터 다시 보여 준다
+            if channel == "person" and 채널_프로필.language_code(channel) == "ja":
+                have = 주제_추천.seed_japanese(exclude, 6 - len(have)) + have
             if not have:
                 SEEN_TOPICS[channel].clear()
                 current = topics()
                 have = current["mindam"] if channel == "mindam" else current["plan"] + current["candidates"]
-            return dict(channel=channel, items=have[:6], generated=0, error=f"AI 추천 실패: {exc}")
+            return dict(channel=channel, items=have[:6], generated=0, error=f"AI 추천 연결을 확인하세요. 저장된 추천을 표시합니다: {exc}")
         generated = len(fresh)
         have = fresh + have
         if not have:                                  # 새 것이 하나도 없으면 처음부터 다시 돌린다
@@ -2854,6 +2866,8 @@ class H(BaseHTTPRequestHandler):
                     cfg["API_키_" + ai] = cfg["API_키"]
                 if cfg.get("API_키_" + ai):
                     cfg["API_키"] = cfg["API_키_" + ai]
+                if body.get("유튜브_API_키"):
+                    youtube_accounts.save_selected_api_key(cfg, body["유튜브_API_키"])
                 atomic_write_json("설정.json", cfg)
                 for ch, key in 채널_연동.CONFIG_KEY.items():
                     if key in body or "유튜브_API_키" in body:

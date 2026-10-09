@@ -344,3 +344,6 @@ button.danger:hover:not(:disabled){background:#462A34}
 .steps li.busy .n{background:var(--amber-soft);color:var(--amber);border-color:#6D5835}
 ::selection{background:#38548E;color:#F5F8FF}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+#benchGal{max-height:390px;overflow:auto;padding-right:5px}
+#chAnalysisQuick{margin-top:12px;line-height:1.7}
