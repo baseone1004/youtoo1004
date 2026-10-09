@@ -1545,6 +1545,12 @@ def scene_motion_prompts(prompts_file, scenes):
 움직임_적합 = ("medium shot", "medium close-up", "waist-up", "full shot", "wide shot", "over-the-shoulder", "sitting", "standing", "walking", "talking", "looking")
 
 
+def first_hook_scenes(prompts_file, n):
+    """대본 장면 순서의 앞 n개만 영상화한다. 짧은 대본은 있는 장면만."""
+    with open(prompts_file, encoding="utf-8-sig") as f:
+        return sorted(prompt_blocks(f.read()))[:max(0, int(n))]
+
+
 def pick_hook_scenes(prompts_file, n):
     """앞부분 장면 가운데 영상으로 바꿔도 이상하지 않은 장면 n 개를 고른다 (머리만 떠다니는 식의 실패를 줄인다).
     후보는 앞 2n+3 장면. 화면 속 얼굴·분할·도표·손 클로즈업·빈 장면은 뒤로 밀고, 인물 상반신·전신 샷을 앞으로. 그래도 모자라면 순서대로 채운다."""
@@ -2038,7 +2044,7 @@ def make_pipeline(job, req):
     if n_hook > 0 and result.get("prompts"):
         job.stage = "⑤ 후킹 영상"
         have = {int(m.group(1)) for m in (re.match(r"^(\d{1,4})\.mp4$", f, re.I) for f in os.listdir(images_dir)) if m}
-        picked = pick_hook_scenes(result["prompts"], n_hook)        # 앞쪽 장면 중 움직여도 무리 없는 장면(인물 상반신·단일 피사체)만 고른다
+        picked = first_hook_scenes(result["prompts"], n_hook)
         todo = [n for n in picked if n not in have]
         if not todo:
             job.add(f"   앞 {n_hook}장 움직이는 영상이 이미 있어 건너뜀")

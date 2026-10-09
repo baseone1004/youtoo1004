@@ -153,7 +153,7 @@ async function refresh() {
   renderProfileNames();
   const activeProfile = (STATE.profiles || {})[channel] || {};
   $('quickLanguage').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(activeProfile.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
-  if (!$('optHook').dataset.initialized) { $('optHook').value = 0; $('optHook').dataset.initialized = '1'; }
+  if (!$('optHook').dataset.initialized) { $('optHook').value = 7; $('optHook').dataset.initialized = '1'; }
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
   renderStyles(STATE.styles, c.화풍 || '실사');
@@ -193,7 +193,7 @@ async function refresh() {
   $('tgTokenStat').textContent = c.텔레그램_토큰 ? '저장됨 ' + c.텔레그램_토큰 : '없음'; $('tgTokenStat').className = 'stat ' + (c.텔레그램_토큰 ? 'ok' : '');
   $('tgChatStat').textContent = c.텔레그램_채팅_ID ? '연결된 채팅: ' + c.텔레그램_채팅_ID : '연결된 채팅 없음';
   $('tgEnabled').checked = c.텔레그램_알림 !== false;
-  renderChannels(STATE.channels || {}); loadTrash(); renderProfileForm(); renderReference();
+  renderChannels(STATE.channels || {}); loadTrash(); renderProfileForm(); renderReference(); renderAudioRegenerationHint();
   $('ytKeyStat').textContent = c.유튜브_API_키 ? '저장됨 ' + c.유튜브_API_키 : '없음'; $('ytKeyStat').className = 'stat ' + (c.유튜브_API_키 ? 'ok' : '');
   loadAnalysis(channel); loadBench();
   // 경고
@@ -512,7 +512,7 @@ async function loadWorkspace(showToast) {
     renderThumbs();
     $('workEmpty').classList.add('hidden'); $('workBody').classList.remove('hidden'); if (showToast) toast('작업을 불러왔습니다.');
     try { WORK.files = await api('/api/assets?script=' + encodeURIComponent(file)); } catch (e) { WORK.files = {}; }
-    renderStageCards(); renderFiles();
+    renderStageCards(); renderFiles(); renderAudioRegenerationHint();
   } catch (e) { toast(e.message, true); }
 }
 // 단계 카드(1~6)의 상태 배지·진행 막대: 지금 작업의 결과물 + 실행 중인 단계
@@ -577,12 +577,31 @@ async function copyField(id) {
   try { await navigator.clipboard.writeText(text); } catch (e) { el.focus(); el.select(); document.execCommand('copy'); }
   toast('복사했습니다. 유튜브에 붙여 넣으세요.');
 }
+let audioRegenerationPending = false;
+function renderAudioRegenerationHint() {
+  const el = $('rerunAudioHint'); if (!el) return;
+  const slot = WORK?.script_file?.endsWith('final.txt') ? 'mindam' : 'person';
+  const language = STATE.profiles?.[slot]?.언어 || 'ko';
+  const cfg = STATE.config || {};
+  const voice = language === 'ja' ? cfg.인월드_목소리_일본 : (cfg[slot === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || cfg.인월드_목소리);
+  el.textContent = `${language === 'ja' ? '일본어' : '현재 채널'} 목소리: ${voice || '설정에서 목소리를 저장하세요'} · 음성과 자막을 새로 만듭니다. 인월드 사용량이 발생합니다. 완성 영상에는 다시 렌더해야 반영됩니다.`;
+}
 async function rerunTTS() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
-  const current = await api('/api/state');
-  if (current.job?.status === 'running') { startPolling(true); return toast('현재 작업이 진행 중입니다: ' + (current.job.stage || '제작 중') + '. 완료 후 다시 생성하세요.', true); }
-  if (!confirm('이 대본의 나레이션과 자막을 처음부터 다시 만들까요?\n(문장을 묶어 자연스럽게 읽습니다 · 인월드 사용량이 듭니다 · 그림 번호는 그대로)')) return;
-  try { await saveWorkspaceText('script'); await api('/api/tts', {script_file: WORK.script_file, force: true}); startPolling(true); toast('현재 목소리로 음성과 자막을 새로 만듭니다.'); } catch (e) { toast(e.message, true); }
+  if (audioRegenerationPending) return;
+  const scriptFile = WORK.script_file;
+  const scriptText = $('workScript').value;
+  audioRegenerationPending = true;
+  const btn = $('rerunAudioBtn'); if (btn) btn.disabled = true;
+  try {
+    const current = await api('/api/state');
+    if (current.job?.status === 'running') { startPolling(true); return toast('현재 작업이 진행 중입니다: ' + (current.job.stage || '제작 중') + '. 완료 후 다시 생성하세요.', true); }
+    if (!confirm('선택한 대본을 저장하고 현재 목소리로 음성과 자막을 새로 제작할까요?\n인월드 사용량이 발생합니다. 완성 영상은 음성 제작 후 다시 렌더해야 반영됩니다.')) return;
+    await api('/api/workspace/save', {script_file: scriptFile, kind: 'script', text: scriptText});
+    await api('/api/tts', {script_file: scriptFile, force: true});
+    startPolling(true); toast('현재 목소리로 음성과 자막을 새로 만듭니다.');
+  } catch (e) { toast(e.message, true); }
+  finally { audioRegenerationPending = false; if (btn) btn.disabled = false; }
 }
 async function loadTrash() {
   try { const t = await api('/api/trash'); $('trashStat').textContent = t.items ? `휴지통 ${t.items}개 · ${t.gb} GB (${t.keep_days}일 지나면 자동 삭제)` : '휴지통 비어 있음'; } catch (e) {}

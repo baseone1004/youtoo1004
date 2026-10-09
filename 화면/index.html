@@ -47,8 +47,9 @@
     <div class="row" style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
     <div class="row" data-advanced id="personLenRow" style="margin-top:10px"><label><b class="pname-person">정보형</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
     <div id="mindamLenRow" data-advanced class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
-    <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상 (추가 크레딧) <input type="number" id="optHook" value="0" min="0" max="30" style="width:70px"> 장면</label></div>
+    <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상 (추가 크레딧) <input type="number" id="optHook" value="7" min="0" max="30" style="width:70px"> 장면</label></div>
     <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
+    <p class="hint">기본 제작은 앞 7장을 KIE 움직이는 영상으로 자동 변환합니다. 추가 크레딧이 발생하며, 고급 설정에서 장면 수를 0으로 바꾸면 끌 수 있습니다.</p>
     <p id="quickImageCost" class="hint"></p><div id="startHint" class="hint" style="margin-top:8px"></div>
     <ol class="order" id="orderList" style="margin-top:8px"></ol><span class="hidden" id="orderCount"></span>
     <div class="row" data-advanced style="margin-top:12px"><span class="tag-lbl">이미 만든 대본으로 이어서</span><select id="contFile" style="min-width:min(100%,380px)"></select><button onclick="continuePipeline()">이어서 만들기</button></div>
@@ -129,6 +130,8 @@
   <div class="panel-head"><span class="num n5">5</span><b>음성/SRT 확인</b><span class="stat" data-stage-stat="audio">대기</span><span class="spacer"></span><button class="mini" onclick="openWork('narration')">나레이션 파일 열기</button></div>
   <div class="mini-bar"><i data-stage-bar="audio"></i></div>
   <div class="inner">
+    <div class="row"><button id="rerunAudioBtn" class="primary" onclick="rerunTTS()">🎙 음성 다시 제작</button><button onclick="openWork('narration')">▶ 음성 파일 열기</button></div>
+    <p class="hint" id="rerunAudioHint">저장한 목소리로 음성과 자막을 다시 만듭니다. 인월드 사용량이 발생하며, 완성 영상에는 다시 렌더해야 반영됩니다.</p>
     <textarea id="workSrt" class="work-text" placeholder="나레이션이 만들어지면 자막(SRT)이 여기에 보입니다."></textarea>
     <div class="row"><button class="primary" onclick="saveWorkspaceText('srt')">자막 저장</button><button onclick="copyField('workSrt')">복사</button></div>
   </div>
