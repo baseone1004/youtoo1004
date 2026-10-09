@@ -1219,6 +1219,11 @@ def upload_description(description, tags=""):
     if "#" not in text and (tags or "").strip():
         words = [t.strip().lstrip("#") for t in re.split(r"[,\s]+", tags) if t.strip()]
         text += "\n\n" + " ".join("#" + re.sub(r"\s+", "", w) for w in words[:10])
+    hashtags = re.search(r"(?:^|\n)[ \t]*((?:#[^\s#]+[ \t\r\n]*)+)$", text)
+    if hashtags:
+        body = text[:hashtags.start()].rstrip()
+        tag_line = " ".join(hashtags.group(1).split())
+        text = body + ("\n\n\n\n" if body else "") + tag_line
     return text
 
 
