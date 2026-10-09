@@ -7,6 +7,7 @@ import re
 import threading
 import time
 import uuid
+import shutil
 
 _LOCK = threading.RLock()
 MEDIA = re.compile(r"^(\d{1,4})\.(jpg|jpeg|png|webp|mp4)$", re.I)
@@ -46,11 +47,11 @@ def _allowed(root, path):
 
 def backup_file(root, path):
     p, key = _allowed(root, path)
-    if not p.is_file() or p.stat().st_size > 5 * 1024 * 1024:
-        return False
-    raw = p.read_bytes()
-    digest = hashlib.sha256(raw).hexdigest()
     with _LOCK:
+        if not p.is_file() or p.stat().st_size > 5 * 1024 * 1024:
+            return False
+        raw = p.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
         index = _index(root)
         previous = index.get(key, [])
         if previous and previous[-1]["sha256"] == digest:
@@ -184,3 +185,73 @@ def require_render_media(flow, images, report_path=None):
             parts.append("중복 " + ", ".join(f"{n:03d}" for n in report["duplicates"]))
         raise ValueError("장면 파일을 확인하세요: " + " · ".join(parts) + ". 검사 기록은 작업 폴더에 저장했습니다.")
     return report
+
+
+def upload_cleanup(root, item_id, queue_items=(), execute=False):
+    """Only delete the selected library work and explicitly linked upload packages."""
+    root = Path(root).resolve()
+    row = next((x for x in library(root) if x["id"] == item_id), None)
+    if not row:
+        raise ValueError("작업 보관함에서 정리할 작업을 다시 선택하세요.")
+    script = Path(row["script"]).resolve() if row.get("script") else None
+    packages = set()
+    links = {}
+    for package in (root / "업로드").glob("*/*"):
+        marker = package / "제작원본.json"
+        if marker.is_file():
+            source = json.loads(marker.read_text(encoding="utf-8")).get("script", "")
+            if source:
+                links[package.resolve()] = (root / source).resolve()
+    for item in queue_items:
+        result = item.get("result") or {}
+        source = result.get("script") or item.get("script_file")
+        if source and result.get("upload_dir"):
+            links.setdefault(Path(result["upload_dir"]).resolve(), (root / source).resolve())
+    if row.get("package"):
+        package = Path(row["folder"]).resolve()
+        packages.add(package)
+        script = links.get(package)
+    if script:
+        script, key = _allowed(root, script)
+        packages.update(p for p, s in links.items() if s == script)
+        assets = script.parent if script.name == "final.txt" else script.with_name(script.stem + "_자료")
+        targets = {assets, script}
+        if script.name != "final.txt":
+            # Exact known companion names; do not glob unrelated similarly named works.
+            targets.update(script.with_name(script.stem + suffix) for suffix in
+                           ("_이미지프롬프트.txt", "_이미지프롬프트_플로우.txt", "_유튜브최적화.txt",
+                            "_썸네일.txt", "_메타.txt", "_테스트.txt", "_썸네일프롬프트.txt"))
+    else:
+        key = None
+        targets = set()
+    targets.update(packages)
+    for p in targets:
+        allowed = root / ("업로드" if p in packages else "대본")
+        if p == allowed or not p.resolve().is_relative_to(allowed) or p.is_symlink() or getattr(p, "is_junction", lambda: False)() or any(x.startswith("_") for x in p.relative_to(allowed).parts):
+            raise ValueError("선택한 작업 폴더 밖의 파일은 정리할 수 없습니다.")
+        # Reject junctions/symlinks anywhere inside recursive targets, too.
+        if p.is_dir() and any(not c.resolve().is_relative_to(p) or c.is_symlink() or
+                             (getattr(c, "is_junction", lambda: False)()) for c in p.rglob("*")):
+            raise ValueError("외부 폴더 연결이 있는 작업은 자동 정리할 수 없습니다.")
+    existing = sorted((p for p in targets if p.exists()), key=lambda p: len(p.parts), reverse=True)
+    result = {"name": row["name"], "paths": [str(p) for p in existing], "linked_script": str(script) if script else "",
+              "count": len(existing), "source_linked": bool(script)}
+    if not execute:
+        return result
+    with _LOCK:
+        # All paths have been validated above before the first removal.
+        for p in existing:
+            if p.is_dir():
+                shutil.rmtree(p)
+            elif p.exists():
+                p.unlink()
+        if key:
+            index = _index(root)
+            deleted = {p.relative_to(root / "대본").as_posix() for p in targets if p not in packages}
+            index = {k: v for k, v in index.items() if not any(k == d or k.startswith(d + "/") for d in deleted)}
+            _write(_store(root) / "index.json", json.dumps(index, ensure_ascii=False, indent=2).encode())
+            keep = {v["file"] for versions in index.values() for v in versions}
+            for p in _store(root).glob("*.bin"):
+                if p.name not in keep:
+                    p.unlink()
+    return result

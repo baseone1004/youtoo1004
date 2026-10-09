@@ -90,7 +90,7 @@
 </div>
 
 <div class="row"><button id="advancedToggle" onclick="toggleAdvanced()">고급 편집 열기</button><span class="hint">이미지 수정 · 자막 · 썸네일 · 채널 프로필</span></div>
-<div class="panel" id="simpleResult"><div class="inner"><h2>3. 완성 확인</h2><p class="hint">위에서 작업을 선택하면 완성한 영상과 결과 폴더를 열 수 있습니다.</p><div class="row"><button class="primary" onclick="openWork('video')">최종 영상 열기</button><button onclick="openWork('assets')">결과 폴더 열기</button></div></div></div>
+<div class="panel" id="simpleResult"><div class="inner"><h2>3. 완성 확인</h2><p class="hint">위에서 작업을 선택하면 완성한 영상과 결과 폴더를 열 수 있습니다. 유튜브 업로드가 끝났으면 정리 버튼으로 해당 작업 파일을 삭제하세요.</p><div class="row"><button class="primary" onclick="openWork('video')">최종 영상 열기</button><button onclick="openWork('assets')">결과 폴더 열기</button><button onclick="markSelectedUploaded()">업로드 완료 후 정리</button></div></div></div>
 <!-- ═══ 단계 카드 ═══ -->
 <div id="workBody" data-advanced>
 <div class="panel stage" id="stage-script">

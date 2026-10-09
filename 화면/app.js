@@ -504,7 +504,7 @@ async function loadProductionLibrary() {
     const r = await api('/api/library');
     box.innerHTML = (r.items || []).map(x => {
       const state = x.package ? '업로드 준비 완료' : `${x.script_exists ? '대본 있음' : '대본 없음'} · ${x.audio ? '음성 있음' : '음성 대기'} · 장면 파일 ${x.media_count}개`;
-      return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">작업 선택</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}</div>`;
+      return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">작업 선택</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}<button class="mini" onclick="markWorkUploaded('${js(x.id)}')">업로드 완료 후 정리</button></div>`;
     }).join('') || '<p class="hint">저장된 작업이 없습니다.</p>';
   } catch (e) { box.textContent = e.message; }
 }
@@ -517,6 +517,22 @@ async function selectLibraryWork(path) {
 async function restoreLibraryWork(id) {
   try { const r = await api('/api/library/restore', {id}); toast(`없는 문서 ${r.count}개를 복원했습니다.`); await refresh(); await loadProductionLibrary(); }
   catch (e) { toast(e.message,true); }
+}
+async function markWorkUploaded(id) {
+  try {
+    const r = await api('/api/library/uploaded-preview', {id});
+    const scope = r.source_linked ? '대본·음성·이미지·영상·연결된 업로드 폴더·문서 백업' : '이 업로드 폴더 (원본 제작 작업 연결 정보 없음)';
+    if (!confirm(`유튜브 업로드가 완료된 작업인가요?\n${r.name}\n\n삭제 대상: ${scope}\n${r.paths.join('\n')}\n\n영구 삭제하며 되돌릴 수 없습니다.`)) return;
+    await api('/api/library/uploaded', {id});
+    await afterScriptsRemoved(); await loadProductionLibrary();
+    toast('업로드 완료 작업의 파일을 정리했습니다.');
+  } catch (e) { toast(e.message, true); }
+}
+async function markSelectedUploaded() {
+  if (!WORK) return toast('완성한 작업에서 대본을 선택하세요.', true);
+  const r = await api('/api/library');
+  const row = r.items.find(x => x.script === WORK.script_file);
+  if (row) await markWorkUploaded(row.id);
 }
 async function checkMediaMatching() {
   if (!WORK) return toast('작업을 먼저 고르세요.',true);

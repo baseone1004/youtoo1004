@@ -1331,6 +1331,32 @@ def check_narration_sync(script_file):
     return 나레이션.verify_subtitle_sync(srt, duration, "character" if settings.get("timestamps") else "estimated")
 
 def make_tts(job, req):
+    if not req.get("force"):
+        return _make_tts(job, req)
+    out = Path(req.get("out_dir") or assets_dir(req.get("script_file", ""))).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="_음성재생성_", dir=out) as temp:
+        result = _make_tts(job, dict(req, out_dir=temp))
+        if job.cancel_requested:
+            raise RuntimeError("취소됨")
+        for name in ("나레이션.mp3", "나레이션.srt", "플로우.txt"):
+            if not (Path(temp) / name).is_file() or not (Path(temp) / name).stat().st_size:
+                raise ValueError("새 음성·자막 파일이 완성되지 않아 기존 파일을 유지했습니다.")
+        for new in Path(temp).iterdir():
+            old = out / new.name
+            if new.is_dir() and old.exists():
+                shutil.rmtree(old)
+            os.replace(new, old)
+        # The previous sync report is invalid when timestamps are turned off.
+        if not result.get("sync"):
+            (out / "나레이션_싱크.json").unlink(missing_ok=True)
+        for key in ("mp3", "srt", "flow"):
+            result[key] = str(out / Path(result[key]).name)
+        job.add("   ✓ 이전 음성·자막·음성 조각을 새 결과로 교체했습니다.")
+        return result
+
+
+def _make_tts(job, req):
     backup_work_text()
     cfg = 대본생성.load_cfg()
     path = req.get("script_file", "")
@@ -1621,6 +1647,24 @@ def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
 
 
 def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
+    target = Path(output).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="_영상재생성_", dir=target.parent) as temp:
+        staged = Path(temp) / target.name
+        result = _run_render(job, srt, flow, images_dir, narration, str(staged), ken_burns)
+        if job.cancel_requested:
+            raise RuntimeError("취소됨")
+        if not staged.is_file() or not staged.stat().st_size:
+            raise ValueError("새 영상이 완성되지 않아 기존 영상을 유지했습니다.")
+        os.replace(staged, target)
+        for key, value in list(result.items()):
+            if isinstance(value, str) and value == str(staged):
+                result[key] = str(target)
+        job.add("   ✓ 이전 최종 영상을 새 결과로 교체했습니다.")
+        return result
+
+
+def _run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     report = production_library.require_render_media(flow, images_dir, os.path.join(os.path.dirname(flow), "장면_매칭_검사.json"))
     job.add(f"   ✓ 편집 전 검사 · 장면 {report['matched']}개 연결 · 영상 파일 우선 사용")
     # 편집프로그램 화면에서 마지막으로 쓴 자막 글꼴·색·위치·화면 설정을 그대로 가져와 쓴다
@@ -1648,7 +1692,7 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
                 raise
             job._render_retried = True
             job.add("   ✓ 편집프로그램이 다시 켜졌습니다 → 렌더를 다시 시작합니다")
-            return run_render(job, srt, flow, images_dir, narration, output, ken_burns)
+            return _run_render(job, srt, flow, images_dir, narration, output, ken_burns)
         prog = float(st.get("progress") or 0)
         if prog != last_progress:
             last_progress, since = prog, time.time()
@@ -1904,6 +1948,7 @@ def make_upload_package(script_file, result):
     channel_dir = 대본생성.safe_name(채널_프로필.get("mindam" if is_mindam else "person").get("업로드_폴더") or ("민담" if is_mindam else "심리해독소"))
     package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
     package.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(package / "제작원본.json", {"script": os.path.relpath(os.path.abspath(script_file), BASE)})
     (package / "제목.txt").write_text(title, encoding="utf-8")
     (package / "설명.txt").write_text(description.strip(), encoding="utf-8")
     (package / "태그.txt").write_text(tags.strip(), encoding="utf-8")
@@ -2554,6 +2599,24 @@ class H(BaseHTTPRequestHandler):
                 if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
                     raise ValueError("제작 중에는 복원할 수 없습니다. 현재 제작이 끝난 뒤 다시 누르세요.")
                 self._json(production_library.restore_missing(BASE, str(body.get("id", ""))))
+            elif u.path in ("/api/library/uploaded-preview", "/api/library/uploaded"):
+                execute = u.path == "/api/library/uploaded"
+                with LOCK, QUEUE.lock:
+                    if (STATE.get("job") and STATE["job"].status == "running") or QUEUE.data.get("status") == "running":
+                        raise ValueError("제작이 끝난 뒤 업로드 완료 작업을 정리하세요.")
+                    result = production_library.upload_cleanup(BASE, str(body.get("id", "")), QUEUE.data.get("items", []), execute)
+                    if execute:
+                        source = result["linked_script"]
+                        paths = result["paths"]
+                        for item in QUEUE.data.get("items", []):
+                            data = item.get("result") or {}
+                            if (source and os.path.abspath(data.get("script") or item.get("script_file") or "") == source) or data.get("upload_dir") in paths:
+                                item.update(uploaded=True, cleaned=True, result={})
+                                if item.get("status") in ("pending", "error"):
+                                    item["status"] = "skipped"
+                        QUEUE.save()
+                        STATE["job"] = None
+                self._json(result)
             elif u.path == "/api/tts":
                 run_job("tts", lambda job: make_tts(job, body)); self._json({"ok": True})
             elif u.path == "/api/workspace/save":
