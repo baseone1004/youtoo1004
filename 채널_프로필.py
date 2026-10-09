@@ -159,7 +159,7 @@ def save(slot, patch):
             continue
         if k == "언어":
             clean[k] = str(v or "ko").lower() if str(v or "ko").lower() in LANGUAGES else "ko"
-        elif k in ("검색어", "기본_태그", "자료_검색_접미"):
+        elif k in ("검색어", "검색어_일본", "기본_태그", "자료_검색_접미"):
             if isinstance(v, str):
                 v = [x.strip() for x in re.split(r"[\n,]", v) if x.strip()]
             clean[k] = [str(x).strip() for x in (v or []) if str(x).strip()]
@@ -194,7 +194,7 @@ def placeholders(slot):
         "마스코트_이름": m.get("이름", ""),
         "마스코트_설명": m.get("설명", ""),
         "마스코트_프롬프트": m.get("프롬프트", ""),
-        "인물_표현_규칙": 인물_표현_규칙(p),
+        "인물_표현_규칙": localize_guideline(인물_표현_규칙(p), slot),
     }
 
 
@@ -213,11 +213,12 @@ def language_instruction(slot):
     if code == "ko":
         return ""
     lang = LANGUAGES[code]
+    native = " 일본어는 일본 시청자에게 말하듯 자연스러운 です・ます체로 쓴다. 한국식 직역, 과도한 당신 호칭, 번역투 문장 연결을 피한다. 공감하는 도입→일본 일상 사례→근거→부담 없는 실천 순서로 구성한다. 직장·전철·가족·이웃의 사례를 쓰되 성별·국민성 고정관념과 근거 없는 통계는 금지한다. 썸네일 문구는 각 줄 8~14자를 목표로 두 줄, 한 가지 궁금증이나 감정을 담고 대본 내용과 일치시킨다. 색은 가독성 중심의 남색·크림 바탕, 흰색·따뜻한 노랑 글자, 제한적인 주홍 강조를 기본으로 삼는다. 조회수를 보장하거나 모든 일본인의 선호라고 단정하지 않는다." if code == "ja" else ""
     return ("\n\n[출력 언어 — 최우선 규칙]\n"
             f"이 채널의 시청자 언어는 {lang['이름']}이다. 대본 본문, 제목, 설명, 태그, 고정댓글, 화면에 보이는 문구는 모두 {lang['지시']}로 작성한다. "
             "입력 주제가 한국어여도 자연스럽게 현지화한다. 직역투를 피하고 해당 언어권의 호칭·관용 표현·문장부호를 쓴다. "
             "프로그램이 읽는 [제목], [대본], [설명글], [태그], [고정댓글] 같은 대괄호 블록명과 ===001=== 같은 번호 표시는 원래 형식을 그대로 유지한다. "
-            "이미지 생성 프롬프트와 고유한 영어 스타일 문구는 영어를 유지한다.")
+            "이미지 생성 프롬프트와 고유한 영어 스타일 문구는 영어를 유지한다." + native)
 
 
 def 인물_표현_규칙(p):
@@ -256,8 +257,13 @@ def brand(slot):
     """썸네일 합성에 넘길 브랜드 값 (배지가 비어 있으면 채널 이름)."""
     p = get(slot)
     b = dict(p.get("브랜드") or {})
+    if language_code(slot) == "ja":
+        b = dict({"주색":"#18344A", "강조색":"#FFE08A", "바탕색":"#FFF8ED", "보조색":"#D65745", "사진_톤":"warm", "배지":"心の話"}, **(p.get("브랜드_일본") or {}))
     if not (b.get("배지") or "").strip():
         b["배지"] = p["이름"]
+    b["언어"] = language_code(slot)
+    if b["언어"] == "ja" and re.search(r"[가-힣]", b.get("배지", "")):
+        b["배지"] = p.get("일본어_채널명") or "心の話"
     return b
 
 
@@ -270,5 +276,28 @@ def summary():
     """화면용: 자리별 이름·유형·마스코트 유무·업로드 폴더."""
     out = {}
     for slot, p in load().items():
-        out[slot] = dict(p, 마스코트_있음=bool((p.get("마스코트") or {}).get("이름")))
+        out[slot] = dict(p, 적용_브랜드=brand(slot), 적용_검색어=benchmark_queries(slot), 마스코트_있음=bool((p.get("마스코트") or {}).get("이름")))
     return out
+
+
+def localize_guideline(text, slot):
+    if language_code(slot) != "ja":
+        return text
+    for old, new in [("a Korean", "a Japanese"), ("Korean office worker", "Japanese office worker"), ("한국 유튜브", "일본 유튜브"), ("한국인", "일본인"), ("현대 한국", "현대 일본"), ("중국·일본풍은 쓰지 않는다", "주제의 실제 시대·지역을 따르며, 현대 일상은 일본 배경을 쓴다")]:
+        text = text.replace(old, new)
+    return text + "\n[일본 시청자 현지화 — 기존 한국 중심 예시보다 우선]\n일본 시청자가 일상에서 접하는 관계·직장·가족의 구체적 상황을 쓴다. 현대 장면은 일본의 집·동네·전철·사무실과 자연스러운 복장으로 그린다. 한국어 간판·한복·한국 배경을 자동으로 넣지 않는다. 역사나 해외 사건은 사실에 맞는 실제 지역·시대를 유지한다. 일본인을 획일적 외모나 고정관념으로 표현하지 않는다. 제목·썸네일 문구는 자연스러운 일본어로, 직역이나 한국어 조사·한글을 섞지 않는다. 썸네일은 짧은 핵심 문구 두 줄과 한 가지 감정·상징, 작은 화면에서도 읽기 쉬운 대비를 쓴다. 검증되지 않은 유행·조회수 보장은 주장하지 않는다. 이미지 생성 프롬프트는 영어로 쓰고 이미지 자체에는 글자를 그리지 않는다."
+
+
+def benchmark_file(slot="person"):
+    return "벤치_히트_일본.json" if language_code(slot) == "ja" else "벤치_히트.json"
+
+
+def benchmark_queries(slot="person"):
+    p = get(slot)
+    if language_code(slot) == "ja":
+        return p.get("검색어_일본") or ["人間関係 心理学", "人の心理 なぜ", "心が疲れる 人間関係", "言葉 表情 本音", "大人の人間関係", "家族 夫婦 心理"]
+    return p.get("검색어") or ["인간관계 심리", "사람 심리 이유"]
+
+
+def benchmark_channels_key(slot="person"):
+    return "벤치_채널_추가_일본" if language_code(slot) == "ja" else "벤치_채널_추가"

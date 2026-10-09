@@ -36,7 +36,8 @@ def _profile():
         return 채널_프로필.get("person")
     except Exception:  # noqa: BLE001
         return {"이름": "심리해독소", "검색어": ["인간관계 심리", "사람 심리 이유"], "기본_태그": ["심리학", "인간관계"], "해시태그": "#심리해독소", "면책": ""}
-검색어 = _profile().get("검색어") or ["인간관계 심리", "사람 심리 이유"]
+import 채널_프로필
+검색어 = 채널_프로필.benchmark_queries("person")
 제외_채널_단어 = ["뉴스", "TV", "연예", "정치", "News", "방송", "KBS", "MBC", "SBS", "JTBC", "YTN"]
 벤치_채널_수 = 8          # 자동으로 찾을 채널 수
 채널당_영상_수 = 60       # 채널마다 살펴볼 최근 영상 수
@@ -71,6 +72,8 @@ STOP = set("""이유 진짜 절대 것 때 왜 이런 그런 정말 가장 방�
 
 def is_korean(text):
     """제목 글자의 40% 이상이 한글이면 한국어 영상으로 본다."""
+    if 채널_프로필.language_code("person") == "ja":
+        return bool(re.search(r"[ぁ-んァ-ン]", text or "")) and not bool(re.search(r"[가-힣]", text or ""))
     letters = re.findall(r"[가-힣A-Za-z]", text or "")
     return bool(letters) and sum(1 for ch in letters if "가" <= ch <= "힣") / len(letters) >= 0.4
 
@@ -94,7 +97,7 @@ def tokens(text):
     return out
 
 def bigrams(text):
-    s = re.sub(r"[^가-힣a-zA-Z0-9]", "", text)
+    s = re.sub(r"[^가-힣ぁ-んァ-ン一-龯a-zA-Z0-9]", "", text)
     return {s[i:i + 2] for i in range(len(s) - 1)}
 
 def similarity(a, b):
@@ -225,6 +228,8 @@ def 관련있음(title):
     t = (title or "")
     if any(w in t for w in 무관_낱말):
         return False
+    if 채널_프로필.language_code("person") == "ja":
+        return any(w in t for w in ("心理", "心", "人間関係", "感情", "友", "家族", "夫婦", "言葉", "表情", "性格", "習慣", "本音", "不安", "人生"))
     return any(w in t for w in 관련_낱말)
 
 
@@ -1199,7 +1204,7 @@ def main():
 
     print("② 비슷한 채널 찾는 중...")
     exclude_ids = {mine["id"]} if mine and mine.get("id") else set()
-    urls = [norm_channel_url(u) for u in cfg["벤치_채널_추가"] if u.strip()]
+    urls = [norm_channel_url(u) for u in cfg.get(채널_프로필.benchmark_channels_key("person"), []) if u.strip()]
     for cid, name, url, hits in discover_channels(검색어, exclude_ids, 제외_채널_단어, 벤치_채널_수):
         print(f"   {name}")
         if url not in urls:
@@ -1235,7 +1240,7 @@ def main():
             hits.append(dict(title=v["title"], channel=ch["name"], views=v["views"], ratio=v.get("ratio", 0), url=v["url"],
                              thumb=f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg" if v.get("id") else ""))
     hits.sort(key=lambda v: -v["ratio"])
-    with open("벤치_히트.json", "w", encoding="utf-8") as f:
+    with open(채널_프로필.benchmark_file("person"), "w", encoding="utf-8") as f:
         json.dump({"날짜": datetime.date.today().isoformat(), "채널": [dict(name=c["name"], url=c["url"], subs=c.get("subs", 0)) for c in bench],
                    "히트": hits[:60]}, f, ensure_ascii=False, indent=1)
     out = os.path.join(BASE, "주제_리포트.html")

@@ -449,7 +449,7 @@ def run_benchmark(job, req):
             job.add(f"   ✓ 터진 영상을 참고한 새 주제 {len(fresh)}개")
         except Exception as e:  # noqa: BLE001
             job.add(f"   ! 새 주제 만들기 실패(추천 목록은 그대로): {e}")
-    return dict(hits=len(hits), file=os.path.abspath("벤치_히트.json"))
+    return dict(hits=len(hits), file=os.path.abspath(채널_프로필.benchmark_file("person")))
 
 
 def refresh_topics(channel, shown):
@@ -493,7 +493,7 @@ def read_guideline(name, channel="person"):
     if not path_inside(지침_폴더, p) or not os.path.isfile(p):
         raise FileNotFoundError(name)
     with open(p, encoding="utf-8-sig") as f:
-        return 채널_프로필.fill(f.read(), channel) + 채널_프로필.language_instruction(channel)
+        return 채널_프로필.localize_guideline(채널_프로필.fill(f.read(), channel), channel) + 채널_프로필.language_instruction(channel)
 
 def write_guideline(name, text):
     p = os.path.join(지침_폴더, name)
@@ -1690,6 +1690,8 @@ def brand_preview(slot):
         raise ValueError("샘플에 쓸 그림이 아직 없습니다. 영상을 한 편 만든 뒤 다시 눌러 주세요.")
     copies = ([("글 모르는 머슴이", "양반 셋을 이긴 방법"), ("첫날밤 사라진", "신랑의 행방"), ("쌀 한 바가지가", "만 냥이 된 사연")] if slot == "mindam"
               else [("당첨 뒤 조용해진 집", "돈이 바꾼 가족의 이유"), ("좋은 사람인데", "만나면 지치는 이유"), ("나이 들수록", "친구가 줄어드는 이유")])
+    if 채널_프로필.language_code(slot) == "ja":
+        copies = [("いい人なのに", "一緒にいると疲れる"), ("年齢とともに", "友達が減る理由"), ("その笑顔の裏に", "隠れた本音") ]
     out_dir = os.path.join(BASE, "대본", "_상태", "브랜드_미리보기"); os.makedirs(out_dir, exist_ok=True)
     tp = 채널_프로필.get(slot).get("썸네일") or {}
     outs = []
@@ -2423,12 +2425,12 @@ class H(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
             elif u.path == "/api/bench":
                 try:
-                    with open("벤치_히트.json", encoding="utf-8") as f:
+                    with open(채널_프로필.benchmark_file(q.get("channel", ["person"])[0]), encoding="utf-8") as f:
                         data = json.load(f)
                 except (OSError, ValueError):
                     data = {"날짜": "", "채널": [], "히트": []}
                 cfg = load_json("설정.json", {})
-                data["추가_채널"] = cfg.get("벤치_채널_추가") or []
+                data["추가_채널"] = cfg.get(채널_프로필.benchmark_channels_key(q.get("channel", ["person"])[0])) or []
                 self._json(data)
             elif u.path == "/api/channel/analysis":
                 cfg = load_json("설정.json", {})
@@ -2598,13 +2600,28 @@ class H(BaseHTTPRequestHandler):
                 self._json(dict(ok=True, profile=saved))
             elif u.path == "/api/profile":
                 slot = body.get("slot") or "person"
-                saved = 채널_프로필.save(slot, body.get("data") or {})
+                patch = body.get("data") or {}
+                if "언어" in patch and patch["언어"] != 채널_프로필.language_code(slot) and ((STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running"):
+                    raise ValueError("제작이 끝난 뒤 언어를 바꿔 주세요. 진행 중인 대본·목소리의 언어를 유지합니다.")
+                saved = 채널_프로필.save(slot, patch)
+                if "언어" in patch:
+                    cfg = load_json("설정.json", {})
+                    selected_id = cfg.get("유튜브_선택_" + slot)
+                    for account in cfg.get("유튜브_계정", []):
+                        if account["id"] == selected_id:
+                            account["language"] = saved["언어"]
+                            atomic_write_json("설정.json", cfg)
+                            break
                 self._json(dict(ok=True, profile=saved))
             elif u.path in ("/api/youtube/accounts", "/api/youtube/accounts/select"):
                 from youtube_accounts import save_account, select_account, public_accounts
                 cfg = load_json("설정.json", {})
                 if u.path.endswith("/select"):
-                    select_account(cfg, body.get("id"), body.get("slot", "person"))
+                    if STATE.get("job") and STATE["job"].status == "running" or queue_snapshot().get("status") == "running":
+                        raise ValueError("제작이 끝난 뒤 계정을 바꿔 주세요. 진행 중인 대본·목소리의 언어를 유지합니다.")
+                    selected_language = select_account(cfg, body.get("id"), body.get("slot", "person"))
+                    if selected_language:
+                        채널_프로필.save(body.get("slot", "person"), {"언어": selected_language})
                 else:
                     save_account(cfg, body)
                 atomic_write_json("설정.json", cfg)
@@ -2686,9 +2703,10 @@ class H(BaseHTTPRequestHandler):
                 run_job("bench", lambda job: run_benchmark(job, body)); self._json({"ok": True})
             elif u.path == "/api/bench/channels":
                 cfg = load_json("설정.json", {})
-                cfg["벤치_채널_추가"] = [str(x).strip() for x in (body.get("channels") or []) if str(x).strip()]
+                bench_key = 채널_프로필.benchmark_channels_key(body.get("channel", "person"))
+                cfg[bench_key] = [str(x).strip() for x in (body.get("channels") or []) if str(x).strip()]
                 atomic_write_json("설정.json", cfg)
-                self._json({"ok": True, "count": len(cfg["벤치_채널_추가"])})
+                self._json({"ok": True, "count": len(cfg[bench_key])})
             elif u.path == "/api/topics/hide":                    # 추천 목록의 주제를 '이미 만든 주제'로 기록해 다시 안 나오게
                 title = str(body.get("title") or "").strip()
                 if not title:

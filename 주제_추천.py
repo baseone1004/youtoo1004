@@ -24,7 +24,8 @@ def categories(channel):
 def bench_hits(limit=20):
     """주제뽑기가 저장한 비슷한 채널의 히트 제목."""
     try:
-        with open("벤치_히트.json", encoding="utf-8") as f:
+        import 채널_프로필
+        with open(채널_프로필.benchmark_file("person"), encoding="utf-8") as f:
             return (json.load(f).get("히트") or [])[:limit]
     except (OSError, ValueError):
         return []

@@ -13,10 +13,13 @@
 브랜드 값(주색·강조색·바탕색·배지 문구·사진 톤)은 compose(..., brand=) 로 받는다. 글꼴은 assets/fonts/."""
 import os
 import random
+import re
+from contextvars import ContextVar
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 W, H = 1280, 720
+_JAPANESE = ContextVar("thumbnail_japanese", default=False)
 FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "fonts")
 FONT = os.path.join(FONT_DIR, "BlackHanSans-Regular.ttf")
 BRUSH = os.path.join(FONT_DIR, "NanumBrushScript-Regular.ttf")
@@ -25,6 +28,7 @@ JALNAN = os.path.join(FONT_DIR, "Jalnan2.ttf")          # 여기어때 잘난체
 YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#000000"
 
 레이아웃_이름 = {
+    "jp_pop": "일본어 · 흰색+따뜻한 노랑 두 줄 · 남색 대비",
     "navy_mint": "아래 두 줄 · 배지 · 강조선 (정보형 추천)",
     "cream_card": "왼쪽 카드 + 오른쪽 인물 (차분한 책 느낌)",
     "coral_ribbon": "아래 두 줄 · 사선 리본",
@@ -43,8 +47,15 @@ YELLOW, WHITE, RED, GOLD, BLACK = "#FFE45C", "#FFFFFF", "#FF3B30", "#FFD54A", "#
 
 
 # ── 기본 도구 ─────────────────────────────────────────
+def japanese_font():
+    for path in [os.path.join(FONT_DIR, "NotoSansJP-Bold.ttf"), os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothB.ttc"), os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothM.ttc")]:
+        if os.path.isfile(path):
+            return path
+    raise ValueError("일본어 썸네일 글꼴이 없습니다. Windows 일본어 글꼴을 설치하거나 assets/fonts/NotoSansJP-Bold.ttf를 넣어 주세요.")
+
+
 def _font(size, path=FONT):
-    return ImageFont.truetype(path, max(20, int(size)))
+    return ImageFont.truetype(japanese_font() if _JAPANESE.get() else path, max(20, int(size)))
 
 
 def _fit(draw, text, size, max_w, min_size=48, path=FONT):
@@ -57,6 +68,11 @@ def _fit(draw, text, size, max_w, min_size=48, path=FONT):
 
 def _wrap(text, max_chars):
     """단어 단위로 최대 max_chars 글자씩 두 줄까지 나눈다."""
+    if _JAPANESE.get() and len(text) > max_chars:
+        cut = min(max_chars, max(1, len(text) // 2))
+        while cut > 1 and (text[cut] in "、。！？）」』】" or text[cut-1] in "（「『【"):
+            cut -= 1
+        return [text[:cut].strip(), text[cut:].strip()]
     words = text.split()
     if len(text) <= max_chars or len(words) < 2:
         return [text]
@@ -484,14 +500,32 @@ def layout_band(im, top, bottom, tag_text="옛이야기", b=None):
     return im
 
 
+def layout_jp_pop(im, top, bottom, b):
+    im = _shade_bottom(im, 0.48, 0.82, _hex(b["주색"]))
+    d = ImageDraw.Draw(im)
+    lines = ([top] if top else []) + ([bottom] if bottom else [])
+    if len(lines) == 1:
+        lines = _wrap(lines[0], 14)
+    fonts = [_fit(d, line, 116, W-100, 40) for line in lines]
+    y = H - 36 - sum(int(f.size * 1.18) for f in fonts)
+    for i, (line, font) in enumerate(zip(lines, fonts)):
+        x = (W - d.textlength(line, font=font)) / 2
+        _outlined(d, (x,y), line, font, WHITE if i == 0 else b["강조색"], stroke=max(5,font.size//14))
+        y += int(font.size*1.18)
+    if b.get("배지"):
+        _pill(d,(32,28),b["배지"],_font(30),b["주색"],WHITE)
+    return im
+
+
 LAYOUTS = {
+    "jp_pop": (0.5, layout_jp_pop),
     "navy_mint": (0.6, layout_navy_mint), "cream_card": (0.5, layout_cream_card), "coral_ribbon": (0.6, layout_coral_ribbon),
     "bottom_two": (0.5, layout_bottom_two), "hanji_seal": (0.5, layout_hanji_seal), "ink_gold": (0.5, layout_ink_gold),
     "scroll": (0.7, layout_scroll), "band": (0.55, layout_band), "pop_bold": (0.5, layout_pop_bold), "jalnan_pop": (0.5, layout_jalnan_pop),
 }
 
 
-def compose(image, out, top, bottom, channel="person", layout=None, tag_text=None, brand=None):
+def _compose(image, out, top, bottom, channel="person", layout=None, tag_text=None, brand=None):
     if (channel or "person") != "person":            # 이야기형 레이아웃은 낱말 색 규칙을 쓰지 않으므로 별표 표시만 걷어 낸다
         top, bottom = _clean_marks(top), _clean_marks(bottom)
     """원본 이미지 + 문구 → out (1280×720 JPG). 쓴 레이아웃 이름을 돌려준다.
@@ -512,3 +546,14 @@ def compose(image, out, top, bottom, channel="person", layout=None, tag_text=Non
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     im.save(out, quality=92)
     return "bottom" if layout == "bottom_two" else layout
+
+
+def compose(image, out, top, bottom, channel="person", layout=None, tag_text=None, brand=None):
+    japanese = (brand or {}).get("언어") == "ja" or bool(re.search(r"[ぁ-んァ-ン]", top + bottom))
+    token = _JAPANESE.set(japanese)
+    try:
+        if japanese and layout != "jp_pop":
+            layout = "jp_pop"
+        return _compose(image,out,top,bottom,channel,layout,tag_text,brand)
+    finally:
+        _JAPANESE.reset(token)

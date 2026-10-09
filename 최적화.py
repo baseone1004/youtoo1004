@@ -37,7 +37,8 @@ def load_bench_hits(channel, limit=15):
     if channel == "mindam":
         return []
     try:
-        with open("벤치_히트.json", encoding="utf-8") as f:
+        import 채널_프로필
+        with open(채널_프로필.benchmark_file("person"), encoding="utf-8") as f:
             return (json.load(f).get("히트") or [])[:limit]
     except Exception:
         return []
@@ -78,7 +79,7 @@ def optimize(ai, channel, script_text, extra="", log=print):
     with open(지침_파일, encoding="utf-8-sig") as f:
         system = f.read()
     import 채널_프로필
-    system += 채널_프로필.language_instruction(channel)
+    system = 채널_프로필.localize_guideline(system, channel) + 채널_프로필.language_instruction(channel)
     trends = load_trends(channel)
     bench = load_bench_hits(channel)
     body = script_text.strip()

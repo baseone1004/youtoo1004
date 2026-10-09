@@ -7,7 +7,7 @@ def public_accounts(cfg):
     accounts = cfg.get("유튜브_계정", [])
     if not accounts:
         accounts = [{"id": slot, "name": name, "url": cfg.get(key, ""), "api_key": cfg.get("유튜브_API_키", "")} for slot, name, key in [("person", "기존 정보형", "내_채널"), ("mindam", "기존 이야기형", "민담_채널")] if cfg.get(key)]
-    return [{"id": a["id"], "name": a["name"], "url": a["url"], "key_saved": bool(a.get("api_key"))} for a in accounts]
+    return [{"id": a["id"], "name": a["name"], "url": a["url"], "key_saved": bool(a.get("api_key")), "language": a.get("language", "")} for a in accounts]
 
 
 def migrate(cfg):
@@ -22,13 +22,16 @@ def save_account(cfg, body):
         raise ValueError("계정 이름을 입력하세요 (100자 이하).")
     if parsed.scheme != "https" or parsed.hostname not in {"youtube.com", "www.youtube.com", "m.youtube.com"} or not parsed.path.startswith(("/@", "/channel/", "/c/", "/user/")):
         raise ValueError("https://www.youtube.com/@이름 형식의 채널 주소를 입력하세요.")
+    language = str(body.get("language", "ko"))
+    if language not in {"ko", "ja", "en", "es", "zh"}:
+        raise ValueError("지원하는 제작 언어를 선택하세요.")
     migrate(cfg)
     key = str(body.get("api_key", "")).strip() or cfg.get("유튜브_API_키", "")
     found = next((a for a in cfg["유튜브_계정"] if a["url"] == url), None)
     if found:
-        found.update(name=name, api_key=key or found.get("api_key", ""))
+        found.update(name=name, api_key=key or found.get("api_key", ""), language=language)
     else:
-        cfg["유튜브_계정"].append({"id": uuid.uuid4().hex, "name": name, "url": url, "api_key": key})
+        cfg["유튜브_계정"].append({"id": uuid.uuid4().hex, "name": name, "url": url, "api_key": key, "language": language})
     return public_accounts(cfg)
 
 
@@ -42,3 +45,5 @@ def select_account(cfg, account_id, slot):
     cfg["내_채널" if slot == "person" else "민담_채널"] = account["url"]
     cfg["유튜브_API_키"] = account.get("api_key", "")
     cfg["유튜브_선택_" + slot] = account_id
+
+    return account.get("language")

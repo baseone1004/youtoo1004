@@ -808,7 +808,7 @@ window.addEventListener('message', e => { if (e.data && e.data.aipHeight) { cons
 // ── 벤치마킹: 비슷한 심리 채널의 히트 영상 (제목·썸네일 참고) ──
 async function loadBench() {
   try {
-    const b = await api('/api/bench'); const hits = b.히트 || [];
+    const b = await api('/api/bench?channel=' + encodeURIComponent(channel)); const hits = b.히트 || [];
     $('benchBox').classList.toggle('hidden', !hits.length || channel !== 'person');
     if (document.activeElement !== $('benchChannels')) $('benchChannels').value = (b.추가_채널 || []).join('\n');
     if (!hits.length) return;
@@ -823,7 +823,7 @@ async function runBenchmark() {
 }
 async function saveBenchChannels() {
   const channels = $('benchChannels').value.split(/\n/).map(x => x.trim()).filter(Boolean);
-  try { const r = await api('/api/bench/channels', {channels}); toast(`벤치 채널 ${r.count}개 저장`); } catch (e) { toast(e.message, true); }
+  try { const r = await api('/api/bench/channels', {channels,channel}); toast(`벤치 채널 ${r.count}개 저장`); } catch (e) { toast(e.message, true); }
 }
 
 // ── 새 주제 추천 (누를 때마다 안 본 후보 → 모자라면 AI 가 새로 만듦) ──
@@ -1017,10 +1017,10 @@ function renderProfileForm() {
   $('pf_썸네일_레이아웃').innerHTML = Object.entries(STATE.layouts || {}).map(([k, v]) => `<option value="${k}" ${(p.썸네일 || {}).레이아웃 === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
   $('pf_언어').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(p.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
   for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더']) $('pf_' + k).value = p[k] || '';
-  for (const k of ['검색어', '기본_태그']) $('pf_' + k).value = (p[k] || []).join(', ');
+  for (const k of ['검색어', '기본_태그']) $('pf_' + k).value = (k === '검색어' ? (p.적용_검색어 || p[k] || []) : (p[k] || [])).join(', ');
   const m = p.마스코트 || {}; for (const k of ['이름', '이미지', '설명', '프롬프트']) $('pf_마스코트_' + k).value = m[k] || '';
   const t = p.썸네일 || {}; for (const k of ['띠_문구', '화풍', '구도']) $('pf_썸네일_' + k).value = t[k] || '';
-  const b = p.브랜드 || {}; for (const k of ['주색', '강조색', '바탕색', '보조색']) $('pf_브랜드_' + k).value = b[k] || '#000000';
+  const b = p.적용_브랜드 || p.브랜드 || {}; for (const k of ['주색', '강조색', '바탕색', '보조색']) $('pf_브랜드_' + k).value = b[k] || '#000000';
   $('pf_브랜드_배지').value = b.배지 || ''; $('pf_화풍_접미').value = p.화풍_접미 || '';
   $('pf_브랜드_사진_톤').innerHTML = Object.entries(STATE.tones || {}).map(([k, v]) => `<option value="${k}" ${(b.사진_톤 || 'none') === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
   $('brandPreview').innerHTML = '';
@@ -1037,6 +1037,7 @@ async function saveProfile() {
   data.브랜드 = {배지: $('pf_브랜드_배지').value, 사진_톤: $('pf_브랜드_사진_톤').value}; for (const k of ['주색', '강조색', '바탕색', '보조색']) data.브랜드[k] = $('pf_브랜드_' + k).value;
   data.화풍_접미 = $('pf_화풍_접미').value;
   if (!data.이름.trim()) return toast('채널 이름을 넣으세요.', true);
+  if (data.언어 === 'ja') { if (((STATE.profiles || {})[profileSlot] || {}).언어 === 'ja') { data.브랜드_일본 = data.브랜드; data.검색어_일본 = data.검색어; } delete data.브랜드; delete data.검색어; }
   try { await api('/api/profile', {slot: profileSlot, data}); toast(`${data.이름} 프로필 저장됨 — 다음 제작부터 반영됩니다`); await refresh(); } catch (e) { toast(e.message, true); }
 }
 
@@ -1077,11 +1078,17 @@ async function saveImageMode() {
   if (mode !== 'z-image' && !(((STATE.profiles || {})[$('referenceChannel').value] || {}).마스코트 || {}).이미지) { toast('레퍼런스 이미지를 먼저 올려 주세요.', true); return renderReference(); }
   try { await api('/api/profile', {slot:$('referenceChannel').value, data:{마스코트:{레퍼런스_사용:mode !== 'z-image', 생성_모델:mode === 'z-image' ? 'bytedance/seedream-v4-edit' : mode}}}); await refresh(); toast('이미지 모드 저장됨 · 다음 생성부터 적용'); } catch(e) { toast(e.message,true); }
 }
+let savedYtAccounts = [];
+function fillYtAccountForm() {
+  const account = savedYtAccounts.find(a => a.id === $('ytAccounts').value);
+  if (!account) return;
+  $('ytAccountName').value=account.name; $('ytAccountUrl').value=account.url; $('ytAccountKey').value=''; $('ytAccountLanguage').value=account.language || (((STATE || {}).profiles || {})[channel] || {}).언어 || 'ko';
+}
 async function refreshYtAccounts() {
-  try { const response = await fetch('/api/youtube/accounts'); if (response.status === 404) { $('ytAccounts').innerHTML='<option>제작 완료 후 프로그램 재시작 필요</option>'; return; } if (!response.ok) return; const r = await response.json(); const previous=$('ytAccounts').value; $('ytAccounts').innerHTML=r.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.url)}${a.key_saved ? ' · 키 저장됨' : ''}</option>`).join(''); if(previous) $('ytAccounts').value=previous; } catch(e) { toast(e.message,true); }
+  try { const response = await fetch('/api/youtube/accounts'); if (response.status === 404) { $('ytAccounts').innerHTML='<option>제작 완료 후 프로그램 재시작 필요</option>'; return; } if (!response.ok) return; const r = await response.json(); savedYtAccounts = r.accounts; const previous=$('ytAccounts').value; $('ytAccounts').innerHTML=r.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.url)}${a.language === 'ja' ? ' · 일본어' : a.language === 'ko' ? ' · 한국어' : ''}${a.key_saved ? ' · 키 저장됨' : ''}</option>`).join(''); if(previous) $('ytAccounts').value=previous; } catch(e) { toast(e.message,true); }
 }
 async function saveYtAccount() {
-  try { await api('/api/youtube/accounts',{name:$('ytAccountName').value,url:$('ytAccountUrl').value,api_key:$('ytAccountKey').value}); $('ytAccountKey').value=''; await refreshYtAccounts(); toast('유튜브 계정 저장됨'); } catch(e) { toast(e.message,true); }
+  try { await api('/api/youtube/accounts',{name:$('ytAccountName').value,url:$('ytAccountUrl').value,api_key:$('ytAccountKey').value,language:$('ytAccountLanguage').value}); $('ytAccountKey').value=''; await refreshYtAccounts(); toast('유튜브 계정 저장됨'); } catch(e) { toast(e.message,true); }
 }
 async function useYtAccount() {
   try { await api('/api/youtube/accounts/select',{id:$('ytAccounts').value,slot:channel}); await refresh(); toast('선택한 유튜브 계정 적용됨'); } catch(e) { toast(e.message,true); }
