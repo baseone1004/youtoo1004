@@ -25,6 +25,7 @@ server.err.log
 *.mp4
 
 추천_추가.json
+추천_추가_일본.json
 벤치_히트.json
 채널_프로필.json
 

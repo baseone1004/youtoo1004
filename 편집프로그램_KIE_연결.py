@@ -7,7 +7,9 @@ def apply(editor_dir):
     target = Path(editor_dir) / "core" / "kie.py"
     if not target.is_file():
         return False
-    source = target.read_text(encoding="utf-8")
+    installed = target.read_text(encoding="utf-8")
+    # Keep the complete tested connector in the repository and in distribution builds.
+    source = Path(__file__).with_name("kie_video.py").read_text(encoding="utf-8")
     updated = source
     if 'UPLOAD_API = "https://kieai.redpandaai.co"' not in updated:
         anchor = 'API = "https://api.kie.ai"'
@@ -32,7 +34,7 @@ def apply(editor_dir):
         updated = updated.replace(old_urls, new_urls, 1)
     if new_urls not in updated:
         raise ValueError("KIE 결과 주소 처리 부분을 찾지 못했습니다.")
-    if updated != source:
+    if updated != target.read_text(encoding="utf-8"):
         target.write_text(updated, encoding="utf-8")
     app_file = Path(editor_dir) / "app.py"
     if not app_file.is_file():
@@ -57,4 +59,10 @@ def apply(editor_dir):
             app_updated = app_updated.replace(old, new, 1)
     if app_updated != app_source:
         app_file.write_text(app_updated, encoding="utf-8")
-    return updated != source or app_updated != app_source
+    app_updated = app_updated.replace("            if dest.exists():", "            if dest.is_file() and dest.stat().st_size > 0:")
+    if '"video_resume_supported"' not in app_updated:
+        app_updated = app_updated.replace('"kie_models": {k: v["label"] for k, v in kie.MODELS.items()},',
+            '"kie_models": {k: v["label"] for k, v in kie.MODELS.items()},\n        "video_resume_supported": hasattr(kie, "_LOCK"),')
+    if app_updated != app_source:
+        app_file.write_text(app_updated, encoding="utf-8")
+    return updated != installed or app_updated != app_source

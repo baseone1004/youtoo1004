@@ -394,6 +394,8 @@ def delete_script(script_file):
 def topics():
     plan = load_json("계획.json", [])
     cands = load_json("후보.json", [])
+    if 채널_프로필.language_code("person") == "ja":
+        plan, cands = [], []
     def used_titles(path):
         if not os.path.exists(path):
             return set()
@@ -1654,7 +1656,7 @@ def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
 def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     target = Path(output).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="_영상재생성_", dir=target.parent) as temp:
+    with tempfile.TemporaryDirectory(prefix="_영상재생성_", dir=target.parent, ignore_cleanup_errors=True) as temp:
         staged = Path(temp) / target.name
         result = _run_render(job, srt, flow, images_dir, narration, str(staged), ken_burns)
         if job.cancel_requested:
@@ -1689,7 +1691,15 @@ def _run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     last_progress, since = -1.0, time.time()
     while True:
         if job.cancel_requested:
-            aip(f"/api/jobs/{j['job_id']}/cancel", {}); raise RuntimeError("취소됨")
+            aip(f"/api/jobs/{j['job_id']}/cancel", {})
+            # Wait for ffmpeg to release staged files before removing their folder on Windows.
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                stopped = aip(f"/api/jobs/{j['job_id']}")
+                if stopped["status"] not in ("pending", "running"):
+                    break
+                time.sleep(0.5)
+            raise RuntimeError("취소됨")
         try:
             st = aip(f"/api/jobs/{j['job_id']}")
         except SystemExit as e:                       # 렌더 중 편집프로그램이 죽음 → 다시 켜지면 렌더를 처음부터 다시 건다 (한 번)
@@ -2161,6 +2171,7 @@ def make_pipeline(job, req):
         except Exception as e:  # noqa: BLE001
             render_error = e
             job.add(f"   ! 최종 영상 합치기 실패: {e}")
+    check_cancelled()
     job.stage = "⑦ 업로드 폴더 정리"
     result["upload_dir"] = make_upload_package(script, result)
     job.add("   ✓ 업로드 폴더: " + result["upload_dir"])

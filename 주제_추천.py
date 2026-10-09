@@ -10,6 +10,10 @@ import re
 from 공통_api import AI
 
 FILE = "추천_추가.json"
+
+def storage_file():
+    import 채널_프로필
+    return "추천_추가_일본.json" if 채널_프로필.language_code("person") == "ja" else FILE
 def channel_desc(channel):
     import 채널_프로필
     p = 채널_프로필.get(channel)
@@ -33,7 +37,7 @@ def bench_hits(limit=20):
 
 def load():
     try:
-        with open(FILE, encoding="utf-8") as f:
+        with open(storage_file(), encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
         data = {}
@@ -41,10 +45,11 @@ def load():
 
 
 def save(data):
-    tmp = FILE + ".tmp"
+    target = storage_file()
+    tmp = target + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, FILE)
+    os.replace(tmp, target)
 
 
 def _parse(text):
