@@ -251,6 +251,7 @@
   <div class="card" id="referenceCard">
     <h2>레퍼런스 이미지 <span class="stat" id="referenceStatus"></span></h2>
     <p class="lead">캐릭터나 원하는 그림을 올리면 장면 이미지·썸네일을 만들 때 직접 참조합니다.</p>
+    <div class="row"><label for="referenceAccount">저장한 유튜브 채널</label><select id="referenceAccount" onchange="selectReferenceAccount()"></select></div><p class="hint">채널을 선택하면 제작 채널도 전환됩니다. 레퍼런스 이미지·모델·프로필은 채널마다 따로 유지됩니다.</p>
     <div class="row"><label for="referenceChannel">적용할 채널</label><select id="referenceChannel" onchange="renderReference()"><option value="person">정보형 채널</option><option value="mindam">이야기형 채널</option></select></div>
     <div class="row" style="align-items:flex-start"><img id="referencePreview" class="hidden" alt="저장된 레퍼런스 이미지" style="width:160px;height:160px;object-fit:contain;border-radius:12px;background:var(--bg)">
       <div><label class="primary" style="display:inline-block;padding:12px;border-radius:10px;cursor:pointer" for="referenceFile">이미지 선택</label>

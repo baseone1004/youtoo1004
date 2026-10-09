@@ -2725,15 +2725,21 @@ class H(BaseHTTPRequestHandler):
                             atomic_write_json("설정.json", cfg)
                             break
                 self._json(dict(ok=True, profile=saved))
-            elif u.path in ("/api/youtube/accounts", "/api/youtube/accounts/select"):
-                from youtube_accounts import save_account, select_account, public_accounts
+            elif u.path in ("/api/youtube/accounts", "/api/youtube/accounts/select", "/api/youtube/accounts/delete"):
+                from youtube_accounts import save_account, switch_profile, delete_account, public_accounts
                 cfg = load_json("설정.json", {})
                 if u.path.endswith("/select"):
                     if STATE.get("job") and STATE["job"].status == "running" or queue_snapshot().get("status") == "running":
                         raise ValueError("제작이 끝난 뒤 계정을 바꿔 주세요. 진행 중인 대본·목소리의 언어를 유지합니다.")
-                    selected_language = select_account(cfg, body.get("id"), body.get("slot", "person"))
-                    if selected_language:
-                        채널_프로필.save(body.get("slot", "person"), {"언어": selected_language})
+                    slot = body.get("slot", "person")
+                    if slot not in 채널_프로필.SLOTS:
+                        raise ValueError("적용할 채널을 선택하세요.")
+                    profile = switch_profile(cfg, body.get("id"), slot, 채널_프로필.get(slot))
+                    채널_프로필.save(slot, profile, replace=True)
+                elif u.path.endswith("/delete"):
+                    if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
+                        raise ValueError("제작이 끝난 뒤 계정을 삭제하세요.")
+                    delete_account(cfg, body.get("id"))
                 else:
                     save_account(cfg, body)
                 atomic_write_json("설정.json", cfg)

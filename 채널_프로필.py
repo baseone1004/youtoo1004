@@ -147,7 +147,7 @@ def name(slot):
     return get(slot)["이름"] or 기본_프로필[slot]["이름"]
 
 
-def save(slot, patch):
+def save(slot, patch, replace=False):
     """화면에서 바꾼 항목만 덮어쓴다. 저장한 프로필을 돌려준다."""
     global _cache
     if slot not in SLOTS:
@@ -169,7 +169,7 @@ def save(slot, patch):
             clean[k] = v.strip()
         else:
             clean[k] = v
-    data[slot] = _merge(data[slot], clean)
+    data[slot] = _merge(기본_프로필[slot] if replace else data[slot], clean)
     if not data[slot]["이름"].strip():
         data[slot]["이름"] = 기본_프로필[slot]["이름"]
     with _lock:

@@ -1,5 +1,6 @@
 """Local YouTube channel bookmarks; secrets stay in ignored settings.json."""
 import uuid
+import copy
 from urllib.parse import urlparse
 
 
@@ -7,7 +8,8 @@ def public_accounts(cfg):
     accounts = cfg.get("유튜브_계정", [])
     if not accounts:
         accounts = [{"id": slot, "name": name, "url": cfg.get(key, ""), "api_key": cfg.get("유튜브_API_키", "")} for slot, name, key in [("person", "기존 정보형", "내_채널"), ("mindam", "기존 이야기형", "민담_채널")] if cfg.get(key)]
-    return [{"id": a["id"], "name": a["name"], "url": a["url"], "key_saved": bool(a.get("api_key")), "language": a.get("language", "")} for a in accounts]
+    return [{"id": a["id"], "name": a["name"], "url": a["url"], "key_saved": bool(a.get("api_key")), "language": a.get("language", ""),
+             "selected_slots": [slot for slot in ("person", "mindam") if cfg.get("유튜브_선택_" + slot) == a["id"]]} for a in accounts]
 
 
 def migrate(cfg):
@@ -47,3 +49,38 @@ def select_account(cfg, account_id, slot):
     cfg["유튜브_선택_" + slot] = account_id
 
     return account.get("language")
+
+
+def switch_profile(cfg, account_id, slot, current):
+    """Keep each account's reference/model/branding separate when sharing a production slot."""
+    migrate(cfg)
+    account = next((a for a in cfg["유튜브_계정"] if a["id"] == account_id), None)
+    if not account:
+        raise ValueError("저장된 유튜브 계정을 선택하세요.")
+    previous = next((a for a in cfg["유튜브_계정"] if a["id"] == cfg.get("유튜브_선택_" + slot)), None)
+    if previous is None:
+        previous = next((a for a in cfg["유튜브_계정"] if a["url"] == cfg.get("내_채널" if slot == "person" else "민담_채널")), None)
+    if previous:
+        previous["profile"] = copy.deepcopy(current)
+    profile = copy.deepcopy(account.get("profile") or current)
+    if not account.get("profile") and (previous is None or previous["id"] != account_id):
+        profile.update(이름=account["name"], 업로드_폴더=account["name"])
+    profile["언어"] = account.get("language") or profile.get("언어", "ko")
+    if profile["언어"] == "ja":
+        profile.setdefault("일본어_채널명", account["name"])
+    select_account(cfg, account_id, slot)
+    account["profile"] = copy.deepcopy(profile)
+    return profile
+
+
+def delete_account(cfg, account_id):
+    migrate(cfg)
+    if not any(a["id"] == account_id for a in cfg["유튜브_계정"]):
+        raise ValueError("삭제할 유튜브 계정을 선택하세요.")
+    removed = next(a for a in cfg["유튜브_계정"] if a["id"] == account_id)
+    cfg["유튜브_계정"] = [a for a in cfg["유튜브_계정"] if a["id"] != account_id]
+    for slot in ("person", "mindam"):
+        if cfg.get("유튜브_선택_" + slot) == account_id or cfg.get("내_채널" if slot == "person" else "민담_채널") == removed["url"]:
+            cfg.pop("유튜브_선택_" + slot, None)
+            cfg["내_채널" if slot == "person" else "민담_채널"] = ""
+    return public_accounts(cfg)

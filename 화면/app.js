@@ -137,6 +137,9 @@ async function refresh() {
   const nextImagePrice = imagePrice(channel);
   $('quickImageCost').textContent = `다음 이미지 생성: ${nextImagePrice.name} · 1장 ${nextImagePrice.credits} 크레딧 · 100장 ${(nextImagePrice.credits * 100).toFixed(0)} 크레딧 (장수는 대본 작성 후 결정, 썸네일·영상 변환 별도)`;
   await refreshYtAccounts();
+  $('referenceAccount').innerHTML = savedYtAccounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}${a.language === 'ja' ? ' · 일본어' : ' · 한국어'}</option>`).join('');
+  const activeAccount = savedYtAccounts.find(a => (a.selected_slots || []).includes('person'));
+  if (activeAccount) $('referenceAccount').value = activeAccount.id;
   // 이야기형(민담) 채널 숨김: 설정.json "이야기형_숨김": true — 버튼·줄·목록을 감추고 정보형만 쓴다 (다시 쓰려면 false)
   const hideM = (STATE.hidden_channels || []).includes('mindam');
   document.querySelectorAll('[data-ch="mindam"],[data-slot="mindam"],[data-ach="mindam"],#mindamLenRow').forEach(el => el.classList.toggle('hidden', hideM));
@@ -1149,6 +1152,14 @@ async function saveImageMode() {
   try { await api('/api/profile', {slot:$('referenceChannel').value, data:{마스코트:{레퍼런스_사용:mode !== 'z-image', 생성_모델:mode === 'z-image' ? 'bytedance/seedream-v4-edit' : mode}}}); await refresh(); toast('이미지 모드 저장됨 · 다음 생성부터 적용'); } catch(e) { toast(e.message,true); }
 }
 let savedYtAccounts = [];
+async function selectReferenceAccount() {
+  try {
+    await api('/api/youtube/accounts/select', {id: $('referenceAccount').value, slot:'person'});
+    channel = 'person'; profileSlot = 'person';
+    await refresh(); $('referenceChannel').value = 'person'; renderReference();
+    toast('선택한 채널의 레퍼런스·프로필을 불러왔습니다.');
+  } catch(e) { toast(e.message,true); await refresh(); }
+}
 function fillYtAccountForm() {
   const account = savedYtAccounts.find(a => a.id === $('ytAccounts').value);
   if (!account) return;
