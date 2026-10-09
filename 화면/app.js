@@ -340,7 +340,7 @@ function renderLenButtons(cpmValue, chars) {
   $('personLen').innerHTML = [25, 30, 35, 40].map(m => `<button type="button" data-min="${m}" onclick="setLen(${m})">${m}분</button>`).join('');
   markLen();
 }
-function markLen() { document.querySelectorAll('#personLen button').forEach(b => b.classList.toggle('on', Math.abs(targetChars - Math.round(+b.dataset.min * cpm)) < 50)); $('personLenHint').textContent = `약 ${targetChars.toLocaleString()}자`; }
+function markLen() { document.querySelectorAll('#personLen button').forEach(b => b.classList.toggle('on', Math.abs(targetChars - Math.round(+b.dataset.min * cpm)) < 50)); const cfg = (STATE || {}).config || {}; const ja = (((STATE || {}).profiles || {}).person || {}).언어 === 'ja'; const speed = Math.max(1, Number(ja ? cfg.인월드_속도_일본 || 1 : cfg.인월드_속도_사람 || cfg.인월드_속도 || 1)); const minutes = [25,30,35,40].reduce((a,b) => Math.abs(targetChars-a*cpm) <= Math.abs(targetChars-b*cpm) ? a : b); const budget = Math.ceil((minutes+5) * (ja ? Math.max(cpm,400) : cpm) * speed); $('personLenHint').textContent = `여유 분량 포함 약 ${budget.toLocaleString()}자 · 실제 음성 최소 25분 확인`; }
 function setLen(min) { targetChars = Math.round(min * cpm); markLen(); api('/api/config', {대본_글자수: targetChars}).catch(() => {}); }
 function productionOptions() {
   return {guideline: '', target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: '', style: styleValue, chunk: +((STATE && STATE.config || {}).프롬프트_묶음 || 30), thumb_position: 'auto',
@@ -391,7 +391,7 @@ function renderOverview(job) {
 }
 function humanStage(j) {
   const s = j.stage || '';
-  const map = [[/대본/, '대본을 쓰고 있습니다'], [/프롬프트/, '장면별 이미지 설명을 만들고 있습니다'], [/나레이션/, '나레이션 음성과 자막을 만들고 있습니다'], [/이미지 자동|이미지 생성/, 'KIE Z-Image로 이미지를 만들고 있습니다'], [/후킹/, '앞부분 움직이는 영상을 만들고 있습니다'], [/썸네일/, '썸네일을 만들고 있습니다'], [/최종|렌더/, '최종 영상을 합치고 있습니다']];
+  const map = [[/대본/, '대본을 쓰고 있습니다'], [/프롬프트/, '장면별 이미지 설명을 만들고 있습니다'], [/25분 분량 보충/, '25분 이상이 되도록 대본 내용을 보충하고 있습니다'], [/나레이션/, '나레이션 음성과 자막을 만들고 있습니다'], [/이미지 자동|이미지 생성/, 'KIE Z-Image로 이미지를 만들고 있습니다'], [/후킹/, '앞부분 움직이는 영상을 만들고 있습니다'], [/썸네일/, '썸네일을 만들고 있습니다'], [/최종|렌더/, '최종 영상을 합치고 있습니다']];
   const hit = map.find(([re]) => re.test(s));
   return (hit ? hit[1] : (s || '준비 중')) + (s && document.body.classList.contains('advanced') ? ` (${s})` : '');
 }

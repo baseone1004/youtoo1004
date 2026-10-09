@@ -41,9 +41,9 @@ class LongformMinimumTest(unittest.TestCase):
                     seen["target"] = target; return "[제목]\nx\n[대본]\n본문입니다.\n", "본문입니다."
                 with patch.object(app, "AI", FakeAI), patch.object(app.대본생성, "load_cfg", return_value={"분당_글자수": 270, "대본_글자수": 5400}), \
                      patch.object(app.대본생성, "generate", side_effect=fake_generate), patch.object(app, "read_guideline", return_value="지침"), \
-                     patch.object(app, "load_json", return_value=[]):
+                     patch.object(app, "load_json", return_value=[]), patch.object(app.채널_프로필, "language_code", return_value="ko"):
                     app.make_person_script(Job(), dict(title="주제", target=5400, mark_used=False, optimize=False))   # 20분 요청 → 25분으로 올린다
-                self.assertEqual(seen["target"], 25 * 270)
+                self.assertEqual(seen["target"], 30 * 270)
             finally:
                 os.chdir(cwd)
 

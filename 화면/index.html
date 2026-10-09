@@ -35,6 +35,7 @@
   <div class="inner">
     <h2>어떤 영상을 만들까요?</h2>
     <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
+    <p class="hint" id="durationPolicy">한국어·일본어 영상은 최소 25분으로 제작합니다. 실제 음성이 짧으면 내용을 자동 보충합니다. 보충 시 대본·음성 생성 비용이 추가될 수 있습니다.</p>
     <div class="row" data-advanced>
       <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">정보형</button><button data-ch="mindam" onclick="setChannel('mindam')">이야기형</button></div>
       <label><b>제작 언어</b> <select id="quickLanguage" onchange="saveQuickLanguage()" style="min-width:130px"></select></label>
@@ -64,7 +65,7 @@
 <div class="panel" id="step-3">
   <div class="panel-head"><span class="tag-lbl">2. 제작 시작 · 진행 상황</span><span class="stat" id="pgKind">대기 중</span><span class="spacer"></span><span id="queueSummary" class="hint">대기열 없음</span><button class="mini" data-advanced onclick="$('stage-image').scrollIntoView({behavior:'smooth',block:'start'})">🖼 이미지 칸으로</button></div>
   <div class="pipe" id="pipe" data-advanced>
-    <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="prompt"><b>② 프롬프트</b><small>대기</small></div><div data-stage="image"><b>③ 이미지</b><small>대기</small></div><div data-stage="motion"><b>④ 영상변환</b><small>대기</small></div><div data-stage="audio"><b>⑤ 음성/SRT</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
+    <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="audio"><b>② 음성·길이 확인</b><small>대기</small></div><div data-stage="prompt"><b>③ 프롬프트</b><small>대기</small></div><div data-stage="image"><b>④ 이미지</b><small>대기</small></div><div data-stage="motion"><b>⑤ 영상변환</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
   </div>
   <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div>
   <div class="hint" id="pgSub"></div>

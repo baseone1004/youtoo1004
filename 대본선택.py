@@ -26,6 +26,7 @@ import 주제_추천
 import 유튜브_API
 import youtube_accounts
 import production_library
+import production_duration
 import 썸네일_합성
 import requests as _rq
 from 제작대기열 import QueueStore, recent_chats, send_telegram
@@ -587,10 +588,10 @@ def make_person_script(job, req):
     system = read_guideline(guideline, "person")
     cpm = int(cfg.get("분당_글자수", 270) or 270)
     requested = int(req.get("target") or cfg["대본_글자수"])
-    minutes = max(25, min((25, 30, 35, 40), key=lambda m: abs(requested - m * cpm)))     # 롱폼만: 25분 미만은 만들지 않는다
-    target = minutes * cpm
+    _, speed = voice_for(cfg, "person")
+    target, minutes = production_duration.script_target(requested, cpm, 채널_프로필.language_code("person"), speed)
     n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
-    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 ({minutes}분) · 지침 {guideline}")
+    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 (선택 {minutes}분, 여유 분량 포함) · 실제 음성 최소 25분 확인 · 지침 {guideline}")
     job.add(f"▶ {t['제목']}")
     full, body = 대본생성.generate(ai, system, t, target, n_parts)
     storage = os.path.join(대본_폴더, production_library.LANGUAGE_FOLDERS[채널_프로필.language_code("person")])
@@ -1444,6 +1445,60 @@ def _make_tts(job, req):
 읽기_묶음_글자수 = 220
 
 
+def minimum_video_seconds(script):
+    return production_duration.MINIMUM_SECONDS if script_language(script) in {"ko", "ja"} else 0
+
+
+def ensure_longform_narration(job, script, result):
+    """이미지 비용이 발생하기 전에 실제 음성을 검사하고 최대 두 번 내용을 보충한다."""
+    if not minimum_video_seconds(script):
+        return False
+    changed = False
+    for attempt in range(3):
+        if job.cancel_requested:
+            raise RuntimeError("사용자가 제작을 중단했습니다.")
+        duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), result["narration"])
+        result["duration"] = duration
+        atomic_write_json(os.path.join(assets_dir(script), "길이_검사.json"),
+                          dict(duration=duration, minimum=1500, ok=duration >= 1500, additions=attempt))
+        if duration >= production_duration.MINIMUM_SECONDS:
+            production_duration.require_duration(duration)
+            job.add(f"   ✓ 실제 나레이션 {int(duration // 60)}분 {int(duration % 60)}초 · 최소 25분 충족")
+            return changed
+        if attempt == 2:
+            production_duration.require_duration(duration)
+        full = Path(script).read_text(encoding="utf-8-sig")
+        body = script_body(full)
+        extra = production_duration.additional_chars(len(body), duration)
+        cfg = 대본생성.load_cfg()
+        guideline = 채널_프로필.get("person")["지침"].get("대본") or "정보형_대본지침.txt"
+        system = read_guideline(guideline, "person")
+        job.stage = "② 나레이션 · 25분 분량 보충"
+        job.add(f"   실제 음성 {duration / 60:.1f}분 → 사례·설명 약 {extra:,}자 보충 ({attempt + 1}/2). 추가 대본·음성 생성 비용이 발생할 수 있습니다.")
+        ai = AI(cfg)
+        addition = ai.ask(system,
+            f"기존 대본의 주제와 말투를 유지하며 끝에 자연스럽게 이어질 심화 내용을 공백 포함 {extra}자 이상 작성한다. "
+            "기존 결론에서 더 살펴볼 사례로 자연스럽게 연결한다. 앞 내용의 반복·빈말·재요약으로 시간을 채우지 않는다. "
+            "새로운 구체적 일상 사례, 다른 관점, 실천 방법을 충분히 설명하고 마지막에 짧게 마무리한다. "
+            "새 제목·메타데이터·[대본] 표식 없이 추가로 낭독할 본문만 출력한다. 근거와 통계를 지어내지 않는다.\n"
+            f"[기존 대본]\n{body}")
+        if job.cancel_requested:
+            raise RuntimeError("사용자가 제작을 중단했습니다.")
+        addition = fix_script_sentences(대본생성.clean_part(addition)).strip()
+        if not addition or len(addition) < 100 or addition in body:
+            raise ValueError("25분을 위한 대본 보충 응답이 충분하지 않습니다. 기존 작업은 저장돼 있습니다. 대본 AI 연결을 확인한 뒤 이어서 제작하세요.")
+        before, marker, rest = full.partition("[대본]")
+        if not marker:
+            raise ValueError("대본 본문 구분을 찾지 못해 자동 보충하지 못했습니다.")
+        main, separator, trailer = rest.partition("===sum===")
+        updated = before + marker + main.rstrip() + "\n\n" + addition + "\n\n" + (separator + trailer if separator else "")
+        atomic_write_text(script, updated)
+        changed = True
+        tts = make_tts(job, dict(script_file=script, out_dir=assets_dir(script), channel="person"))
+        result.update(narration=tts["mp3"], srt=tts["srt"], flow=tts["flow"])
+    return changed
+
+
 def tts_groups(script_file, sents):
     """나레이션을 한 번에 읽힐 문장 범위 [(첫 번호, 끝 번호)]. 이야기형은 그림 한 장(장면) 단위, 정보형은 2~3문장씩."""
     if channel_of(script_file) == "mindam":
@@ -1692,7 +1747,7 @@ def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
         time.sleep(5)
 
 
-def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
+def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True, minimum_duration=0):
     target = Path(output).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="_영상재생성_", dir=target.parent, ignore_cleanup_errors=True) as temp:
@@ -1702,6 +1757,8 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
             raise RuntimeError("취소됨")
         if not staged.is_file() or not staged.stat().st_size:
             raise ValueError("새 영상이 완성되지 않아 기존 영상을 유지했습니다.")
+        if minimum_duration:
+            production_duration.require_duration(verify_final_video(str(staged)), minimum_duration)
         os.replace(staged, target)
         for key, value in list(result.items()):
             if isinstance(value, str) and value == str(staged):
@@ -2103,26 +2160,9 @@ def make_pipeline(job, req):
     result.update(script=script, title=r.get("title"), opt=r.get("opt"), meta=r.get("meta"))
     check_cancelled()
     assets = assets_dir(script)
-    # 2) 이미지 프롬프트
-    existing_prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
-    if steps.get("prompts", True) and req.get("reuse_prompts") and prompts_complete(existing_prompts, script):
-        job.add(f"   이미지 프롬프트가 이미 있어 재사용: {existing_prompts}")
-        n_restyled = 0 if legacy_split(script) else restyle_prompts(existing_prompts, req.get("style", ""), channel_of(script))
-        if n_restyled:
-            job.add(f"   화풍을 '{화풍_별칭.get(req.get('style', ''), req.get('style', ''))}' 로 맞춤 ({n_restyled}장면)")
-        steps = dict(steps, prompts=False)
-    if steps.get("prompts", True):
-        job.stage = "② 이미지 프롬프트"
-        ip = make_image_prompts(job, dict(script_file=script, guideline=req.get("img_guideline"), style=req.get("style", "실사"),
-                                          chunk=req.get("chunk", 30)))
-        result["prompts"] = os.path.abspath(ip["file"])      # 화면이 편집프로그램(다른 폴더에서 실행)에 그대로 넘기므로 절대 경로로
-    else:
-        cand = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
-        result["prompts"] = cand if os.path.exists(cand) else ""
-    check_cancelled()
-    # 3) 나레이션
+    # 2) 나레이션과 실제 재생 시간 확인
     if steps.get("tts", True):
-        job.stage = "③ 나레이션"
+        job.stage = "② 나레이션"
         existing_tts = {k: os.path.join(assets, n) for k, n in (("mp3", "나레이션.mp3"), ("srt", "나레이션.srt"), ("flow", "플로우.txt"))}
         if req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values()) and not narration_matches(existing_tts["flow"], script):
             job.add("   문장 나누기가 달라져 나레이션·자막을 다시 만듭니다 (같은 문장의 음성은 재사용)")
@@ -2139,6 +2179,25 @@ def make_pipeline(job, req):
         else:
             t = make_tts(job, dict(script_file=script, out_dir=assets, channel=req.get("channel") or channel_of(script)))
             result.update(narration=t["mp3"], srt=t["srt"], flow=t["flow"], duration=t["duration"])
+        if ensure_longform_narration(job, script, result):
+            steps = dict(steps, prompts=True)
+    check_cancelled()
+    # 3) 분량이 확정된 대본으로 이미지 프롬프트 제작
+    existing_prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
+    if steps.get("prompts", True) and req.get("reuse_prompts") and prompts_complete(existing_prompts, script):
+        job.add(f"   이미지 프롬프트가 이미 있어 재사용: {existing_prompts}")
+        n_restyled = 0 if legacy_split(script) else restyle_prompts(existing_prompts, req.get("style", ""), channel_of(script))
+        if n_restyled:
+            job.add(f"   화풍을 '{화풍_별칭.get(req.get('style', ''), req.get('style', ''))}' 로 맞춤 ({n_restyled}장면)")
+        steps = dict(steps, prompts=False)
+    if steps.get("prompts", True):
+        job.stage = "③ 이미지 프롬프트"
+        ip = make_image_prompts(job, dict(script_file=script, guideline=req.get("img_guideline"), style=req.get("style", "실사"),
+                                          chunk=req.get("chunk", 30)))
+        result["prompts"] = os.path.abspath(ip["file"])      # 화면이 편집프로그램(다른 폴더에서 실행)에 그대로 넘기므로 절대 경로로
+    else:
+        cand = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
+        result["prompts"] = cand if os.path.exists(cand) else ""
     check_cancelled()
     # 4) 이미지 생성
     images_dir = os.path.join(assets, "images")
@@ -2207,9 +2266,12 @@ def make_pipeline(job, req):
         out = os.path.join(assets, "최종.mp4")
         try:
             if final_video_is_current(out, images_dir, result) and not req.get("force_render"):
+                if minimum_video_seconds(script):
+                    production_duration.require_duration(verify_final_video(out))
                 job.add(f"   최종 영상이 이미 있고 그 뒤 바뀐 재료가 없어 재사용: {out}")
             else:
-                run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out)
+                run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out,
+                           minimum_duration=minimum_video_seconds(script))
             result["video"] = out
         except Exception as e:  # noqa: BLE001
             render_error = e
