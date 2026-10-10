@@ -623,7 +623,12 @@ async function saveWorkspaceText(kind) {
 }
 async function saveWorkspaceMeta() {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
-  try { await api('/api/workspace/save', {script_file: WORK.script_file, kind: 'metadata', title: $('workTitle').value, description: $('workDesc').value, sources: WORK.sources || '', tags: WORK.tags || ''}); toast('제목·설명 저장 완료'); } catch (e) { toast(e.message, true); }
+  try { await api('/api/workspace/save', {script_file: WORK.script_file, kind: 'metadata', title: $('workTitle').value, description: $('workDesc').value, sources: WORK.sources || '', tags: WORK.tags || ''}); toast('제목·설명과 업로드정보.txt 저장 완료'); } catch (e) { toast(e.message, true); }
+}
+async function openUploadText() {
+  if (!WORK) return toast('작업을 먼저 고르세요.', true);
+  try { const r = await api('/api/workspace/upload-text', {script_file: WORK.script_file}); await openPath(r.file); toast('업로드정보.txt가 저장된 위치를 열었습니다.'); }
+  catch (e) { toast(e.message, true); }
 }
 async function copyField(id) {
   const el = $(id), text = el.value || ''; if (!text) return toast('복사할 내용이 없습니다.', true);

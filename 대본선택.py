@@ -1304,6 +1304,36 @@ def workspace_data(script_file):
                 sources=saved.get("sources") or _block(script_text, "출처") or _block(opt_text, "출처"),
                 tags=saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그"))
 
+
+def write_upload_texts(folder, data, separate=False):
+    """한국어·일본어 원문을 그대로 메모장에서 읽을 수 있는 TXT로 저장한다."""
+    folder = Path(folder)
+    title = str(data.get("title") or "").strip()
+    tags = str(data.get("tags") or "").strip()
+    description = upload_description(str(data.get("description") or ""), tags)
+    text = f"[제목]\n{title}\n\n[설명]\n{description}\n\n[태그]\n{tags}\n"
+    sources = str(data.get("sources") or "").strip()
+    if sources:
+        text += f"\n[출처]\n{sources}\n"
+    target = folder / "업로드정보.txt"
+    atomic_write_text(target, text)
+    if separate:
+        for name, value in (("제목", title), ("설명", description), ("태그", tags)):
+            atomic_write_text(folder / (name + ".txt"), value)
+    return os.path.abspath(target)
+
+
+def sync_upload_texts(script, data):
+    target = write_upload_texts(assets_dir(script), data)
+    upload_root = Path(BASE) / "업로드"
+    for marker in upload_root.glob("*/*/제작원본.json"):
+        if not path_inside(str(upload_root), str(marker.parent)):
+            continue
+        source = load_json(str(marker), {}).get("script", "")
+        if source and os.path.normcase(os.path.realpath(os.path.join(BASE, source))) == os.path.normcase(os.path.realpath(script)):
+            write_upload_texts(marker.parent, data, separate=True)
+    return target
+
 def save_workspace(body):
     script = body.get("script_file", "")
     data = workspace_data(script)
@@ -1317,7 +1347,9 @@ def save_workspace(body):
     elif kind == "metadata":
         Path(data["assets"]).mkdir(parents=True, exist_ok=True)
         target = Path(data["assets"]) / "업로드_정보.json"
-        atomic_write_json(target, {k: str(body.get(k, "")) for k in ("title", "description", "sources", "tags")})
+        metadata = {k: str(body.get(k, "")) for k in ("title", "description", "sources", "tags")}
+        atomic_write_json(target, metadata)
+        sync_upload_texts(script, metadata)
     else:
         raise ValueError("저장할 항목을 선택하세요.")
     return {"ok": True}
@@ -2062,11 +2094,10 @@ def make_upload_package(script_file, result):
     package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
     package.mkdir(parents=True, exist_ok=True)
     atomic_write_json(package / "제작원본.json", {"script": os.path.relpath(os.path.abspath(script_file), BASE)})
-    (package / "제목.txt").write_text(title, encoding="utf-8")
-    (package / "설명.txt").write_text(description.strip(), encoding="utf-8")
-    (package / "태그.txt").write_text(tags.strip(), encoding="utf-8")
-    (package / "업로드정보.txt").write_text(
-        f"[제목]\n{title}\n\n[설명]\n{description.strip()}\n\n[태그]\n{tags.strip()}\n", encoding="utf-8")
+    metadata = dict(title=title, description=description.strip(), tags=tags.strip(),
+                    sources=saved.get("sources") or _block(script_text, "출처"))
+    write_upload_texts(package, metadata, separate=True)
+    write_upload_texts(assets, metadata)
     if not saved:                                   # 화면의 제목·설명·태그 칸에도 그대로 보이도록 자료 폴더에 저장
         info = Path(assets) / "업로드_정보.json"
         info.write_text(json.dumps(dict(title=title, description=description.strip(), sources=_block(script_text, "출처"), tags=tags.strip()),
@@ -2742,6 +2773,10 @@ class H(BaseHTTPRequestHandler):
                 run_job("tts", lambda job: make_tts(job, body)); self._json({"ok": True})
             elif u.path == "/api/workspace/save":
                 self._json(save_workspace(body))
+            elif u.path == "/api/workspace/upload-text":
+                script = body.get("script_file", "")
+                data = workspace_data(script)
+                self._json(dict(file=sync_upload_texts(script, data)))
             elif u.path == "/api/pipeline":
                 with LOCK:
                     busy = bool(STATE["job"] and STATE["job"].status == "running")
