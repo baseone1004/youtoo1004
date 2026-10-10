@@ -38,3 +38,6 @@ server.err.log
 레퍼런스/
 
 벤치_히트_일본.json
+
+# Independent channel settings, credentials, queues and generated media.
+채널별_작업공간/

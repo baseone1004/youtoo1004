@@ -79,12 +79,13 @@ def apply_editor_integrations(editor):
     from 편집프로그램_렌더_보호 import apply as apply_editor_render_guard
     from 편집프로그램_AI표시_연결 import apply as apply_editor_ai_notice
     from 편집프로그램_자막두께_연결 import apply as apply_subtitle_weight
+    from 편집프로그램_동시작업_연결 import apply as apply_parallel_editor
 
     editor = Path(editor)
     from 편집프로그램_ZImage_연결 import apply as apply_zimage
 
     patchers = (apply_editor_ui, apply_editor_kie, apply_editor_video, apply_editor_fonts,
-                apply_editor_render_guard, apply_editor_ai_notice, apply_subtitle_weight, apply_zimage)
+                apply_editor_render_guard, apply_editor_ai_notice, apply_subtitle_weight, apply_zimage, apply_parallel_editor)
     suffixes = {".py", ".html", ".js", ".css"}
     originals = {p.relative_to(editor) for p in editor.rglob("*") if p.is_file() and p.suffix.lower() in suffixes}
     import tempfile
@@ -135,6 +136,7 @@ def main():
 
     env = os.environ.copy()
     env.update(PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
+    env.setdefault("YOUTOO_HOME", str(HERE))
     children, logs = [], []
     editor = find_editor()
     editor_integrations_ok = True

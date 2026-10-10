@@ -27,6 +27,7 @@ import 유튜브_API
 import youtube_accounts
 import production_library
 import production_duration
+import channel_workspaces
 import 썸네일_합성
 import requests as _rq
 from 제작대기열 import QueueStore, recent_chats, send_telegram
@@ -155,7 +156,7 @@ def spawn_restart():
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
     log = open(os.path.join(BASE, "로그_대본선택.txt"), "a", encoding="utf-8")
-    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--no-browser", "--wait-port"], cwd=BASE, env=env,
+    subprocess.Popen([sys.executable, *channel_workspaces.python_script_args(os.path.abspath(__file__), "--no-browser", "--wait-port")], cwd=BASE, env=env,
                      stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, creationflags=flags, close_fds=True)
     os._exit(0)
 
@@ -196,6 +197,29 @@ def shutdown_program(server):
 
 KIND_LABEL = {"bench": "채널 벤치마킹", "script": "대본 만들기", "mindam": "이야기 대본 만들기", "images": "이미지 프롬프트", "variations": "제목 변형",
               "optimize": "제목·설명·태그", "tts": "나레이션", "pipeline": "한 편 자동 제작", "queue_pipeline": "연속 제작", "thumbnail": "썸네일"}
+
+
+def select_saved_account(body):
+    if os.environ.get("YOUTOO_ACCOUNT"):
+        raise ValueError("채널 전용 창입니다. 다른 채널은 [별도 창 열기]로 여세요.")
+    account_id, slot = body.get("id", ""), body.get("slot", "person")
+    if slot not in 채널_프로필.SLOTS:
+        raise ValueError("적용할 채널을 선택하세요.")
+    # Serialize switching the main channel against another window launching it.
+    with channel_workspaces.file_lock(channel_workspaces.HOME / channel_workspaces.STORE_NAME / ".launch.lock", timeout=90):
+        cfg = load_json("설정.json", {})
+        dedicated = (slot == "person" and account_id != cfg.get("유튜브_선택_person") and
+                     (channel_workspaces.workspace_dir(account_id) / "설정.json").is_file())
+        if not dedicated:
+            if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
+                raise ValueError("제작이 끝난 뒤 계정을 바꿔 주세요. 다른 채널은 [별도 창 열기]로 동시에 제작할 수 있습니다.")
+            profile = youtube_accounts.switch_profile(cfg, account_id, slot, 채널_프로필.get(slot))
+            채널_프로필.save(slot, profile, replace=True)
+            atomic_write_json("설정.json", cfg)
+    if dedicated:
+        return {"ok": True, "workspace_url": channel_workspaces.launch(account_id)["url"]}
+    채널_연동.fetch_in_background(cfg, slot, force=True)
+    return {"ok": True, "accounts": youtube_accounts.public_accounts(cfg)}
 
 
 def run_job(kind, fn):
@@ -2594,6 +2618,10 @@ class H(BaseHTTPRequestHandler):
         if not self._allow_browser(u.path):
             return
         try:
+            if u.path == "/api/workspace/identity":
+                self._json(channel_workspaces.current_identity()); return
+            if u.path == "/api/workspaces":
+                self._json(dict(accounts=channel_workspaces.accounts(), dedicated=bool(os.environ.get("YOUTOO_ACCOUNT")))); return
             if u.path == "/api/editor/connection":
                 self._json(dict(url=editor_url() + "/", ready=is_editor(editor_port()))); return
             if u.path.startswith("/api/editor/api/"):
@@ -2629,7 +2657,7 @@ class H(BaseHTTPRequestHandler):
                                             텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
                                             텔레그램_알림=cfg.get("텔레그램_알림", True), 온보딩_완료=bool(cfg.get("온보딩_완료", False))),
-                                base_dir=BASE, extension_dir=os.path.join(BASE, "딥시크_확장"),
+                                base_dir=BASE, dedicated=bool(os.environ.get("YOUTOO_ACCOUNT")), extension_dir=os.path.join(channel_workspaces.HOME, "딥시크_확장"),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
                                 lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
@@ -2732,6 +2760,14 @@ class H(BaseHTTPRequestHandler):
             return
         try:
             body = self._body()
+            if u.path == "/api/workspaces/open":
+                self._json(channel_workspaces.launch(body.get("id", ""))); return
+            if u.path == "/api/worker-web":
+                import secrets
+                supplied = self.headers.get("Authorization", "")
+                if os.environ.get("YOUTOO_ACCOUNT") or not secrets.compare_digest(supplied, "Bearer " + channel_workspaces.broker_key()):
+                    self._json({"detail": "인증되지 않은 채널 연결입니다."}, 403); return
+                self._json(웹큐.broker_operation(body)); return
             if u.path.startswith("/api/editor/api/"):
                 self._editor_proxy(u.path[len("/api/editor"):], body); return
             if u.path == "/api/script":
@@ -2840,6 +2876,10 @@ class H(BaseHTTPRequestHandler):
                         pass
                 self._json({"ok": True, "stopped": stopped})
             elif u.path == "/api/restart":
+                if not os.environ.get("YOUTOO_ACCOUNT"):
+                    web_status = 웹큐.status()
+                    if web_status.get("pending") or web_status.get("taken"):
+                        raise ValueError("딥시크가 다른 채널의 대본을 처리 중입니다. 응답이 끝난 뒤 다시 시작하세요.")
                 if STATE["job"] and STATE["job"].status == "running" and not STATE["job"].cancel_requested:
                     raise ValueError("지금 만드는 편이 끝난 뒤에 다시 시작할 수 있습니다. 바로 하려면 [■ 중단]을 먼저 누르세요.")
                 self._json({"ok": True})
@@ -2879,15 +2919,14 @@ class H(BaseHTTPRequestHandler):
             elif u.path in ("/api/youtube/accounts", "/api/youtube/accounts/select", "/api/youtube/accounts/delete"):
                 from youtube_accounts import save_account, switch_profile, delete_account, public_accounts
                 cfg = load_json("설정.json", {})
+                if os.environ.get("YOUTOO_ACCOUNT"):
+                    raise ValueError("채널 전용 창입니다. 계정 추가·변경은 기본 창에서 하고, 다른 채널은 [별도 창 열기]로 여세요.")
                 if u.path.endswith("/select"):
-                    if STATE.get("job") and STATE["job"].status == "running" or queue_snapshot().get("status") == "running":
-                        raise ValueError("제작이 끝난 뒤 계정을 바꿔 주세요. 진행 중인 대본·목소리의 언어를 유지합니다.")
-                    slot = body.get("slot", "person")
-                    if slot not in 채널_프로필.SLOTS:
-                        raise ValueError("적용할 채널을 선택하세요.")
-                    profile = switch_profile(cfg, body.get("id"), slot, 채널_프로필.get(slot))
-                    채널_프로필.save(slot, profile, replace=True)
+                    self._json(select_saved_account(body)); return
                 elif u.path.endswith("/delete"):
+                    record = channel_workspaces.read_json(channel_workspaces.workspace_dir(body.get("id", "")) / ".workspace.json")
+                    if record and channel_workspaces.own_server(record):
+                        raise ValueError("해당 채널 전용 창을 종료한 뒤 계정을 삭제하세요. 저장된 제작물은 그대로 유지됩니다.")
                     if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
                         raise ValueError("제작이 끝난 뒤 계정을 삭제하세요.")
                     delete_account(cfg, body.get("id"))
@@ -2911,6 +2950,8 @@ class H(BaseHTTPRequestHandler):
                 info = 유튜브_API.fetch_channel(key, url, 5)
                 self._json(dict(ok=True, name=info["name"], subs=info["subs"], sample=len(info["videos"])))
             elif u.path == "/api/shutdown":
+                if not os.environ.get("YOUTOO_ACCOUNT") and any(a["running"] for a in channel_workspaces.accounts()):
+                    raise ValueError("다른 채널 창이 열려 있습니다. 딥시크 연결을 유지하려면 기본 창을 켜 두세요. 채널 전용 창부터 종료해 주세요.")
                 self._json({"ok": True})
                 threading.Thread(target=shutdown_program, args=(self.server,), daemon=True).start()
             elif u.path == "/api/reset":

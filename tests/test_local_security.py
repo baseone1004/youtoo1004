@@ -4,6 +4,7 @@ import http.client
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import 대본선택 as app
@@ -73,6 +74,17 @@ class LocalSecurityTest(unittest.TestCase):
             sibling = Path(td) / "work-evil" / "file.txt"
             self.assertTrue(app.path_inside(root, inside))
             self.assertFalse(app.path_inside(root, sibling))
+
+    def test_worker_bridge_requires_secret_and_is_not_an_extension_endpoint(self):
+        self.assertFalse(app.browser_origin_allowed("https://chat.deepseek.com", "/api/worker-web"))
+        for token, expected in [("", 403), ("Bearer fixture-token", 200)]:
+            with patch.object(app.channel_workspaces, "broker_key", return_value="fixture-token"):
+                conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+                conn.request("POST", "/api/worker-web", body='{"op":"alive"}',
+                             headers={"Authorization": token, "Content-Type": "application/json"})
+                response = conn.getresponse()
+                response.read(); conn.close()
+            self.assertEqual(response.status, expected)
 
     def test_atomic_json_replaces_complete_document(self) -> None:
         with tempfile.TemporaryDirectory() as td:

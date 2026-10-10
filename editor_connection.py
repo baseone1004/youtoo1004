@@ -1,5 +1,6 @@
 """로컬 편집기 포트 선택. 다른 프로그램에는 설정을 전송하지 않는다."""
 import json
+import os
 import socket
 import urllib.request
 from pathlib import Path
@@ -7,6 +8,12 @@ from pathlib import Path
 STATE = Path(__file__).with_name(".editor-port.json")
 
 def editor_port():
+    dedicated = os.environ.get("YOUTOO_ACCOUNT")
+    if dedicated:
+        port = int(os.environ.get("YOUTUBE_EDITOR_PORT", "0"))
+        if 18800 <= port < 18900:
+            return port
+        raise RuntimeError("채널 전용 편집기 연결 정보가 없습니다. 기본 창에서 채널 창을 다시 여세요.")
     try:
         port = int(json.loads(STATE.read_text(encoding="utf-8"))["port"])
         return port if port in [8765, *range(8767, 8777)] else 8765
@@ -22,6 +29,8 @@ def is_editor(port):
         return False
 
 def select_editor_port():
+    if os.environ.get("YOUTOO_ACCOUNT"):
+        return editor_port()
     ports = list(dict.fromkeys([editor_port(), 8765, *range(8767, 8777)]))
     for port in ports:
         if is_editor(port):

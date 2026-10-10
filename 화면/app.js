@@ -142,6 +142,11 @@ async function refresh() {
   if (activeAccount) $('referenceAccount').value = activeAccount.id;
   $('productionAccount').innerHTML = $('referenceAccount').innerHTML;
   if (activeAccount) $('productionAccount').value = activeAccount.id;
+  $('productionAccount').disabled = !!STATE.dedicated;
+  $('referenceAccount').disabled = !!STATE.dedicated;
+  $('channelWindowHint').textContent = STATE.dedicated ? '이 채널 전용 창 · 설정과 제작물이 별도로 저장됩니다.' : '주제를 고르기 전에 채널을 선택하세요.';
+  if (activeAccount) document.title = `${activeAccount.name} · 영상 제작`;
+  await refreshParallelChannels();
   $('customTitle').placeholder = ((STATE.profiles || {}).person || {}).언어 === 'ja' ? '例：いい人なのに、会ったあと疲れるのはなぜ？' : '예: 좋은 사람인데 만나고 나면 피곤한 이유';
   renderBeginnerGuide();
   // 이야기형(민담) 채널 숨김: 설정.json "이야기형_숨김": true — 버튼·줄·목록을 감추고 정보형만 쓴다 (다시 쓰려면 false)
@@ -1180,11 +1185,46 @@ async function saveImageMode() {
   try { await api('/api/profile', {slot:$('referenceChannel').value, data:{마스코트:{레퍼런스_사용:mode !== 'z-image', 생성_모델:mode === 'z-image' ? 'bytedance/seedream-v4-edit' : mode}}}); await refresh(); toast('이미지 모드 저장됨 · 다음 생성부터 적용'); } catch(e) { toast(e.message,true); }
 }
 let savedYtAccounts = [];
+async function refreshParallelChannels() {
+  try {
+    const response = await fetch('/api/workspaces');
+    if (!response.ok) { $('parallelHint').textContent = '현재 제작이 끝난 뒤 [다시 시작]을 누르면 동시 작업 기능을 사용할 수 있습니다.'; return; }
+    const data = await response.json();
+    const selected = savedYtAccounts.find(a => (a.selected_slots || []).includes('person'));
+    $('parallelChannels').replaceChildren();
+    for (const account of data.accounts) {
+      if (account.id === selected?.id) continue;
+      const button = document.createElement('button');
+      button.className = 'btn';
+      button.textContent = `${account.name} · ${account.running || account.main ? '작업 창 열기' : '별도 창 열기'}`;
+      button.onclick = () => openChannelWindow(account.id, button);
+      $('parallelChannels').appendChild(button);
+    }
+  } catch (_) { $('parallelHint').textContent = '기본 프로그램 창을 켜 두면 다른 채널도 열 수 있습니다.'; }
+}
+async function openChannelWindow(id, button) {
+  // Reserve the window during the user's click, before the server prepares files.
+  const popup = window.open('about:blank', '_blank');
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = '채널 창 준비 중…';
+  try {
+    const result = await api('/api/workspaces/open', {id});
+    if (popup) popup.location.replace(result.url);
+    else toast('아래의 준비된 채널 창 열기를 눌러 주세요.');
+    await refreshParallelChannels();
+    $('parallelOpenLink').href=result.url;
+    $('parallelOpenLink').textContent=label.replace(/ · (작업 창 열기|별도 창 열기)$/, '') + ' · 준비된 창 열기 ↗';
+    $('parallelOpenLink').classList.remove('hidden');
+  } catch(e) { if(popup) popup.close(); toast(e.message, true); }
+  finally { button.disabled=false; button.textContent=label; }
+}
 async function selectReferenceAccount(accountId = $('referenceAccount').value) {
   try {
     const state = await genStatus();
     if (['running','paused'].includes(state.status)) throw new Error('이미지 생성이 끝난 뒤 채널을 바꿔 주세요.');
-    await api('/api/youtube/accounts/select', {id: accountId, slot:'person'});
+    const selected = await api('/api/youtube/accounts/select', {id: accountId, slot:'person'});
+    if (selected.workspace_url) { window.location.href=selected.workspace_url; return; }
     selection.clear(); custom.person = []; custom.mindam = [];
     channel = 'person'; profileSlot = 'person';
     await refresh(); $('referenceChannel').value = 'person'; renderReference();
@@ -1203,7 +1243,7 @@ async function saveYtAccount() {
   try { await api('/api/youtube/accounts',{name:$('ytAccountName').value,url:$('ytAccountUrl').value,api_key:$('ytAccountKey').value,language:$('ytAccountLanguage').value}); $('ytAccountKey').value=''; await refreshYtAccounts(); toast('유튜브 계정 저장됨'); } catch(e) { toast(e.message,true); }
 }
 async function useYtAccount() {
-  try { await api('/api/youtube/accounts/select',{id:$('ytAccounts').value,slot:channel}); await refresh(); toast('선택한 유튜브 계정 적용됨'); } catch(e) { toast(e.message,true); }
+  try { const r=await api('/api/youtube/accounts/select',{id:$('ytAccounts').value,slot:channel}); if(r.workspace_url){window.location.href=r.workspace_url;return;} await refresh(); toast('선택한 유튜브 계정 적용됨'); } catch(e) { toast(e.message,true); }
 }
 
 function imagePrice(slot) {

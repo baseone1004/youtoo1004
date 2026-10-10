@@ -7,6 +7,10 @@ const functions = source.slice(source.indexOf('async function genBodyFromUI()'),
   const selection = {value: 'script.txt'};
   const context = {galDir:'images', galPromptsPath:'prompts.txt', styleValue:'test', STATE:{style_prefixes:{}, profiles:{person:{마스코트:{이미지:'person.png', 레퍼런스_사용:true}}, mindam:{마스코트:{이미지:'story.png', 레퍼런스_사용:true}}}}, $: () => selection, get8765:async()=>({kie_key_saved:true})};
   vm.createContext(context); vm.runInContext(functions, context);
+  let language = 'ko';
+  context.STATE.profiles.person.언어 = 'ko';
+  context.STATE.profiles.mindam.언어 = 'ko';
+  context.api = async () => ({language});
   assert.equal((await context.genBodyFromUI()).reference_image, 'person.png');
   assert.equal((await context.genBodyFromUI()).reference_model, 'bytedance/seedream-v4-edit');
   context.STATE.profiles.person.마스코트.생성_모델='seedream/4.5-edit';
@@ -15,5 +19,7 @@ const functions = source.slice(source.indexOf('async function genBodyFromUI()'),
   assert.equal((await context.genBodyFromUI()).reference_image, 'story.png');
   context.STATE.profiles.mindam.마스코트.레퍼런스_사용=false;
   assert.equal((await context.genBodyFromUI()).reference_image, '');
-  console.log('Reference UI checks passed (5 cases)');
+  language = 'ja';
+  await assert.rejects(context.genBodyFromUI(), /언어와 제작 채널이 다릅니다/);
+  console.log('Reference UI checks passed (6 cases)');
 })().catch(e => { console.error(e); process.exitCode=1; });

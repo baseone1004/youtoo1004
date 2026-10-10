@@ -6,13 +6,44 @@
   대본선택.py                        → /api/web/next, /api/web/result 로 확장과 주고받음
   딥시크_확장/content.js             → chat.deepseek.com 탭에서 큐를 가져다 입력·전송·답변 수집
 """
-import secrets, threading, time, uuid
+import secrets, threading, time, uuid, os
 
 _lock = threading.Lock()
 _jobs: dict[str, dict] = {}          # id → {text, status: pending|taken|done|fail, result, error, created, taken_at, beat}
 _event = threading.Condition(_lock)
 LEASE_SEC = 240                      # 확장이 이 시간 동안 소식이 없으면 다른 탭이 다시 가져감
 KEEP_SEC = 3600
+
+
+def remote(operation, **data):
+    import requests
+    try:
+        response = requests.post(os.environ["YOUTOO_WEB_BROKER"] + "/api/worker-web",
+                                 json=dict(op=operation, **data),
+                                 headers={"Authorization": "Bearer " + os.environ.get("YOUTOO_WEB_TOKEN", "")}, timeout=10)
+        if response.status_code == 404:
+            raise RuntimeError("기본 창의 제작이 끝난 뒤 [다시 시작]을 눌러 주세요. 동시 작업용 딥시크 연결을 적용해야 합니다.")
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        raise RuntimeError("기본 프로그램 창의 딥시크 연결에 응답이 없습니다. 기본 창을 켜 두세요.") from None
+
+
+def broker_operation(body):
+    """Only called after the server authenticates a local worker."""
+    op, jid = body.get("op"), body.get("id")
+    if op == "submit":
+        return {"id": submit(str(body["text"]), body.get("meta"))}
+    if op == "cancel":
+        cancel(jid)
+        return {"ok": True}
+    if op == "alive":
+        return {"alive": extension_alive(), **status()}
+    if op == "poll":
+        with _event:
+            j = _jobs.get(jid)
+            return {k: j.get(k) for k in ("status", "result", "error")} if j else {"status": "missing"}
+    raise ValueError("알 수 없는 웹 연결 요청입니다.")
 
 
 def _gc():
@@ -22,6 +53,8 @@ def _gc():
 
 
 def submit(text: str, meta: dict | None = None) -> str:
+    if os.environ.get("YOUTOO_WEB_BROKER"):
+        return remote("submit", text=text, meta=meta)["id"]
     jid = uuid.uuid4().hex[:10]
     with _event:
         _gc()
@@ -32,12 +65,33 @@ def submit(text: str, meta: dict | None = None) -> str:
 
 
 def cancel(jid: str) -> None:
+    if os.environ.get("YOUTOO_WEB_BROKER"):
+        remote("cancel", id=jid)
+        return
     with _event:
         _jobs.pop(jid, None)
 
 
 def wait(jid: str, timeout: float = 1800, cancel_check=None) -> str:
     """결과 텍스트를 돌려준다. 실패면 RuntimeError."""
+    if os.environ.get("YOUTOO_WEB_BROKER"):
+        end = time.monotonic() + timeout
+        try:
+            while time.monotonic() < end:
+                if cancel_check and cancel_check():
+                    raise RuntimeError("취소됨")
+                value = remote("poll", id=jid)
+                if value["status"] == "done":
+                    return value["result"]
+                if value["status"] in ("fail", "missing"):
+                    raise RuntimeError(value.get("error") or "딥시크 작업이 종료되었습니다. 기본 창 연결을 확인하세요.")
+                time.sleep(1)
+            raise RuntimeError("딥시크 웹 응답 대기 시간 초과")
+        finally:
+            try:
+                cancel(jid)
+            except RuntimeError:
+                pass
     end = time.time() + timeout
     while time.time() < end:
         with _event:
@@ -108,6 +162,12 @@ def _owns_lease(job: dict, claim: str) -> bool:
 
 
 def status() -> dict:
+    if os.environ.get("YOUTOO_WEB_BROKER"):
+        try:
+            value = remote("alive")
+            return {"pending": value.get("pending", 0), "taken": value.get("taken", [])}
+        except RuntimeError:
+            return {"pending": 0, "taken": []}
     with _event:
         return dict(pending=sum(1 for j in _jobs.values() if j["status"] == "pending"),
                     taken=[dict(id=j["id"], progress=j["progress"], since=round(time.time() - j["taken_at"])) for j in _jobs.values() if j["status"] == "taken"])
@@ -119,4 +179,9 @@ def extension_ping(info: str = "") -> None:
     _extension_seen["at"] = time.time(); _extension_seen["info"] = info
 
 def extension_alive(sec: float = 40) -> bool:
+    if os.environ.get("YOUTOO_WEB_BROKER"):
+        try:
+            return bool(remote("alive").get("alive"))
+        except RuntimeError:
+            return False
     return time.time() - _extension_seen["at"] < sec
