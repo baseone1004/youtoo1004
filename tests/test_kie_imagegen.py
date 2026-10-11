@@ -18,6 +18,41 @@ def response(data=None, code=200, content=b""):
 
 
 class ZImageTest(unittest.TestCase):
+    def test_long_zimage_prompt_keeps_scene_and_fits_provider_limit(self):
+        scene = 'A cream mascot with a red scarf beside a glass hourglass, holding a heart-shaped padlock.'
+        style = 'STRICT STYLE LOCK: ' + 'warm hand-drawn 2D Japanese room, ' * 30 + 'This style takes priority over conflicting scene descriptions.'
+        prompt = style + ' ' + scene
+        shortened = gen.z_image_prompt(prompt, style)
+        self.assertLessEqual(gen.prompt_size(shortened), 1000)
+        self.assertIn(scene, shortened)
+        self.assertIn('hand-drawn 2D', shortened)
+        self.assertEqual(gen.z_image_prompt('a cream bear'), 'a cream bear')
+        self.assertLessEqual(gen.prompt_size(gen.z_image_prompt('😀日本語' * 400)), 1000)
+
+    def test_request_shortens_long_prompt_without_modifying_source(self):
+        original = '===001===\n프롬프트: ' + 'a warm Japanese room, ' * 150
+        self.prompts.write_text(original, encoding='utf-8')
+        with patch.object(gen.requests, 'request', side_effect=[self.created, self.success]) as api, patch.object(gen.requests, 'get', return_value=self.download):
+            self.assertEqual(self.run_sync().state.status, 'done')
+            self.assertLessEqual(gen.prompt_size(api.call_args_list[0].kwargs['json']['input']['prompt']), 1000)
+        self.assertEqual(self.prompts.read_text(encoding='utf-8'), original)
+
+    def test_ambiguous_server_error_keeps_journal_and_blocks_repeat_charge(self):
+        with patch.object(gen.requests, 'request', return_value=response({'code':500,'msg':'private-server-detail'},500)):
+            runner = self.run_sync()
+        self.assertEqual(self.journal()['1']['status'], 'submitting')
+        self.assertNotIn('private-server-detail', runner.state.error)
+        with patch.object(gen.requests, 'request') as api:
+            self.run_sync()
+            api.assert_not_called()
+
+    def test_invalid_ratio_blocks_submission_and_specific_length_error_is_readable(self):
+        self.s.aspect_ratio = 'invalid'
+        with patch.object(gen.requests, 'request') as api:
+            self.assertIn('비율', self.run_sync().state.error)
+            api.assert_not_called()
+        self.assertIn('글자 수', gen.friendly_error(422, 'prompt max length is 1000'))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -143,6 +178,7 @@ class ZImageTest(unittest.TestCase):
         reference = self.out / "reference.png"
         reference.write_bytes(self.download.content)
         self.s.reference_image = str(reference)
+        self.s.reference_model = "seedream/4.5-edit"
         uploaded = response({"code": 200, "data": {"downloadUrl": "https://tempfile.redpandaai.co/ref.png"}})
         with patch.object(gen.requests, "post", return_value=uploaded) as upload, patch.object(gen.requests, "request", side_effect=[self.created, self.success] * 2) as api, patch.object(gen.requests, "get", return_value=self.download):
             self.assertEqual(self.run_sync().state.status, "done")
@@ -152,6 +188,45 @@ class ZImageTest(unittest.TestCase):
             self.assertEqual(payload["input"]["image_urls"], ["https://tempfile.redpandaai.co/ref.png"])
             self.assertEqual(payload["input"]["quality"], "basic")
             self.assertNotIn("test-secret", str(self.journal()))
+
+    def test_qwen_reference_single_landscape_image_and_price(self):
+        reference = self.out / "reference.png"
+        reference.write_bytes(self.download.content)
+        self.s.reference_image = str(reference)
+        self.prompts.write_text("===001===\n프롬프트: " + "a cafe scene " * 300, encoding="utf-8")
+        uploaded = response({"code":200,"data":{"downloadUrl":"https://tempfile.redpandaai.co/ref.png"}})
+        with patch.object(gen.requests, "post", return_value=uploaded), patch.object(gen.requests, "request", side_effect=[self.created,self.success]) as api, patch.object(gen.requests,"get",return_value=self.download):
+            runner = self.run_sync()
+        self.assertEqual(runner.state.status,"done")
+        payload = api.call_args_list[0].kwargs["json"]
+        self.assertEqual(payload["model"],"qwen/image-edit")
+        self.assertEqual(payload["input"]["image_url"],"https://tempfile.redpandaai.co/ref.png")
+        self.assertEqual(payload["input"]["image_size"],"landscape_16_9")
+        self.assertEqual(payload["input"]["num_images"],"1")
+        self.assertLessEqual(gen.prompt_size(payload["input"]["prompt"]),2000)
+        self.assertNotIn("seed",payload["input"])
+        self.assertNotIn("image_urls",payload["input"])
+        self.assertEqual(runner.state.estimated_submitted_credits,2)
+
+    def test_similar_outputs_warn_without_requesting_paid_regeneration(self):
+        Image.new("RGB",(32,18),"blue").save(self.out/"001.jpg")
+        Image.new("RGB",(32,18),"blue").save(self.out/"002.jpg")
+        runner=gen.Runner()
+        with patch.object(gen.requests,"request") as api:
+            runner._check_similarity(self.out/"002.jpg")
+            api.assert_not_called()
+        self.assertEqual(runner.state.duplicate_pairs,[[1,2]])
+        self.assertTrue((self.out/".kie-image-review.json").exists())
+        Image.new("RGB",(32,18),"red").save(self.out/"003.jpg")
+        runner._check_similarity(self.out/"003.jpg")
+        self.assertEqual(len(runner.state.duplicate_pairs),1)
+
+    def test_repeated_prompt_blocks_before_paid_request(self):
+        self.prompts.write_text("===001===\n프롬프트: a cafe\n===002===\n프롬프트: a cafe",encoding="utf-8")
+        with patch.object(gen.requests,"request") as api:
+            runner=self.run_sync()
+        self.assertIn("설명이 같습니다",runner.state.error)
+        api.assert_not_called()
 
     def test_seedream_four_single_image_and_cost(self):
         reference = self.out / "reference.png"

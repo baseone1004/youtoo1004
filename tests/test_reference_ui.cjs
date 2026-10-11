@@ -12,7 +12,7 @@ const functions = source.slice(source.indexOf('async function genBodyFromUI()'),
   context.STATE.profiles.mindam.언어 = 'ko';
   context.api = async () => ({language});
   assert.equal((await context.genBodyFromUI()).reference_image, 'person.png');
-  assert.equal((await context.genBodyFromUI()).reference_model, 'bytedance/seedream-v4-edit');
+  assert.equal((await context.genBodyFromUI()).reference_model, 'qwen/image-edit');
   context.STATE.profiles.person.마스코트.생성_모델='seedream/4.5-edit';
   assert.equal((await context.genBodyFromUI()).reference_model, 'seedream/4.5-edit');
   selection.value='folder/final.txt';

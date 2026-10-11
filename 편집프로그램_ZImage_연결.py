@@ -10,7 +10,7 @@ REQUEST = '''class GenStart(BaseModel):
     style_prefix: str = ""
     aspect_ratio: str = "16:9"
     reference_image: str = ""
-    reference_model: str = "seedream/4.5-edit"
+    reference_model: str = "qwen/image-edit"
 
 
 '''

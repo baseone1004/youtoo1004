@@ -202,23 +202,20 @@ KIND_LABEL = {"bench": "채널 벤치마킹", "script": "대본 만들기", "min
 
 def select_saved_account(body):
     if os.environ.get("YOUTOO_ACCOUNT"):
-        raise ValueError("채널 전용 창입니다. 다른 채널은 [별도 창 열기]로 여세요.")
+        raise ValueError("기본 프로그램 창에서 채널을 선택해 주세요.")
     account_id, slot = body.get("id", ""), body.get("slot", "person")
     if slot not in 채널_프로필.SLOTS:
         raise ValueError("적용할 채널을 선택하세요.")
-    # Serialize switching the main channel against another window launching it.
-    with channel_workspaces.file_lock(channel_workspaces.HOME / channel_workspaces.STORE_NAME / ".launch.lock", timeout=90):
+    with LOCK:
+        if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
+            raise ValueError("현재 제작이 끝나거나 중단한 뒤 채널을 바꿔 주세요. 한 편씩 제작합니다.")
+        current = aip("/api/gen/status")
+        if current.get("status") in ("running", "paused"):
+            raise ValueError("이미지 생성을 중단하거나 완료한 뒤 채널을 바꿔 주세요.")
         cfg = load_json("설정.json", {})
-        dedicated = (slot == "person" and account_id != cfg.get("유튜브_선택_person") and
-                     (channel_workspaces.workspace_dir(account_id) / "설정.json").is_file())
-        if not dedicated:
-            if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
-                raise ValueError("제작이 끝난 뒤 계정을 바꿔 주세요. 다른 채널은 [별도 창 열기]로 동시에 제작할 수 있습니다.")
-            profile = youtube_accounts.switch_profile(cfg, account_id, slot, 채널_프로필.get(slot))
-            채널_프로필.save(slot, profile, replace=True)
-            atomic_write_json("설정.json", cfg)
-    if dedicated:
-        return {"ok": True, "workspace_url": channel_workspaces.launch(account_id)["url"]}
+        profile = youtube_accounts.switch_profile(cfg, account_id, slot, 채널_프로필.get(slot))
+        채널_프로필.save(slot, profile, replace=True)
+        atomic_write_json("설정.json", cfg)
     채널_연동.fetch_in_background(cfg, slot, force=True)
     return {"ok": True, "accounts": youtube_accounts.public_accounts(cfg)}
 
@@ -1163,6 +1160,8 @@ def make_image_prompts(job, req):
         lines = "\n".join(f"{i+1:03d}. {texts[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
                 + "[장면 묶음] 번호 하나가 여러 문장일 수 있다. 각 번호의 문장 전체를 읽고 중심 상황 하나를 그림으로 표현한다. 문장마다 번호를 추가하지 않는다. 대사에는 해당 번호 원문 전체를 그대로 적는다.\n"
+                + "[장면 다양성] 같은 장소와 정면 자세를 반복하지 말고 원문의 구체적인 행동·소품·관계를 표현한다. 캐릭터의 외형만 유지하고 배경·표정·자세·촬영 구도는 장면에 맞게 바꾼다. 레퍼런스의 배경을 복제하지 않는다.\n"
+                + ("[앞서 사용한 장면 — 같은 구도 반복 금지]\n" + "\n".join(have[k][-900:] for k in sorted(have)[-4:]) + "\n" if have else "")
                 + sheet_note(sheet)
                 + 채널_프로필.mascot_reference_note(channel_of(path))
                 + ("[캐릭터] 인물표에 적힌 외형과 의상을 모든 장면에서 글로 구체적으로 묘사한다. "
@@ -1667,8 +1666,8 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
     if reference_slot:
         from reference_images import reference_options
         body.update(reference_options(reference_slot))
-    model = body.get("reference_model", "seedream/4.5-edit") if body.get("reference_image") else "z-image"
-    price = {"z-image": .8, "bytedance/seedream-v4-edit": 5, "seedream/4.5-edit": 6.5}.get(model, 0)
+    model = body.get("reference_model", "qwen/image-edit") if body.get("reference_image") else "z-image"
+    price = {"z-image": .8, "bytedance/seedream-v4-edit": 5, "seedream/4.5-edit": 6.5, "qwen/image-edit": 2}.get(model, 0)
     job.add(f"   KIE 이미지 모델: {model} · 장당 {price:g} 크레딧 · 썸네일·영상 변환 별도")
     current = aip("/api/gen/status")
     if current.get("status") in ("running", "paused"):

@@ -57,20 +57,13 @@ class WorkspaceTest(unittest.TestCase):
         self.assertNotIn("last", editor_cfg)
         self.assertNotIn("gen", editor_cfg)
 
-    def test_running_channel_reuses_process_without_overwriting_settings(self):
-        target = workspaces.workspace_dir("ja")
-        record = {"id": "ja", "instance": "test", "port": 18805}
-        workspaces.write_json(target / ".workspace.json", record)
-        workspaces.write_json(target / "설정.json", {"saved": True})
-        with patch.object(workspaces, "own_server", return_value=True), patch.object(workspaces, "launch_process") as spawn:
-            result = workspaces.launch("ja")
-        self.assertEqual(result["url"], "http://127.0.0.1:18805/")
-        spawn.assert_not_called()
-        self.assertEqual(workspaces.read_json(target / "설정.json"), {"saved": True})
 
-    def test_main_channel_never_creates_duplicate_worker(self):
+
+    def test_parallel_launch_removed_without_spawning(self):
         with patch.object(workspaces, "launch_process") as spawn:
-            self.assertTrue(workspaces.launch("ko")["main"])
+            for account in ("ko", "ja"):
+                with self.assertRaisesRegex(ValueError,"별도 채널 창 기능이 제거"):
+                    workspaces.launch(account)
         spawn.assert_not_called()
 
     def test_invalid_account_and_path_traversal(self):
@@ -101,48 +94,8 @@ class WorkspaceTest(unittest.TestCase):
         self.assertTrue((target / "대본" / "saved.txt").exists())
         self.assertTrue((target / "testcode.py").exists())
 
-    def test_simultaneous_open_requests_spawn_only_one_pair(self):
-        child = Mock()
-        child.poll.return_value = None
-        results, errors = [], []
-        def open_channel():
-            try:
-                results.append(workspaces.launch("ja"))
-            except Exception as exc:
-                errors.append(exc)
-        with patch.object(workspaces, "sync_code"), patch.object(workspaces, "own_server", return_value=True), patch.object(workspaces, "own_editor", return_value=True), patch.object(workspaces, "launch_process", return_value=child) as spawn:
-            threads = [threading.Thread(target=open_channel) for _ in range(2)]
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join(timeout=10)
-        self.assertEqual(errors, [])
-        self.assertEqual(len(results), 2)
-        self.assertEqual(results[0]["url"], results[1]["url"])
-        self.assertEqual(spawn.call_count, 2)
 
-    def test_failed_start_only_terminates_new_children(self):
-        failed, alive = Mock(), Mock()
-        failed.poll.return_value = 1
-        alive.poll.return_value = None
-        with patch.object(workspaces, "sync_code"), patch.object(workspaces, "launch_process", side_effect=[failed, alive]):
-            with self.assertRaisesRegex(RuntimeError, "실행하지 못했습니다"):
-                workspaces.launch("ja")
-        failed.terminate.assert_not_called()
-        alive.terminate.assert_called_once()
 
-    def test_backend_recovery_reuses_its_editor_and_keeps_settings(self):
-        target = workspaces.workspace_dir("ja")
-        record = {"id": "ja", "instance": "test", "port": 18805, "editor_port": 18806}
-        workspaces.write_json(target / ".workspace.json", record)
-        workspaces.write_json(target / "설정.json", {"saved": True})
-        child = Mock(); child.poll.return_value = None
-        with patch.object(workspaces, "sync_code") as sync, patch.object(workspaces, "own_server", side_effect=[False, True]), patch.object(workspaces, "own_editor", return_value=True), patch.object(workspaces, "launch_process", return_value=child) as spawn:
-            workspaces.launch("ja")
-        self.assertEqual(spawn.call_count, 1)
-        self.assertEqual(spawn.call_args.args[0][0], "대본선택.py")
-        self.assertFalse(sync.call_args.kwargs["include_editor"])
-        self.assertEqual(workspaces.read_json(target / "설정.json"), {"saved": True})
 
 
 class CrossProcessLockTest(unittest.TestCase):
