@@ -2410,7 +2410,10 @@ def start_queue_worker():
             with QUEUE.lock:
                 if QUEUE.data.get("status") != "running":
                     QUEUE.save(); return
-                item = next((x for x in QUEUE.data.get("items", []) if x.get("status") == "pending"), None)
+                item = next((x for x in QUEUE.data.get("items", []) if x.get("status") in ("pending", "error", "working")), None)
+                if item and item.get("status") != "pending":
+                    QUEUE.data.update(status="paused", current_id="")
+                    QUEUE.save(); return
                 if not item:
                     QUEUE.data.update(status="done", current_id="")
                     QUEUE.save()
@@ -2471,7 +2474,6 @@ def start_queue_worker():
                 telegram_notice(f"✅ 영상 한 편이 완성됐습니다.\n주제: {item['title']}\n길이: {duration / 60:.1f}분\n업로드 폴더: {result.get('upload_dir') or result.get('assets', '')}\n다음 주제를 자동으로 시작합니다.")
             except Exception as exc:  # noqa: BLE001
                 message = str(exc)
-                shared = is_shared_failure(message)
                 with QUEUE.lock:
                     cancelled = QUEUE.data.get("status") == "cancelled"
                     stopping = QUEUE.data.get("resume_on_start") and job and job.cancel_requested     # 프로그램 종료로 멈춘 것
@@ -2480,23 +2482,25 @@ def start_queue_worker():
                     if stopping:
                         item.update(status="pending", stage="이어서 만들 예정", error="", progress=0.0)
                     else:
-                        item.update(status="cancelled" if cancelled else ("pending" if shared else "error"),
-                                    stage="취소됨" if cancelled else ("오류 확인 후 이어서 대기" if shared else "실패"),
-                                    error=message, progress=1.0 if cancelled or not shared else 0.0)
+                        item.update(status="cancelled" if cancelled else "error",
+                                    stage="취소됨" if cancelled else "복구 필요 · 다음 편 시작 안 함",
+                                    error=message, progress=0.0)
                     QUEUE.data["current_id"] = ""
-                    if shared:
+                    if not cancelled:
                         QUEUE.data["status"] = "paused"
                     QUEUE.save()
                 if stopping:
                     return
                 if not cancelled:
                     telegram_notice(f"❌ 영상 제작에 실패했습니다.\n주제: {item['title']}\n오류: {message}" +
-                                    ("\n추가 사용량을 막기 위해 대기열을 일시정지했습니다." if shared else "\n다음 주제를 계속 제작합니다."))
-                if shared:
-                    return
+                                    "\n이 편을 마칠 때까지 다음 편을 시작하지 않습니다. 대기열을 일시정지했습니다.")
+                return
 
-    QUEUE_THREAD = threading.Thread(target=worker, daemon=True, name="continuous-production")
-    QUEUE_THREAD.start()
+    with QUEUE.lock:
+        if QUEUE_THREAD and QUEUE_THREAD.is_alive():
+            return
+        QUEUE_THREAD = threading.Thread(target=worker, daemon=True, name="continuous-production")
+        QUEUE_THREAD.start()
 
 
 def create_queue(body):
@@ -2839,13 +2843,7 @@ class H(BaseHTTPRequestHandler):
                     QUEUE.save()
                 self._json(queue_snapshot())
             elif u.path == "/api/queue/resume":
-                with QUEUE.lock:
-                    if not any(x.get("status") in ("pending", "error") for x in QUEUE.data.get("items", [])):
-                        raise ValueError("다시 제작할 대기 항목이 없습니다.")
-                    if not any(x.get("status") == "pending" for x in QUEUE.data.get("items", [])):
-                        for x in QUEUE.data.get("items", []):
-                            if x.get("status") == "error": x.update(status="pending", stage="다시 대기 중", error="", progress=0.0)
-                    QUEUE.data["status"] = "running"; QUEUE.save()
+                QUEUE.resume()
                 start_queue_worker(); self._json(queue_snapshot())
             elif u.path == "/api/queue/cancel":
                 with QUEUE.lock:

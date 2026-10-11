@@ -42,7 +42,7 @@ class ContinuousPipelineTest(unittest.TestCase):
             self.assertEqual(order, ["첫째", "둘째"])
             self.assertTrue(all(x["status"] == "done" for x in store.data["items"]))
 
-    def test_item_failure_continues_to_next_topic(self):
+    def test_any_item_failure_pauses_before_next_topic(self):
         with tempfile.TemporaryDirectory() as td:
             store = self.make_store(td); calls = [0]
             def fake_run(_kind, _fn):
@@ -53,8 +53,41 @@ class ContinuousPipelineTest(unittest.TestCase):
             with patch.object(app, "QUEUE", store), patch.object(app, "QUEUE_THREAD", None), \
                  patch.object(app, "run_job", side_effect=fake_run), patch.object(app, "verify_final_video", return_value=60.0), \
                  patch.object(app, "telegram_notice"):
-                app.start_queue_worker(); self.wait_done(store)
-            self.assertEqual([x["status"] for x in store.data["items"]], ["error", "done"])
+                app.start_queue_worker(); app.QUEUE_THREAD.join(timeout=2)
+                self.assertFalse(app.QUEUE_THREAD.is_alive())
+            self.assertEqual(store.data['status'], 'paused')
+            self.assertEqual(calls[0], 1)
+            self.assertEqual([x["status"] for x in store.data["items"]], ["error", "pending"])
+
+    def test_old_failed_episode_blocks_later_pending_episode(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = self.make_store(td)
+            store.data['items'][0].update(status='error', error='previous failure', result={'script':'saved.txt'})
+            with patch.object(app, 'QUEUE', store), patch.object(app, 'QUEUE_THREAD', None), \
+                    patch.object(app, 'run_job') as run, patch.object(app, 'telegram_notice'):
+                app.start_queue_worker(); app.QUEUE_THREAD.join(timeout=2)
+                run.assert_not_called()
+                self.assertEqual(store.data['status'], 'paused')
+                self.assertEqual(store.public()['items'][1]['blocked_by'], '1')
+
+    def test_resume_retries_old_failure_before_pending_using_saved_script(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = self.make_store(td); order = []
+            script = Path(td, 'saved.txt'); script.write_text('existing', encoding='utf-8')
+            store.data['items'][0].update(status='error', error='previous failure', result={'script':str(script)})
+            def fake_pipeline(job, req):
+                order.append(req)
+                return {'video':'ok.mp4'}
+            def fake_run(kind, fn):
+                result = fn(SimpleNamespace())
+                return SimpleNamespace(status='done', result=result)
+            with patch.object(app, 'QUEUE', store), patch.object(app, 'QUEUE_THREAD', None), \
+                    patch.object(app, 'run_job', side_effect=fake_run), patch.object(app, 'make_pipeline', side_effect=fake_pipeline), \
+                    patch.object(app, 'verify_final_video', return_value=60), patch.object(app, 'telegram_notice'):
+                store.resume(); app.start_queue_worker(); self.wait_done(store)
+            self.assertEqual([r['title'] for r in order], ['첫째','둘째'])
+            self.assertEqual(order[0]['script_file'], str(script))
+            self.assertTrue(order[0]['reuse_prompts'])
 
     def test_speech_failure_pauses_batch_and_keeps_script_for_repair(self):
         with tempfile.TemporaryDirectory() as td:

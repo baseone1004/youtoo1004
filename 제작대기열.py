@@ -37,6 +37,8 @@ class QueueStore:
                     item["status"] = "pending"
             if data.get("status") == "running" and any(i.get("status") == "pending" for i in data["items"]):
                 data["status"] = "running"
+            elif data.get("status") == "running" and any(i.get("status") == "error" for i in data["items"]):
+                data.update(status="paused", current_id="")
             elif data.get("status") == "running":
                 data["status"] = "done"
                 data["current_id"] = ""
@@ -62,9 +64,25 @@ class QueueStore:
         with self.lock:
             value = json.loads(json.dumps(self.data, ensure_ascii=False))
         value["status_text"] = 상태_한글.get(value.get("status"), value.get("status", ""))
+        front = next((x for x in value.get("items", []) if x.get("status") in ("pending", "error", "working")), None)
+        value["mode"] = "sequential"
+        value["next_item_id"] = front.get("id") if front else ""
         for item in value.get("items", []):
             item["status_text"] = 상태_한글.get(item.get("status"), item.get("status", ""))
+            item["blocked_by"] = (front.get("id") if front and item is not front
+                                  and item.get("status") in ("pending", "error") else "")
         return value
+
+    def resume(self):
+        """Retry unfinished episodes in their original order, preserving files."""
+        with self.lock:
+            if not any(x.get("status") in ("pending", "error") for x in self.data.get("items", [])):
+                raise ValueError("다시 제작할 대기 항목이 없습니다.")
+            for item in self.data.get("items", []):
+                if item.get("status") == "error":
+                    item.update(status="pending", stage="복구 후 순서대로 제작", progress=0.0)
+            self.data["status"] = "running"
+            self.save()
 
 
 def telegram_call(token, method, payload=None, timeout=15):

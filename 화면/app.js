@@ -474,7 +474,7 @@ function explainError(message, opts) {
   let t;
   if (/중단|취소|cancel/i.test(raw) && !/편집프로그램|이미지 생성/.test(raw)) t = {title: '사용자가 중단했습니다', why: '이어서 만들려면 다시 시도를 누르세요.', acts: R};
   else if (/이미지 생성이 끝나지 않음: stopped/.test(raw)) t = {title: '이미지 생성이 중단되었습니다', why: '이미지 칸의 [■ 중단]을 눌렀거나 마우스가 화면 모서리로 가서 멈췄습니다. 다시 시도하면 빠진 장면부터 이어서 만듭니다.', acts: R};
-  else if (/자막 싱크|음성 타임스탬프/.test(raw)) t = {title: '일부 음성의 자막 시간 정보가 잘못됐어요', why: '이미 받은 정상 음성은 유지됩니다. 문제 음성만 다시 만들면 해당 부분에만 인월드 사용량이 발생합니다. 복구가 끝난 뒤 대기열을 이어서 시작하세요.', acts: [['문제 음성만 다시 만들기', `repairNarration('${js(opts.script || '')}')`]]};
+  else if (/자막 싱크|음성 타임스탬프/.test(raw)) t = {title: '일부 음성의 자막 시간 정보가 잘못됐어요', why: '이미 받은 정상 음성은 유지됩니다. 문제 음성만 다시 만들면 해당 부분에만 인월드 사용량이 발생합니다. 복구가 끝난 뒤 대기열을 이어서 시작하세요.', acts: opts.blocked ? [] : [['문제 음성만 다시 만들기', `repairNarration('${js(opts.script || '')}')`]]};
   else if (/인월드|inworld|tts/i.test(raw) && /통신 오류|SSL|ConnectionError|HTTPSConnectionPool|timeout|timed out|응답을 받지/i.test(raw)) t = {title: '인월드와 통신이 끊겼어요', why: '이 메시지는 키 오류를 뜻하지 않습니다. 자동 재요청은 멈췄습니다. 인월드 사용 내역을 확인한 뒤 이어서 시도하세요. 받지 못한 음성을 새로 요청하면 인월드 사용량이 발생할 수 있습니다. KIE 이미지 비용과는 별개입니다.', acts: R};
   else if (/인월드|inworld|tts/i.test(raw) && /429|rate limit/i.test(raw)) t = {title: '인월드 요청이 몰렸어요', why: '같은 키를 쓰는 다른 작업이 끝나거나 잠시 지난 뒤 이어서 시도하세요. 정상 음성은 다시 만들지 않습니다.', acts: R};
   else if (/확장|chat\.deepseek|웹 대기|딥시크 웹|답변이 시작되지|deepseek-web/i.test(raw)) t = {title: '딥시크 창이 응답하지 않았어요', why: '크롬의 chat.deepseek.com 탭이 닫혔거나, 확장 연결이 끊겼거나, 딥시크가 느린 상태입니다. 탭이 열려 있고 로그인돼 있는지 확인한 뒤 다시 시도하세요.', acts: [['확장 상태 확인', "showView('settings')"], ...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
@@ -508,7 +508,7 @@ async function stopAll() {
   } catch (e) { toast(e.message, true); }
 }
 async function queueControl(action) {
-  const labels = {pause: '지금 만드는 편이 끝나면 잠시 멈춥니다.', resume: '연속 제작을 계속합니다.', cancel: '지금 작업과 남은 주제를 모두 중단할까요?'};
+  const labels = {pause: '지금 만드는 편이 끝나면 잠시 멈춥니다.', resume: '가장 앞의 미완성 편부터 한 편씩 이어서 제작합니다.', cancel: '지금 작업과 남은 주제를 모두 중단할까요?'};
   if (action === 'cancel' && !confirm(labels.cancel)) return;
   try { renderQueue(await api('/api/queue/' + action, {})); toast(labels[action]); } catch (e) { toast(e.message, true); }
 }
@@ -516,8 +516,16 @@ async function removeQueueItem(id) { try { renderQueue(await api('/api/queue/rem
 function renderQueue(q) {
   if (!q) return; const items = q.items || [], done = items.filter(x => x.status === 'done').length, failed = items.filter(x => x.status === 'error').length;
   $('queueManage').classList.toggle('hidden', !items.length || !['running', 'paused'].includes(q.status));
-  $('queueSummary').textContent = items.length ? `${q.status_text || ''} · 전체 ${items.length}편 · 완료 ${done}편${failed ? ` · 실패 ${failed}편` : ''}` : '대기열 없음';
-  $('queueList').innerHTML = items.map((x, i) => `<div class="qitem ${x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(x.status_text || '대기 중')}${x.stage ? ' · ' + esc(x.stage) : ''}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${x.error && !isCancelMessage(x.error) && x.status !== 'cancelled' ? explainError(x.error, {retry: x.status === 'error', script: (x.result || {}).script}) : ''}</div>`).join('');
+  const front = items.findIndex(x => ['pending', 'error', 'working'].includes(x.status));
+  $('queueSummary').textContent = items.length ? `한 편씩 순서대로 제작 · ${q.status_text || ''} · 완료 ${done}/${items.length}편${front >= 0 ? ` · ${front + 1}편 먼저 진행` : ''}${failed ? ` · 이전 오류 ${failed}편` : ''}` : '대기열 없음';
+  $('queueList').innerHTML = items.map((x, i) => {
+    const blocked = front >= 0 && i > front && ['pending', 'error'].includes(x.status);
+    const label = blocked ? '앞 편 완료 후 대기' : x.status === 'error' ? '이 편부터 복구하세요' : `${x.status_text || '대기 중'}${x.stage ? ' · ' + x.stage : ''}`;
+    let error = x.error && !isCancelMessage(x.error) && x.status !== 'cancelled'
+      ? explainError(x.error, {retry: !blocked, blocked, script: (x.result || {}).script}) : '';
+    if (blocked && error) error = `<details style="grid-column:1/-1"><summary>이전 시도 오류 보기 · 현재는 대기 중</summary>${error}</details>`;
+    return `<div class="qitem ${blocked ? 'pending' : x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(label)}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${error}</div>`;
+  }).join('');
 }
 async function refreshQueue() { try { const q = await api('/api/queue'); if (STATE) STATE.queue = q; renderQueue(q); renderStepBar(); } catch (e) {} }
 

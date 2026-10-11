@@ -28,6 +28,12 @@ class QueueStoreTest(unittest.TestCase):
                                         "items": [{"id": "a", "status": "done"}]}), encoding="utf-8")
             self.assertEqual(QueueStore(path).data["status"], "done")
 
+    def test_failed_queue_is_not_reported_complete_after_restart(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'queue.json'
+            path.write_text(json.dumps({'status':'running','items':[{'id':'1','status':'error'}]}),encoding='utf-8')
+            self.assertEqual(QueueStore(path).data['status'],'paused')
+
 
 class TelegramTest(unittest.TestCase):
     @patch("제작대기열.telegram_call")
