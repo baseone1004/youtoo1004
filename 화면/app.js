@@ -465,15 +465,16 @@ async function poll() {
   else if (j.status === 'error') { const e = $('pgErr'); e.classList.remove('hidden'); e.className = 'errwrap'; e.innerHTML = explainError(j.error); }
 }
 // ── 친절한 오류 안내: 원인별 제목·설명·해결 버튼 ──
-function isCancelMessage(message) { const raw = String(message || ''); return /중단|취소|cancel/i.test(raw) && !/편집프로그램|이미지 생성/.test(raw); }   // 사용자가 [■ 중단]을 누른 것 — 오류 카드를 띄우지 않는다
+function isCancelMessage(message) { const raw = String(message || ''); return /^(?:RuntimeError:\s*)?(?:취소됨|중단됨|사용자가.{0,10}중단|cancelled|canceled)/i.test(raw); }   // 사용자가 [■ 중단]을 누른 것 — 오류 카드를 띄우지 않는다
 function explainError(message, opts) {
   const raw = String(message || '알 수 없는 오류'); opts = opts || {};
   const retry = opts.retry !== false && STATE && STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status));
   const R = retry ? [['▶ 다시 시도', "queueControl('resume')"]] : [];
   const gemini = STATE && STATE.keys && STATE.keys.gemini;
   let t;
-  if (/중단|취소|cancel/i.test(raw) && !/편집프로그램|이미지 생성/.test(raw)) t = {title: '사용자가 중단했습니다', why: '이어서 만들려면 다시 시도를 누르세요.', acts: R};
+  if (/^(?:RuntimeError:\s*)?(?:취소됨|중단됨|사용자가.{0,10}중단|cancelled|canceled)/i.test(raw)) t = {title: '사용자가 중단했습니다', why: '이어서 만들려면 다시 시도를 누르세요.', acts: R};
   else if (/이미지 생성이 끝나지 않음: stopped/.test(raw)) t = {title: '이미지 생성이 중단되었습니다', why: '이미지 칸의 [■ 중단]을 눌렀거나 마우스가 화면 모서리로 가서 멈췄습니다. 다시 시도하면 빠진 장면부터 이어서 만듭니다.', acts: R};
+  else if (/음성 복구 중단/.test(raw)) t = {title: '음성 복구가 실패해 추가 요청을 막았어요', why: '짧게 나눈 음성도 정상 응답을 확인하지 못했습니다. 받은 정상 음성은 보존했습니다. 이어 만들기를 반복해서 눌러도 같은 부분을 다시 유료 요청하지 않습니다. 상세 오류와 인월드 사용 내역·목소리 설정을 확인하세요.', acts: [['나레이션 설정', "showView('settings')"]]};
   else if (/자막 싱크|음성 타임스탬프/.test(raw)) t = {title: '음성을 복구한 뒤 이어서 만들 수 있어요', why: '이어 만들기를 누르면 문제·누락 음성만 자동으로 새로 만들고 다음 제작 단계로 넘어갑니다. 정상 음성은 재사용하며, 새로 만드는 부분에 인월드 사용량이 발생합니다. 다시 실패하면 다음 편을 시작하지 않고 멈춥니다.', acts: opts.blocked ? [] : retry ? [['▶ 음성 복구하고 이어 만들기', "queueControl('resume')"]] : [['문제 음성만 다시 만들기', `repairNarration('${js(opts.script || '')}')`]]};
   else if (/인월드|inworld|tts/i.test(raw) && /통신 오류|SSL|ConnectionError|HTTPSConnectionPool|timeout|timed out|응답을 받지/i.test(raw)) t = {title: '인월드와 통신이 끊겼어요', why: '이 메시지는 키 오류를 뜻하지 않습니다. 자동 재요청은 멈췄습니다. 인월드 사용 내역을 확인한 뒤 이어서 시도하세요. 받지 못한 음성을 새로 요청하면 인월드 사용량이 발생할 수 있습니다. KIE 이미지 비용과는 별개입니다.', acts: R};
   else if (/인월드|inworld|tts/i.test(raw) && /429|rate limit/i.test(raw)) t = {title: '인월드 요청이 몰렸어요', why: '같은 키를 쓰는 다른 작업이 끝나거나 잠시 지난 뒤 이어서 시도하세요. 정상 음성은 다시 만들지 않습니다.', acts: R};

@@ -86,6 +86,9 @@ class Inworld:
             body["timestampType"] = "CHARACTER"
         if self.model == "inworld-tts-2":
             body["deliveryMode"] = "STABLE"
+            if getattr(self, "repair_mode", False):
+                body["applyTextNormalization"] = "OFF"
+                body["instruction"] = "Read the entire Japanese text clearly, without omitting or repeating any words."
         elif self.temperature is not None and self.model != "inworld-tts-2-flash":
             body["temperature"] = float(self.temperature)
         last = ""
@@ -295,6 +298,81 @@ def verify_subtitle_sync(srt_path, audio_duration, method="estimated"):
                 detail="문자별 음성 타임스탬프 사용" if method == "character" else "기존 음성의 쉼·글자 수로 추정한 자막")
 
 
+def repair_speech_part(tts, text, path, ffmpeg, ffprobe, cancel=None, log=print):
+    """Bounded short-text recovery. Keep successful pieces across resumes.
+
+    A journal is written BEFORE each billable request, so failed/lost responses
+    cannot be submitted repeatedly by pressing resume. Never stretch bad times.
+    """
+    recipe = dict(version=1, text=text, voice=tts.voice, model=tts.model,
+                  speed=tts.speed, temperature=tts.temperature, language=tts.language)
+    digest = hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()[:20]
+    folder = Path(str(path) + ".repair") / digest
+    folder.mkdir(parents=True, exist_ok=True)
+    chunks = []
+    for clause in re.findall(r"[^、。！？!?]+[、。！？!?]*|[、。！？!?]+", text):
+        while len(clause) > 40:
+            chunks.append(clause[:40]); clause = clause[40:]
+        if clause.strip():
+            chunks.append(clause.strip())
+    if not chunks or re.sub(r"\s+", "", "".join(chunks)) != re.sub(r"\s+", "", text):
+        raise RuntimeError("음성 복구: 문장을 나누지 못해 추가 요청을 하지 않았습니다.")
+    log(f"   짧은 문장 {len(chunks)}개로 음성 복구 · 성공한 부분은 다시 요청하지 않습니다")
+    merged_chars, merged_starts, merged_ends, wavs = [], [], [], []
+    offset = 0.0
+    for index, chunk in enumerate(chunks):
+        if cancel and cancel():
+            raise RuntimeError("취소됨")
+        audio = folder / f"{index:03d}.mp3"
+        journal = folder / f"{index:03d}.request.json"
+        alignment_path = Path(str(audio) + ".alignment.json")
+        state = json.loads(journal.read_text(encoding="utf-8")) if journal.exists() else {}
+        if state and state.get("status") != "complete":
+            raise RuntimeError("음성 복구 중단: 이 짧은 문장은 이미 요청했지만 정상 응답을 확인하지 못했습니다. "
+                               "이어 만들기로 반복 과금하지 않습니다. 인월드 사용 내역과 목소리를 확인하세요.")
+        if not state:
+            journal.write_text(json.dumps(dict(status="requested")), encoding="utf-8")
+            tts.repair_mode = True
+            try:
+                tts.synth(chunk, str(audio))
+                times = character_timings(chunk, json.loads(alignment_path.read_text(encoding="utf-8")))
+                duration = probe_duration(ffprobe, str(audio))
+                if duration <= 0 or max(e for _, e in times) > duration + .12:
+                    raise ValueError("음성 시간 정보가 실제 음성 길이를 넘습니다.")
+            except (Exception, SystemExit) as exc:
+                raise RuntimeError("음성 복구 중단: 짧게 나눈 음성도 정상 응답을 받지 못했습니다. "
+                                   "같은 부분은 자동 재요청하지 않습니다. " + str(exc)) from None
+            finally:
+                tts.repair_mode = False
+            journal.write_text(json.dumps(dict(status="complete")), encoding="utf-8")
+        times = character_timings(chunk, json.loads(alignment_path.read_text(encoding="utf-8")))
+        wav_path = audio.with_suffix(".wav")
+        subprocess.run([ffmpeg, "-y", "-v", "error", "-i", str(audio), "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", str(wav_path)], check=True)
+        with wave.open(str(wav_path)) as wav:
+            duration = wav.getnframes() / wav.getframerate()
+        if max(e for _, e in times) > duration + .12:
+            raise RuntimeError("음성 복구: 자막 시간이 실제 음성 길이를 넘습니다. 추가 요청을 멈췄습니다.")
+        merged_chars.extend(re.sub(r"\s+", "", chunk))
+        merged_starts.extend(offset + s for s, _ in times)
+        merged_ends.extend(offset + min(e, duration) for _, e in times)
+        wavs.append(wav_path)
+        offset += duration
+    merged = {"characterAlignment": dict(characters=merged_chars,
+        characterStartTimeSeconds=merged_starts, characterEndTimeSeconds=merged_ends)}
+    character_timings(text, merged)
+    joined = folder / "joined.wav"
+    with wave.open(str(joined), "wb") as output:
+        output.setparams((1, 2, 24000, 0, "NONE", "not compressed"))
+        for wav_path in wavs:
+            with wave.open(str(wav_path)) as source:
+                output.writeframes(source.readframes(source.getnframes()))
+    candidate = folder / "complete.mp3"
+    subprocess.run([ffmpeg, "-y", "-v", "error", "-i", str(joined), "-c:a", "libmp3lame", "-b:a", "192k", str(candidate)], check=True)
+    # Only replace the bad group once all replacement pieces pass validation.
+    os.replace(candidate, path)
+    Path(str(path) + ".alignment.json").write_text(json.dumps(merged, ensure_ascii=False), encoding="utf-8")
+
+
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,
                temperature=None, name="나레이션", subtitle_lines=1, groups=None, language="", timestamps=False, normalize_numbers=False, force=False, repair_alignment=False):
     """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 부분 파일은 (같은 문장이면) 재사용.
@@ -380,7 +458,10 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
         if reusable and g not in invalid:
             done[0] += 1; return
         try:
-            tts.synth(text, p)
+            if g in invalid and repair_alignment and language.startswith("ja"):
+                repair_speech_part(tts, text, p, ffmpeg, ffprobe, cancel, log)
+            else:
+                tts.synth(text, p)
             identity_path.write_text(identity, encoding="utf-8")
             with open(txt, "w", encoding="utf-8") as f:
                 f.write(text)
@@ -397,7 +478,7 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
         if done[0] % 20 == 0 or done[0] == len(groups):
             log(f"      {done[0]}/{len(groups)}")
 
-    with ThreadPoolExecutor(max_workers=동시_요청) as ex:
+    with ThreadPoolExecutor(max_workers=1 if invalid else 동시_요청) as ex:
         list(ex.map(work, groups))
     if cancel and cancel():
         raise RuntimeError("취소됨")
