@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""그림 단위: 정보형은 문장 하나 = 장면 하나, 이야기형(민담)은 문장을 약 110자씩 묶는다."""
+"""짧은 정보형은 문장 그대로, 긴 정보형은 별도 compact 테스트, 이야기형은 110자 묶음."""
 import os
 import tempfile
 import unittest

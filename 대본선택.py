@@ -26,6 +26,7 @@ import 주제_추천
 import 유튜브_API
 import youtube_accounts
 import production_library
+import scene_layout
 import production_duration
 import channel_workspaces
 import 썸네일_합성
@@ -950,7 +951,9 @@ def legacy_split(script_file):
     marker = os.path.join(assets, 예전_나누기_표시)
     if os.path.isfile(marker):
         return True
-    flow = os.path.join(assets, "플로우.txt")
+    flow = os.path.join(assets, scene_layout.SENTENCE_FLOW)
+    if not os.path.isfile(flow):
+        flow = os.path.join(assets, "플로우.txt")
     if not os.path.isfile(flow):
         return False
     try:
@@ -1018,13 +1021,15 @@ def prompt_blocks(text):
 
 
 def scene_units(script_file, sents=None):
-    """대본을 그림 단위로 나눈다 → [(첫 문장 번호, 끝 문장 번호, 원문)]. 번호는 1부터, 자막(srt) 번호와 같다.
-    정보형: 문장 하나 = 장면 하나. 이야기형(민담): 1~2시간짜리라 연속 문장을 약 민담_장면_글자수 만큼 묶어 장면 하나로."""
+    """그림 → 연속 문장 범위. 문장 번호와 분할된 SRT 번호는 별도 연결한다.
+    새 정보형 제작은 최대 150장, 기존 제작의 이미지 번호는 유지한다."""
     if sents is None:
         with open(script_file, encoding="utf-8-sig") as f:
             sents = split_sentences(fix_script_sentences(script_body(f.read())), script_file)
     if channel_of(script_file) != "mindam":
-        return [(i + 1, i + 1, t) for i, t in enumerate(sents)]
+        assets = assets_dir(script_file)
+        prompts = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script_file) == "final.txt" else re.sub(r"\.txt$", "", script_file) + "_이미지프롬프트.txt"
+        return scene_layout.image_units(sents, assets, prompts)
     units, start, buf = [], 1, []
     for i, t in enumerate(sents, 1):
         buf.append(t)
@@ -1036,6 +1041,13 @@ def scene_units(script_file, sents=None):
         else:
             units.append((start, len(sents), " ".join(buf)))
     return units
+
+
+def refresh_image_flow(script_file, out_dir=None):
+    assets = assets_dir(script_file)
+    if not os.path.isfile(os.path.join(assets, scene_layout.PLAN_NAME)):
+        return None
+    return scene_layout.write_image_flow(out_dir or assets, scene_units(script_file))
 
 
 def _block_line(body):
@@ -1126,7 +1138,8 @@ def make_image_prompts(job, req):
     if channel_of(path) == "mindam":               # 이야기형 블록은 정보형의 서너 배 길이 → 한 번에 적게 묻는다 (답이 잘리는 것을 막는다)
         chunk = min(chunk, 민담_프롬프트_묶음)
     job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 → 장면 {len(units)}개 · {chunk}장면씩 · 화풍 {req.get('style', '실사')}"
-            + (f" · 이야기형은 약 {민담_장면_글자수}자마다 그림 한 장" if len(units) != len(sents) else ""))
+            + (" · 연속 문장을 묶어 이미지 수 절약" if len(units) != len(sents) else ""))
+    refresh_image_flow(path)                     # 자막 전체를 덮는지 유료 생성 전에 검사
     if path.endswith("final.txt"):
         out_path = os.path.join(os.path.dirname(path), "이미지프롬프트.txt")
     else:
@@ -1149,6 +1162,7 @@ def make_image_prompts(job, req):
         e = min(s + chunk, len(units))
         lines = "\n".join(f"{i+1:03d}. {texts[i]}" for i in range(s, e))
         user = (f"[화풍·화면 비율] {style}\n"
+                + "[장면 묶음] 번호 하나가 여러 문장일 수 있다. 각 번호의 문장 전체를 읽고 중심 상황 하나를 그림으로 표현한다. 문장마다 번호를 추가하지 않는다. 대사에는 해당 번호 원문 전체를 그대로 적는다.\n"
                 + sheet_note(sheet)
                 + 채널_프로필.mascot_reference_note(channel_of(path))
                 + ("[캐릭터] 인물표에 적힌 외형과 의상을 모든 장면에서 글로 구체적으로 묘사한다. "
@@ -1198,7 +1212,7 @@ def make_image_prompts(job, req):
     # 플로우 txt (Auto-Image Placer 용: N번 이미지 = 자막 a~b번)
     flow_path = re.sub(r"\.txt$", "", out_path) + "_플로우.txt"
     with open(flow_path, "w", encoding="utf-8") as f:
-        f.write("# 이미지번호: 자막번호 (정보형은 문장 1개 = 이미지 1장, 이야기형은 문장 묶음 = 이미지 1장)\n")
+        f.write("# 이미지번호: 대본 문장번호 (실제 자막 연결은 자료 폴더의 플로우.txt 사용)\n")
         for k, (a, b, _t) in enumerate(units, 1):
             f.write(f"{k}: {a}\n" if a == b else f"{k}: {a}-{b}\n")
     job.add(f"✓ 저장: {out_path}")
@@ -1469,6 +1483,8 @@ def _make_tts(job, req):
     path = req.get("script_file", "")
     if not path or not os.path.exists(path):
         raise SystemExit("대본 파일을 고르세요.")
+    if os.path.isfile(os.path.join(assets_dir(path), scene_layout.PLAN_NAME)):
+        scene_units(path)                       # 저장된 장면과 대본 불일치를 과금 전에 검사
     with open(path, encoding="utf-8-sig") as f:
         body = fix_script_sentences(script_body(f.read()))
     channel = req.get("channel") or channel_of(path)
@@ -1495,6 +1511,9 @@ def _make_tts(job, req):
                          normalize_numbers="number_normalization" in settings, force=bool(req.get("force")),
                          repair_alignment=bool(req.get("repair_alignment")),
                          temperature=(float(cfg["인월드_온도"]) if cfg.get("인월드_온도") not in (None, "", 0) else None))   # 감정 변화폭 (비우면 인월드 기본)
+    if r.get("flow") and os.path.isfile(r["flow"]):
+        production_library._write(Path(out) / scene_layout.SENTENCE_FLOW, Path(r["flow"]).read_bytes())
+        refresh_image_flow(path, out)
     settings.update(voice=voice, speed=speed)
     if not settings["timestamps"] and req.get("model"):
         settings["model"] = req["model"]
@@ -2145,6 +2164,9 @@ def make_upload_package(script_file, result):
 def narration_matches(flow_file, script_file):
     """나레이션 플로우(문장 → 자막 번호)의 문장 수가 지금 대본의 문장 수와 같은지 — 다르면 번호가 밀려 그림·자막이 어긋난다."""
     try:
+        original = os.path.join(os.path.dirname(flow_file), scene_layout.SENTENCE_FLOW)
+        if os.path.isfile(original):
+            flow_file = original
         with open(flow_file, encoding="utf-8-sig") as f:
             n_flow = sum(1 for ln in f if re.match(r"^\s*\d+\s*:", ln))
         with open(script_file, encoding="utf-8-sig") as f:
@@ -2273,6 +2295,7 @@ def make_pipeline(job, req):
     else:
         cand = os.path.join(assets, "이미지프롬프트.txt") if os.path.basename(script) == "final.txt" else re.sub(r"\.txt$", "", script) + "_이미지프롬프트.txt"
         result["prompts"] = cand if os.path.exists(cand) else ""
+    refresh_image_flow(script)
     check_cancelled()
     # 4) 이미지 생성
     images_dir = os.path.join(assets, "images")
