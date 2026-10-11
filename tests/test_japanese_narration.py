@@ -99,8 +99,19 @@ class JapaneseNarrationTest(unittest.TestCase):
             self.assertEqual(len(calls), 2)
             narration.synthesize(sentences, td, "mock-key", "jp", **kwargs)
             self.assertEqual(len(calls), 2)
+            # A corrupt cached part blocks a free retry before any POST, then
+            # an explicit repair replaces only that group and keeps numbering.
+            bad_path = Path(td, 'tts_parts', '0003.mp3.alignment.json')
+            bad_path.write_text('{}', encoding='utf-8')
+            with self.assertRaisesRegex(RuntimeError, '자막 싱크 오류'):
+                narration.synthesize(sentences, td, "mock-key", "jp", **kwargs)
+            self.assertEqual(len(calls), 2)
+            result = narration.synthesize(sentences, td, "mock-key", "jp", repair_alignment=True, **kwargs)
+            self.assertTrue(result['sync']['ok'])
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(calls[-1], sentences[-1])
             narration.synthesize(sentences, td, "mock-key", "jp-new", **kwargs)
-            self.assertEqual(len(calls), 4)
+            self.assertEqual(len(calls), 5)
 
 
 if __name__ == "__main__":

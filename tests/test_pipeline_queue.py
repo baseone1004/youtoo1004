@@ -56,6 +56,20 @@ class ContinuousPipelineTest(unittest.TestCase):
                 app.start_queue_worker(); self.wait_done(store)
             self.assertEqual([x["status"] for x in store.data["items"]], ["error", "done"])
 
+    def test_speech_failure_pauses_batch_and_keeps_script_for_repair(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = self.make_store(td)
+            job = SimpleNamespace(status='error', result={'script':'saved.txt'}, error='자막 싱크 검사 실패', stage='나레이션', progress=.4)
+            with patch.object(app, 'QUEUE', store), patch.object(app, 'QUEUE_THREAD', None), \
+                    patch.object(app, 'run_job', return_value=job) as run, patch.object(app, 'telegram_notice'):
+                app.start_queue_worker()
+                app.QUEUE_THREAD.join(timeout=2)
+                self.assertFalse(app.QUEUE_THREAD.is_alive())
+                self.assertEqual(run.call_count, 1)
+                self.assertEqual(store.data['status'], 'paused')
+                self.assertEqual(store.data['items'][0]['result']['script'], 'saved.txt')
+                self.assertNotIn('attempts', store.data['items'][1])
+
 
 if __name__ == "__main__":
     unittest.main()

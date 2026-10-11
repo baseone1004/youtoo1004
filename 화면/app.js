@@ -474,16 +474,26 @@ function explainError(message, opts) {
   let t;
   if (/중단|취소|cancel/i.test(raw) && !/편집프로그램|이미지 생성/.test(raw)) t = {title: '사용자가 중단했습니다', why: '이어서 만들려면 다시 시도를 누르세요.', acts: R};
   else if (/이미지 생성이 끝나지 않음: stopped/.test(raw)) t = {title: '이미지 생성이 중단되었습니다', why: '이미지 칸의 [■ 중단]을 눌렀거나 마우스가 화면 모서리로 가서 멈췄습니다. 다시 시도하면 빠진 장면부터 이어서 만듭니다.', acts: R};
+  else if (/자막 싱크|음성 타임스탬프/.test(raw)) t = {title: '일부 음성의 자막 시간 정보가 잘못됐어요', why: '이미 받은 정상 음성은 유지됩니다. 문제 음성만 다시 만들면 해당 부분에만 인월드 사용량이 발생합니다. 복구가 끝난 뒤 대기열을 이어서 시작하세요.', acts: [['문제 음성만 다시 만들기', `repairNarration('${js(opts.script || '')}')`]]};
+  else if (/인월드|inworld|tts/i.test(raw) && /통신 오류|SSL|ConnectionError|HTTPSConnectionPool|timeout|timed out|응답을 받지/i.test(raw)) t = {title: '인월드와 통신이 끊겼어요', why: '이 메시지는 키 오류를 뜻하지 않습니다. 자동 재요청은 멈췄습니다. 인월드 사용 내역을 확인한 뒤 이어서 시도하세요. 받지 못한 음성을 새로 요청하면 인월드 사용량이 발생할 수 있습니다. KIE 이미지 비용과는 별개입니다.', acts: R};
+  else if (/인월드|inworld|tts/i.test(raw) && /429|rate limit/i.test(raw)) t = {title: '인월드 요청이 몰렸어요', why: '같은 키를 쓰는 다른 작업이 끝나거나 잠시 지난 뒤 이어서 시도하세요. 정상 음성은 다시 만들지 않습니다.', acts: R};
   else if (/확장|chat\.deepseek|웹 대기|딥시크 웹|답변이 시작되지|deepseek-web/i.test(raw)) t = {title: '딥시크 창이 응답하지 않았어요', why: '크롬의 chat.deepseek.com 탭이 닫혔거나, 확장 연결이 끊겼거나, 딥시크가 느린 상태입니다. 탭이 열려 있고 로그인돼 있는지 확인한 뒤 다시 시도하세요.', acts: [['확장 상태 확인', "showView('settings')"], ...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
   else if (/8765|편집프로그램|연결할 수 없|Failed to fetch|ECONNREFUSED|WinError 10061/i.test(raw)) t = {title: '편집프로그램이 꺼져 있어요', why: '이미지·영상을 만드는 편집프로그램(8765)에 연결되지 않았습니다. 바탕화면의 시작 파일(유튜브_자동화_시작)을 다시 실행해 두 프로그램을 모두 켠 뒤 다시 시도하세요.', acts: [['연결 상태 확인', "showView('settings')"], ...R]};
   else if (/인월드|목소리|voice|tts/i.test(raw)) t = {title: '나레이션(인월드) 설정을 확인하세요', why: '인월드 키가 없거나 목소리 ID가 틀렸거나 사용량이 다 됐을 수 있습니다.', acts: [['나레이션 설정', "showView('settings')"], ...R]};
-  else if (/KIE|kie/.test(raw)) t = {title: '움직이는 영상(KIE) 단계에서 멈췄어요', why: 'KIE 키가 없거나 잔액이 부족하면 이 단계만 건너뛰고 나머지는 계속 만들 수 있습니다.', acts: [['KIE 설정', "showView('settings')"], ...R]};
+  else if (/KIE|kie/.test(raw)) t = {title: 'KIE 이미지·영상 작업을 확인하세요', why: '아래 상세 오류를 확인하세요. 이미 접수된 작업은 같은 작업 번호로 이어서 조회합니다. 접수 여부를 모르는 작업은 KIE 작업 내역 확인이 필요합니다.', acts: [['KIE 설정', "showView('settings')"], ...R]};
   else if (/API_키|api key|401|403|429|quota|insufficient|한도|잔액|rate limit/i.test(raw)) t = {title: 'AI 키 또는 사용량 문제예요', why: '키가 틀렸거나, 무료 한도를 다 썼거나, 잔액이 부족합니다. 키를 확인하거나 다른 AI로 바꿔 보세요.', acts: [['AI 키 설정', "showView('settings')"], ...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
   else if (/형식|읽지 못했|파싱|블록/i.test(raw)) t = {title: 'AI 답변 형식이 어긋났어요', why: 'AI가 정해진 형식으로 답하지 않았습니다. 대개 다시 시도하면 해결됩니다. 반복되면 다른 AI로 바꿔 보세요.', acts: [...R, ...(gemini ? [['제미나이로 바꿔서 시도', "switchAI('gemini')"]] : [])]};
   else t = {title: '작업이 멈췄어요', why: '아래 상세 내용과 로그의 마지막 줄을 확인하세요. 대개 다시 시도하면 이어서 진행됩니다.', acts: [...R, ['로그 보기', "$('pgLog').scrollIntoView({behavior:'smooth'})"]]};
   return `<div class="errbox"><b>⚠ ${esc(t.title)}</b><div class="why">${esc(t.why)}</div><div class="acts">${t.acts.map(([l, fn]) => `<button class="mini" onclick="${fn.replace(/"/g, '&quot;')}">${esc(l)}</button>`).join('')}</div><details><summary>상세 오류</summary><pre>${esc(raw)}</pre></details></div>`;
 }
 function errorHelp(message) { return explainError(message); }
+async function repairNarration(script) {
+  const file = script || ((STATE.job || {}).result || {}).script || (WORK || {}).script_file;
+  if (!file) return toast('완성한 작업에서 복구할 대본을 먼저 선택하세요.', true);
+  if (!confirm('이 대본의 잘못된 자막 시간 정보가 있는 음성과 누락된 음성만 다시 요청할까요?\n정상 음성은 재사용합니다. 해당 부분의 인월드 사용량이 발생합니다. KIE 이미지 생성은 시작하지 않습니다.')) return;
+  try { await api('/api/tts', {script_file:file, repair_alignment:true}); startPolling(true); toast('문제 음성을 복구합니다. 완료 후 대기열을 이어서 시작하세요.'); }
+  catch (e) { toast(e.message, true); }
+}
 async function switchAI(name) {
   try { await api('/api/config', {AI: name, 모델: ''}); toast(`대본 AI를 ${name} 로 바꿨습니다. 다시 시도합니다…`); await refresh(); if (STATE.queue && (STATE.queue.items || []).some(x => ['error', 'pending'].includes(x.status))) await queueControl('resume'); }
   catch (e) { toast(e.message, true); }
@@ -507,7 +517,7 @@ function renderQueue(q) {
   if (!q) return; const items = q.items || [], done = items.filter(x => x.status === 'done').length, failed = items.filter(x => x.status === 'error').length;
   $('queueManage').classList.toggle('hidden', !items.length || !['running', 'paused'].includes(q.status));
   $('queueSummary').textContent = items.length ? `${q.status_text || ''} · 전체 ${items.length}편 · 완료 ${done}편${failed ? ` · 실패 ${failed}편` : ''}` : '대기열 없음';
-  $('queueList').innerHTML = items.map((x, i) => `<div class="qitem ${x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(x.status_text || '대기 중')}${x.stage ? ' · ' + esc(x.stage) : ''}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${x.error && !isCancelMessage(x.error) && x.status !== 'cancelled' ? explainError(x.error, {retry: x.status === 'error'}) : ''}</div>`).join('');
+  $('queueList').innerHTML = items.map((x, i) => `<div class="qitem ${x.status}"><span class="n">${i + 1}편</span><span class="t">${esc(x.title)}</span><span class="s">${esc(x.status_text || '대기 중')}${x.stage ? ' · ' + esc(x.stage) : ''}</span>${x.status === 'working' ? `<progress max="1" value="${x.progress || 0}"></progress>` : ''}${x.result && x.result.upload_dir ? `<button class="mini" onclick="openPath('${js(x.result.upload_dir)}')">업로드 폴더</button>` : (x.result && x.result.assets ? `<button class="mini" onclick="openPath('${js(x.result.assets)}')">결과 폴더</button>` : '')}${x.status === 'pending' ? `<button class="mini ghost" onclick="removeQueueItem('${x.id}')">빼기</button>` : ''}${x.error && !isCancelMessage(x.error) && x.status !== 'cancelled' ? explainError(x.error, {retry: x.status === 'error', script: (x.result || {}).script}) : ''}</div>`).join('');
 }
 async function refreshQueue() { try { const q = await api('/api/queue'); if (STATE) STATE.queue = q; renderQueue(q); renderStepBar(); } catch (e) {} }
 

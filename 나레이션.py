@@ -9,7 +9,7 @@
 
 python 나레이션.py "대본 파일" [출력 폴더]
 """
-import sys, os, re, json, base64, subprocess, shutil, time, hashlib, math, wave
+import sys, os, re, json, base64, subprocess, shutil, time, hashlib, math, wave, threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -75,7 +75,7 @@ class Inworld:
         self.h = {"Authorization": f"Basic {api_key.strip()}", "Content-Type": "application/json"}
         self.voice, self.model, self.speed, self.temperature = voice_id.strip(), model or "inworld-tts-1.5-max", float(speed or 1.0), temperature
 
-    def synth(self, text, out_path, retries=3):
+    def synth(self, text, out_path, retries=1):
         body = {"text": text, "voiceId": self.voice, "modelId": self.model,
                 "audioConfig": {"audioEncoding": "MP3", "sampleRateHertz": 24000}}
         if abs(self.speed - 1.0) > 0.01:
@@ -89,7 +89,9 @@ class Inworld:
         elif self.temperature is not None and self.model != "inworld-tts-2-flash":
             body["temperature"] = float(self.temperature)
         last = ""
-        for attempt in range(retries):
+        # This billable endpoint has no idempotency key. Even a lost response
+        # may have generated audio; never automatically repeat the POST.
+        for attempt in range(1):
             try:
                 r = requests.post(INWORLD_URL, headers=self.h, json=body, timeout=120)
                 if r.status_code == 200:
@@ -113,8 +115,9 @@ class Inworld:
                 if r.status_code == 400:
                     raise SystemExit("인월드 요청 오류: " + last)
             except requests.RequestException as e:
-                last = str(e)
-            time.sleep(2 * (attempt + 1))
+                raise RuntimeError("인월드 통신 오류: 응답을 받지 못해 추가 음성 요청을 멈췄습니다. "
+                    "접수 여부가 불확실하므로 인월드 사용 내역을 확인한 뒤 다시 시도하세요. "
+                    "다시 시도 시 해당 음성의 사용량이 발생할 수 있습니다. " + type(e).__name__) from None
         raise RuntimeError("인월드 TTS 실패: " + last)
 
 
@@ -260,6 +263,11 @@ def character_timings(text, alignment):
                 expanded.append(char); times.append((start, end))
     if "".join(expanded) != re.sub(r"\s+", "", text):
         raise ValueError("음성 타임스탬프의 글자가 대본과 다릅니다. 해당 음성을 확인하세요.")
+    collapsed = 0
+    for char, (start, end) in zip(expanded, times):
+        collapsed = collapsed + 1 if char.isalnum() and end - start < .001 else 0
+        if collapsed >= 3:
+            raise ValueError("자막 싱크 오류: 여러 글자의 음성 시간이 0초입니다. 문제 음성만 다시 만들기로 복구하세요.")
     return times
 
 
@@ -288,7 +296,7 @@ def verify_subtitle_sync(srt_path, audio_duration, method="estimated"):
 
 
 def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max", speed=1.0, log=print, cancel=None,
-               temperature=None, name="나레이션", subtitle_lines=1, groups=None, language="", timestamps=False, normalize_numbers=False, force=False):
+               temperature=None, name="나레이션", subtitle_lines=1, groups=None, language="", timestamps=False, normalize_numbers=False, force=False, repair_alignment=False):
     """문장 목록 → out_dir/나레이션.mp3, 나레이션.srt, 플로우.txt. 이미 있는 부분 파일은 (같은 문장이면) 재사용.
     groups: [(첫 문장 번호, 끝 문장 번호)] — 이 범위의 문장을 한 번에 읽혀 억양이 이어지게 한다 (문장마다 따로 읽으면 매 문장이 새로 시작하는 느낌).
             None 이면 문장마다 따로 읽는다 (예전 방식). 문장별 자막 시각은 음성 안의 쉼(무음)으로 되찾는다."""
@@ -314,15 +322,14 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
     log(f"   인월드 TTS · 목소리 {voice_id} · {model} · 문장 {n}개" + (f" · {len(groups)}묶음으로 이어 읽기" if grouped else ""))
     done = [0]
     errors = []
+    failed = threading.Event()
     # 예전에 만든 부분 파일에는 문장 텍스트(.txt)가 없다 → 개수가 지금 문장 수와 같을 때만 번호가 안 밀린 것으로 보고 재사용
     legacy_ok = (not grouped) and len([f for f in os.listdir(part_dir) if re.fullmatch(r"\d{4}\.mp3", f)]) == n
 
     def part_path(a, b):
         return os.path.join(part_dir, f"{a:04d}.mp3" if a == b else f"g{a:04d}_{b:04d}.mp3")
 
-    def work(g):
-        if cancel and cancel():
-            return
+    def cached_part(g):
         a, b = g
         text = " ".join(x.strip() for x in sentences[a - 1:b])
         p = part_path(a, b)
@@ -333,16 +340,56 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
             same_text = False
         identity_path = Path(p + ".identity")
         same_identity = identity_path.read_text(encoding="utf-8") == identity if identity_path.exists() else not (language or timestamps)
-        if not force and os.path.exists(p) and os.path.getsize(p) > 500 and same_text and same_identity:
+        reusable = not force and os.path.exists(p) and os.path.getsize(p) > 500 and same_text and same_identity
+        return text, p, txt, identity_path, reusable
+
+    def validate_part(text, p):
+        if timestamps:
+            try:
+                character_timings(text, json.loads(Path(p + ".alignment.json").read_text(encoding="utf-8")))
+            except (OSError, ValueError, TypeError, AttributeError) as exc:
+                raise RuntimeError("자막 싱크 오류: " + str(exc)) from None
+
+    # Check all existing parts before charging for any missing ones. Invalid
+    # cached timestamps must not be silently reused or silently regenerated.
+    invalid = set()
+    for g in groups:
+        if cancel and cancel():
+            raise RuntimeError("취소됨")
+        text, p, _, _, reusable = cached_part(g)
+        if repair_alignment and os.path.isfile(p) and os.path.getsize(p) > 500 and not reusable:
+            raise RuntimeError("음성 복구: 목소리·속도 또는 대본이 기존 음성과 달라 추가 요청을 하지 않았습니다. "
+                               "이전 설정으로 되돌려 부분 복구하거나, 전체 음성 다시 만들기를 선택하세요.")
+        if reusable:
+            try:
+                validate_part(text, p)
+            except RuntimeError:
+                invalid.add(g)
+    if invalid and not repair_alignment:
+        numbers = ", ".join(f"{a}~{b}" for a, b in sorted(invalid))
+        raise RuntimeError(f"자막 싱크 오류: {numbers}번 문장 묶음의 시간 정보가 잘못됐습니다. "
+                           "문제 음성만 다시 만들기를 선택하세요. 정상 음성은 보존하며 추가 요청은 하지 않았습니다.")
+    if invalid:
+        log(f"   문제 음성 {len(invalid)}묶음만 복구 · 정상 음성은 재사용")
+
+    def work(g):
+        if failed.is_set() or (cancel and cancel()):
+            return
+        a, b = g
+        text, p, txt, identity_path, reusable = cached_part(g)
+        if reusable and g not in invalid:
             done[0] += 1; return
         try:
             tts.synth(text, p)
             identity_path.write_text(identity, encoding="utf-8")
             with open(txt, "w", encoding="utf-8") as f:
                 f.write(text)
+            validate_part(text, p)
         except SystemExit as e:
-            errors.append(str(e)); raise
+            failed.set()
+            errors.append(str(e))
         except Exception as e:  # noqa: BLE001
+            failed.set()
             errors.append(f"{a:04d}: {e}")
             if len(errors) == 1:
                 log(f"   ! {a:04d}번 문장 실패: {e}")
@@ -358,7 +405,7 @@ def synthesize(sentences, out_dir, api_key, voice_id, model="inworld-tts-1.5-max
     if fatal:
         raise SystemExit(fatal[0])
     if errors:
-        raise RuntimeError(f"음성 {len(errors)}개를 만들지 못했습니다. 이어 만들기로 재시도하세요: " + "; ".join(errors[:3]))
+        raise RuntimeError(f"음성 오류로 추가 요청을 멈췄습니다. 받은 음성은 보존했습니다: " + "; ".join(errors[:3]))
 
     # 무음 파일
     silence = os.path.join(part_dir, "_silence.wav" if timestamps else "_silence.mp3")

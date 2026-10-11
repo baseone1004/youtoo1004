@@ -97,6 +97,9 @@ def optimize(ai, channel, script_text, extra="", log=print):
             + f"[대본 전체 글자수] {len(body):,}자\n\n위 대본으로 [출력 형식] 대로 작성한다.")
     log("   알고리즘 최적화 (제목·썸네일·설명·태그·첫 30초 점검) ")
     text = ai.ask(system, user).replace("```", "").strip()
+    if 채널_프로필.language_code(channel) == "ja":
+        from japanese_description import format_metadata
+        text = format_metadata(text)
     titles = parse_titles(text)
     if titles:
         best = max(titles, key=lambda x: x["ai"] * 0.6 + x["local"] * 0.4)

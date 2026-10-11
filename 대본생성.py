@@ -161,6 +161,10 @@ def blocks_of(head):
 
 def compose_description(head):
     """[설명글] 뒤에 출처 목록·면책·해시태그를 붙여 유튜브에 그대로 넣을 설명글로 만든다."""
+    import 채널_프로필
+    if 채널_프로필.language_code("person") == "ja":
+        from japanese_description import format_metadata
+        return format_metadata(head)
     b = blocks_of(head)
     if "설명글" not in b:
         return head

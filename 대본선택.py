@@ -1274,13 +1274,16 @@ def _block(text, name):
     match = re.search(rf"\[{re.escape(name)}\]\s*(.*?)(?=\n\[[^\n]+\]|\Z)", text or "", re.S)
     return match.group(1).strip() if match else ""
 
-def upload_description(description, tags=""):
+def upload_description(description, tags="", language=None):
     """유튜브 설명란에 한 번에 붙여 넣을 덩어리: 링크 주소는 빼고, 해시태그가 없으면 태그를 끝에 붙인다."""
     text = (description or "").strip()
     text = re.sub(r"\s*/?\s*https?://\S+", "", text)                          # 출처 줄의 주소 제거
     text = re.sub(r"(?:^|\n)📚 참고 자료\n(?:•[^\n]*\n?)+", "\n", text)        # 예전에 만든 설명의 참고 자료 목록도 뺀다
     text = re.sub(r"(?:^|\n)\[?출처\]?\s*[:：]?\s*\n(?:[-•·][^\n]*\n?)+", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if language == "ja":
+        from japanese_description import format_description
+        return format_description(text, tags)
     if "#" not in text and (tags or "").strip():
         words = [t.strip().lstrip("#") for t in re.split(r"[,\s]+", tags) if t.strip()]
         text += "\n\n" + " ".join("#" + re.sub(r"\s+", "", w) for w in words[:10])
@@ -1324,7 +1327,7 @@ def workspace_data(script_file):
                 images=os.path.abspath(os.path.join(assets, "images")), thumbnails=thumbnails, thumbnail_raw=thumbnail_raw,
                 thumbnail_dir=os.path.abspath(thumb_dir), title=title,
                 description=upload_description(saved.get("description") or _block(script_text, "설명글") or _block(opt_text, "설명글"),
-                                               saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그")),
+                                               saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그"), script_language(script_file)),
                 sources=saved.get("sources") or _block(script_text, "출처") or _block(opt_text, "출처"),
                 tags=saved.get("tags") or _block(script_text, "태그") or _block(opt_text, "태그"))
 
@@ -1334,7 +1337,7 @@ def write_upload_texts(folder, data, separate=False):
     folder = Path(folder)
     title = str(data.get("title") or "").strip()
     tags = str(data.get("tags") or "").strip()
-    description = upload_description(str(data.get("description") or ""), tags)
+    description = upload_description(str(data.get("description") or ""), tags, data.get("language"))
     text = f"[제목]\n{title}\n\n[설명]\n{description}\n\n[태그]\n{tags}\n"
     sources = str(data.get("sources") or "").strip()
     if sources:
@@ -1348,6 +1351,7 @@ def write_upload_texts(folder, data, separate=False):
 
 
 def sync_upload_texts(script, data):
+    data = dict(data, language=script_language(script))
     target = write_upload_texts(assets_dir(script), data)
     upload_root = Path(BASE) / "업로드"
     for marker in upload_root.glob("*/*/제작원본.json"):
@@ -1489,6 +1493,7 @@ def _make_tts(job, req):
                          subtitle_lines=2 if channel == "mindam" else 1, groups=groups,
                          language=settings["language"], timestamps=settings["timestamps"],
                          normalize_numbers="number_normalization" in settings, force=bool(req.get("force")),
+                         repair_alignment=bool(req.get("repair_alignment")),
                          temperature=(float(cfg["인월드_온도"]) if cfg.get("인월드_온도") not in (None, "", 0) else None))   # 감정 변화폭 (비우면 인월드 기본)
     settings.update(voice=voice, speed=speed)
     if not settings["timestamps"] and req.get("model"):
@@ -1643,6 +1648,9 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
     if reference_slot:
         from reference_images import reference_options
         body.update(reference_options(reference_slot))
+    model = body.get("reference_model", "seedream/4.5-edit") if body.get("reference_image") else "z-image"
+    price = {"z-image": .8, "bytedance/seedream-v4-edit": 5, "seedream/4.5-edit": 6.5}.get(model, 0)
+    job.add(f"   KIE 이미지 모델: {model} · 장당 {price:g} 크레딧 · 썸네일·영상 변환 별도")
     current = aip("/api/gen/status")
     if current.get("status") in ("running", "paused"):
         running_dir = ((info.get("config") or {}).get("gen") or {}).get("output_dir") or ""
@@ -1679,11 +1687,8 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
                 raise RuntimeError("이미지 생성이 끝나지 않음: " + (st.get("error") or st.get("status")))
             failed = list(st.get("failed") or [])
             job.add(f"   ✓ 이미지 {len(st.get('done', []))}장 · 실패 {len(failed)}장")
-            # 실패한 장면은 사람이 다시 누르지 않아도 되도록 빠진 것만 최대 2번 더 시도한다
-            if failed and retries_left > 0:
-                job.add(f"   ↻ 실패 장면 {', '.join(f'{n:03d}' for n in failed[:12])}{' …' if len(failed) > 12 else ''} 다시 시도 ({3 - retries_left}/2)")
-                time.sleep(5)
-                return run_image_generation(job, prompts_file, images_dir, style_prefix, retries_left - 1, reference_slot)
+            if failed:
+                raise RuntimeError("KIE 이미지 실패 장면이 있어 자동 재요청을 멈췄습니다. 작업 내역 확인 후 이어서 만들기를 선택하세요.")
             return st
         time.sleep(4)
 
@@ -2113,7 +2118,7 @@ def make_upload_package(script_file, result):
              _block(script_text, "제목") or result.get("title") or Path(script_file).stem)
     title = title.splitlines()[0].strip()
     tags = saved.get("tags") or _block(opt_text, "태그") or _block(script_text, "태그")
-    description = upload_description(saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글"), tags)
+    description = upload_description(saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글"), tags, script_language(script_file))
     channel_dir = 대본생성.safe_name(채널_프로필.get("mindam" if is_mindam else "person").get("업로드_폴더") or ("민담" if is_mindam else "심리해독소"))
     package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
     package.mkdir(parents=True, exist_ok=True)
@@ -2267,7 +2272,6 @@ def make_pipeline(job, req):
         if legacy_split(script):                    # 예전 방식으로 시작한 편: 프롬프트 안의 화풍 문구를 그대로 쓴다 (새 화풍을 덧붙이지 않음)
             prefix = ""
             job.add("   예전 방식으로 시작한 편이라 화풍·문장 나누기를 그대로 둡니다 (새 규칙은 다음 편부터)")
-        job.add("   캐릭터 외형과 화풍 설명으로 KIE Z-Image를 생성합니다.")
         try:
             with open(result["prompts"], encoding="utf-8-sig") as f:
                 wanted = sorted(prompt_blocks(f.read()))
@@ -2376,7 +2380,9 @@ def telegram_notice(text):
 
 
 def is_shared_failure(message):
-    return bool(re.search(r"API.?키|401|403|인증|목소리|voice|8765|편집프로그램|연결.*거부|좌표|확장.*연결|KIE API", message or "", re.I))
+    # Speech/network/sync failures pause the batch too: continuing with the
+    # next long script would consume more credits before the cause is fixed.
+    return bool(re.search(r"API.?키|401|403|인증|목소리|voice|8765|편집프로그램|연결.*거부|확장.*연결|KIE|인월드|TTS|자막 싱크|음성 타임스탬프", message or "", re.I))
 
 
 def queue_snapshot():
@@ -2444,6 +2450,7 @@ def start_queue_worker():
                 time.sleep(QUEUE_WAIT_SEC)
             if stopped_while_waiting:
                 continue
+            job = None
             try:
                 job = run_job("queue_pipeline", lambda active: make_pipeline(active, request))
                 while job.status == "running":
@@ -2467,12 +2474,14 @@ def start_queue_worker():
                 shared = is_shared_failure(message)
                 with QUEUE.lock:
                     cancelled = QUEUE.data.get("status") == "cancelled"
-                    stopping = QUEUE.data.get("resume_on_start") and job.cancel_requested     # 프로그램 종료로 멈춘 것
+                    stopping = QUEUE.data.get("resume_on_start") and job and job.cancel_requested     # 프로그램 종료로 멈춘 것
+                    if job and job.result:
+                        item["result"] = dict(job.result)
                     if stopping:
                         item.update(status="pending", stage="이어서 만들 예정", error="", progress=0.0)
                     else:
                         item.update(status="cancelled" if cancelled else ("pending" if shared else "error"),
-                                    stage="취소됨" if cancelled else ("설정 확인 후 다시 대기" if shared else "실패"),
+                                    stage="취소됨" if cancelled else ("오류 확인 후 이어서 대기" if shared else "실패"),
                                     error=message, progress=1.0 if cancelled or not shared else 0.0)
                     QUEUE.data["current_id"] = ""
                     if shared:
@@ -2482,7 +2491,7 @@ def start_queue_worker():
                     return
                 if not cancelled:
                     telegram_notice(f"❌ 영상 제작에 실패했습니다.\n주제: {item['title']}\n오류: {message}" +
-                                    ("\n공통 설정 문제로 대기열을 일시정지했습니다." if shared else "\n다음 주제를 계속 제작합니다."))
+                                    ("\n추가 사용량을 막기 위해 대기열을 일시정지했습니다." if shared else "\n다음 주제를 계속 제작합니다."))
                 if shared:
                     return
 
