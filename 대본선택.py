@@ -2229,15 +2229,30 @@ def make_pipeline(job, req):
             for v in existing_tts.values():
                 try: os.remove(v)
                 except OSError: pass
-        if req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values()) and narration_cache_matches(assets, 대본생성.load_cfg(), req.get("channel") or channel_of(script)):
+        reuse_audio = bool(req.get("reuse_prompts") and all(os.path.isfile(v) for v in existing_tts.values())
+                          and narration_cache_matches(assets, 대본생성.load_cfg(), req.get("channel") or channel_of(script)))
+        if reuse_audio:
             try:
                 duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), existing_tts["mp3"])
             except (FileNotFoundError, OSError):
                 duration = 0.0
+            if 채널_프로필.language_code(req.get("channel") or channel_of(script)) == "ja":
+                try:
+                    sync = 나레이션.verify_subtitle_sync(existing_tts["srt"], duration, "character")
+                except (OSError, ValueError):
+                    sync = {"ok": False}
+                if not sync["ok"]:
+                    reuse_audio = False
+                    job.add("   기존 일본어 자막 싱크 확인 실패 → 문제 음성을 복구하고 자막을 다시 맞춥니다.")
+        if reuse_audio:
             job.add(f"   나레이션이 이미 있어 재사용: {existing_tts['mp3']}")
             result.update(narration=existing_tts["mp3"], srt=existing_tts["srt"], flow=existing_tts["flow"], duration=duration)
         else:
-            t = make_tts(job, dict(script_file=script, out_dir=assets, channel=req.get("channel") or channel_of(script)))
+            if req.get("reuse_prompts"):
+                job.add("   이어 만들기: 정상 음성은 재사용하고 문제·누락 음성만 새로 만듭니다 (해당 부분 인월드 사용량 발생).")
+            t = make_tts(job, dict(script_file=script, out_dir=assets, channel=req.get("channel") or channel_of(script),
+                                  repair_alignment=bool(req.get("reuse_prompts") and
+                                      채널_프로필.language_code(req.get("channel") or channel_of(script)) == "ja")))
             result.update(narration=t["mp3"], srt=t["srt"], flow=t["flow"], duration=t["duration"])
         if ensure_longform_narration(job, script, result):
             steps = dict(steps, prompts=True)

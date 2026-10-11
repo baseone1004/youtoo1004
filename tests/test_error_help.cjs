@@ -7,8 +7,8 @@ let html = ctx.explainError('인월드 TTS 실패 HTTPSConnectionPool SSLError')
 assert(html.includes('인월드와 통신이 끊겼어요'));
 assert(!html.includes('나레이션(인월드) 설정을 확인하세요'));
 html = ctx.explainError('자막 싱크 검사 실패', {script:'japanese.txt'});
-assert(html.includes('문제 음성만 다시 만들기'));
-assert(html.includes("repairNarration('japanese.txt')"));
-assert(!html.includes("queueControl('resume')"));
+assert(html.includes('음성 복구하고 이어 만들기'));
+assert(!html.includes("repairNarration('japanese.txt')"));
+assert(html.includes("queueControl('resume')"));
 assert(ctx.explainError('인월드 HTTP 429').includes('인월드 요청이 몰렸어요'));
 console.log('Error help: 6 checks passed');

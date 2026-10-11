@@ -9,10 +9,10 @@ const items=[1,2,3,4].map(n=>({id:String(n),title:`episode ${n}`,status:n===4?'p
 ctx.renderQueue({status:'paused',items});
 assert(elements.queueSummary.textContent.includes('1편 먼저 진행'));
 assert.equal((elements.queueList.innerHTML.match(/앞 편 완료 후 대기/g)||[]).length,3);
-assert.equal((elements.queueList.innerHTML.match(/onclick="repairNarration/g)||[]).length,1);
+assert.equal((elements.queueList.innerHTML.match(/음성 복구하고 이어 만들기/g)||[]).length,1);
 assert.equal((elements.queueList.innerHTML.match(/이전 시도 오류 보기/g)||[]).length,3);
 items[0]={id:'1',title:'episode 1',status:'done'};
 ctx.renderQueue({status:'paused',items});
 assert(elements.queueSummary.textContent.includes('2편 먼저 진행'));
-assert(elements.queueList.innerHTML.includes("repairNarration('2.txt')"));
+assert.equal((elements.queueList.innerHTML.match(/음성 복구하고 이어 만들기/g)||[]).length,1);
 console.log('Sequential queue UI: 6 checks passed');
