@@ -234,6 +234,16 @@ def upload_cleanup(root, item_id, queue_items=(), execute=False):
         key = None
         targets = set()
     targets.update(packages)
+    exported = None
+    if script:
+        import video_export
+        candidate = video_export.saved(assets)
+        if candidate:
+            p = Path(candidate)
+            digest = __import__('hashlib').sha256(str(script.resolve()).encode()).hexdigest()[:8]
+            if p.name.endswith('_' + digest + '.mp4') and not p.is_symlink() and not any(
+                    x.is_symlink() or getattr(x, 'is_junction', lambda: False)() for x in (p.parent, p.parent.parent)):
+                exported = p
     for p in targets:
         allowed = root / ("업로드" if p in packages else "대본")
         if p == allowed or not p.resolve().is_relative_to(allowed) or p.is_symlink() or getattr(p, "is_junction", lambda: False)() or any(x.startswith("_") for x in p.relative_to(allowed).parts):
@@ -243,6 +253,8 @@ def upload_cleanup(root, item_id, queue_items=(), execute=False):
                              (getattr(c, "is_junction", lambda: False)()) for c in p.rglob("*")):
             raise ValueError("외부 폴더 연결이 있는 작업은 자동 정리할 수 없습니다.")
     existing = sorted((p for p in targets if p.exists()), key=lambda p: len(p.parts), reverse=True)
+    if exported:
+        existing.insert(0, exported)  # Validated exact owned file, never the desktop directory.
     result = {"name": row["name"], "paths": [str(p) for p in existing], "linked_script": str(script) if script else "",
               "count": len(existing), "source_linked": bool(script)}
     if not execute:

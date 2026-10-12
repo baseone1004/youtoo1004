@@ -9,6 +9,17 @@ import 대본선택 as app
 
 
 class CleanupTests(unittest.TestCase):
+    def test_upload_cleanup_removes_only_owned_desktop_video(self):
+        import video_export
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script, assets, _ = self.make_work(root)
+            with patch.object(video_export, 'desktop', return_value=root / 'Desktop'):
+                exported = Path(video_export.export(assets / '최종.mp4', script, '한국 채널', assets))
+                unrelated = exported.parent / '보존.mp4'; unrelated.write_bytes(b'keep')
+                self.assertIn(str(exported), lib.upload_cleanup(root, '작업.txt')['paths'])
+                lib.upload_cleanup(root, '작업.txt', execute=True)
+                self.assertFalse(exported.exists()); self.assertTrue(unrelated.exists())
     def make_work(self, root):
         script = root / "대본" / "작업.txt"
         script.parent.mkdir()

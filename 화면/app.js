@@ -116,7 +116,8 @@ async function checkReady() {
     if (info.config.AI === 'codex') items.push([true, 'Codex 요청문 전달 방식', null]);
     else if (info.config.AI === 'deepseek-web') items.push([!!info.web_alive, info.web_alive ? '딥시크 웹 연결' : '딥시크 창 안 보임', 'settings']);
     else items.push([!!info.config.키있음, info.config.키있음 ? info.config.AI + ' 키' : info.config.AI + ' 키 없음', 'settings']);
-    const voiceReady = !!v && !!info.config.인월드키있음;
+    const local = await api('/api/local-voice/status').catch(() => ({runtime_ready:false,profiles:{}}));
+    const voiceReady = requiredChannels.every(ch => { const lang=info.profiles?.[ch]?.언어 || 'ko'; return info.config['나레이션_방식_'+lang] === 'local' ? local.runtime_ready && local.profiles[lang] : !!v && !!info.config.인월드키있음; });
     items.push([voiceReady, voiceReady ? '나레이션 설정 완료' : '나레이션 키·목소리 필요', 'settings']);
   } catch (e) { items.push([false, '제작 서버 연결 확인', 'settings']); }
   try {
@@ -167,8 +168,8 @@ async function refresh() {
   renderProfileNames();
   const activeProfile = (STATE.profiles || {})[channel] || {};
   $('quickLanguage').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(activeProfile.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
-  if (!$('optHook').dataset.initialized) { $('optHook').value = c.AI === 'codex' ? 0 : 5; $('optHook').dataset.initialized = '1'; }
-  if (c.AI === 'codex' && $('optHook').dataset.ai !== 'codex') $('optHook').value=0;
+  if (!$('optHook').dataset.initialized) { $('optHook').value = c.후킹_장면수 ?? 5; $('optHook').dataset.initialized = '1'; }
+  if (c.AI === 'codex' && $('optHook').dataset.ai !== 'codex') $('optHook').value=c.후킹_장면수 ?? 5;
   $('optHook').dataset.ai=c.AI;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
@@ -189,7 +190,7 @@ async function refresh() {
   $('galFile').innerHTML = scriptOpts || '<option value="">대본 없음</option>';
   if (STATE.scripts.some(s => s.path === prevGal)) $('galFile').value = prevGal;
   if (gone(prevGal)) refreshGallery(true);
-  $('defaultMotionNote').textContent = c.AI === 'codex' ? 'Codex 제작은 기본적으로 정지 이미지와 인월드 음성으로 편집합니다. 움직이는 영상은 고급 설정에서 따로 선택하면 KIE 비용이 발생합니다.' : '기본 제작은 앞 5장을 KIE 움직이는 영상으로 자동 변환합니다. 추가 크레딧이 발생하며 고급 설정에서 0장으로 끌 수 있습니다.';
+  $('defaultMotionNote').textContent = c.AI === 'codex' ? 'Codex 대본·이미지 + 선택한 나레이션으로 제작하고, 앞 5장은 KIE 영상으로 변환합니다. 5장 약 325 KIE 크레딧이며 고급 설정에서 끌 수 있습니다.' : '기본 제작은 앞 5장을 KIE 움직이는 영상으로 자동 변환합니다. 추가 크레딧이 발생하며 고급 설정에서 0장으로 끌 수 있습니다.';
   // 설정
   $('sAI').value = c.AI; $('sModel').value = c.모델 || '';
   const isWeb = c.AI === 'deepseek-web';
@@ -201,6 +202,7 @@ async function refresh() {
   if (isCodex) { $('aiStat').textContent='Codex 요청문 연결'; $('aiStat').className='stat ok'; $('sStatus').textContent='Codex 대화에 요청문을 전달하면 결과를 받습니다. 별도 대본 API 키는 쓰지 않습니다.'; }
   $('sWeb').textContent = isWeb ? (STATE.web_alive ? '🟢 딥시크 확장 연결됨 (chat.deepseek.com 탭 감지)' : '🔴 확장이 연결되지 않음 — 크롬에 딥시크_확장을 설치하고 chat.deepseek.com 탭을 열어 두세요') : '';
   for (const [k, v] of Object.entries(STATE.keys || {})) { const el = $('k_' + k); if (!el) continue; el.textContent = v ? '저장됨 ' + v : '없음'; el.className = 'stat ' + (v ? 'ok' : 'bad'); }
+  $('voiceEngineKo').value=c.나레이션_방식_ko || 'inworld'; $('voiceEngineJa').value=c.나레이션_방식_ja || 'inworld'; refreshLocalVoice();
   $('sInworldModel').value = c.인월드_모델 || 'inworld-tts-1.5-max';
   $('sVoiceJ').value = c.인월드_목소리_일본 || ''; $('sSpeedJ').value = c.인월드_속도_일본 || 1.0;
   $('vJapan').textContent = c.인월드_목소리_일본 ? '저장됨 · TTS 2' : '일본어 목소리 필요'; $('vJapan').className = 'stat ' + (c.인월드_목소리_일본 ? 'ok' : 'bad');
@@ -460,7 +462,7 @@ async function poll() {
       + line('대본', r.file || r.script, `<button class="mini" onclick="showFile('${js(r.file || r.script)}')">내용 보기</button>`)
       + line('유튜브 제목·설명·태그', r.opt, `<button class="mini" onclick="showFile('${js(r.opt)}')">보기</button>`)
       + line('나레이션', r.mp3 || r.narration) + line('이미지 폴더', r.images, `<button class="mini" onclick="openPath('${js(r.images)}')">열기</button>`)
-      + line('최종 영상', r.video, `<button class="mini" onclick="openPath('${js(r.video)}')">열기</button>`)
+      + line('최종 영상', r.desktop_video || r.video, `<button class="mini" onclick="openPath('${js(r.desktop_video || r.video)}')">열기</button>`)
       + (r.thumbnails && r.thumbnails.length ? line(`썸네일 ${r.thumbnails.length}장`, r.thumbnails[0], `<button class="mini" onclick="openPath('${js(r.thumbnails[0])}')">열기</button>`) : '')
       + line('업로드 폴더', r.upload_dir, `<button class="mini" onclick="openPath('${js(r.upload_dir)}')">열기</button>`)
       + line('결과 폴더', r.assets, `<button class="mini" onclick="openPath('${js(r.assets)}')">열기</button>`)
@@ -620,12 +622,12 @@ function renderFiles() {
   const box = $('fileList'); if (!WORK) { box.innerHTML = '<div class="hint">작업을 고르면 만들어진 파일이 여기에 나옵니다.</div>'; return; }
   const f = WORK.files || {};
   const items = [['대본', WORK.script_file, true], ['이미지 프롬프트', WORK.prompts_file, !!(WORK.prompts || '').trim()], ['나레이션 (mp3)', f.narration, !!f.narration], ['자막 (srt)', WORK.srt_file, !!(WORK.srt || '').trim()],
-    ...(WORK.thumbnails || []).map((p, i) => [`썸네일 ${i + 1}`, p, true]), ['최종 영상 (mp4)', f.video, !!f.video], ['결과 폴더', WORK.assets, true]];
+    ...(WORK.thumbnails || []).map((p, i) => [`썸네일 ${i + 1}`, p, true]), ['최종 영상 (mp4)', WORK.desktop_video || f.video, !!f.video], ['결과 폴더', WORK.assets, true]];
   box.innerHTML = items.map(([label, path, ok]) => `<div class="file ${ok ? '' : 'off'}"><span class="fl">${esc(label)}</span><span class="fp">${esc((path || '').split(/[\\/]/).pop())}</span><span class="spacer"></span>${ok ? `<button class="mini" onclick="openPath('${js(path)}')">열기</button>` : '<span class="hint">아직 없음</span>'}</div>`).join('');
 }
 function openWork(what) {
   if (!WORK) return toast('작업을 먼저 고르세요.', true);
-  const p = {assets: WORK.assets, video: WORK.assets + '\\최종.mp4', thumbs: WORK.thumbnail_dir, narration: WORK.narration, script: WORK.script_file}[what];
+  const p = {assets: WORK.assets, video: WORK.desktop_video || WORK.assets + '\\최종.mp4', thumbs: WORK.thumbnail_dir, narration: WORK.narration, script: WORK.script_file}[what];
   openPath(p);
 }
 // 썸네일: 완성본(문구 있음)이 있으면 그것, 없으면 raw 원본을 "문구 넣기 전"으로 보여 준다. 위 제작 현황에도 같이 표시.
@@ -672,8 +674,8 @@ function renderAudioRegenerationHint() {
   const slot = WORK?.script_file?.endsWith('final.txt') ? 'mindam' : 'person';
   const language = STATE.profiles?.[slot]?.언어 || 'ko';
   const cfg = STATE.config || {};
-  const voice = language === 'ja' ? cfg.인월드_목소리_일본 : (cfg[slot === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || cfg.인월드_목소리);
-  el.textContent = `${language === 'ja' ? '일본어' : '현재 채널'} 목소리: ${voice || '설정에서 목소리를 저장하세요'} · 음성과 자막을 새로 만듭니다. 인월드 사용량이 발생합니다. 완성 영상에는 다시 렌더해야 반영됩니다.`;
+  const voice = cfg['나레이션_방식_'+language] === 'local' ? '로컬 복제 음성 (API 비용 없음)' : language === 'ja' ? cfg.인월드_목소리_일본 : (cfg[slot === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || cfg.인월드_목소리);
+  el.textContent = `${language === 'ja' ? '일본어' : '현재 채널'} 목소리: ${voice || '설정에서 목소리를 저장하세요'} · 음성과 자막을 새로 만듭니다. ${cfg['나레이션_방식_'+language] === 'local' ? '로컬 생성 · API 비용 없음' : '인월드 사용량 발생'}. 완성 영상에는 다시 렌더해야 반영됩니다.`;
 }
 async function rerunTTS() {
   if (!WORK && $('workFile').value) await loadWorkspace(false);
@@ -686,7 +688,7 @@ async function rerunTTS() {
   try {
     const current = await api('/api/state');
     if (current.job?.status === 'running') { startPolling(true); return toast('현재 작업이 진행 중입니다: ' + (current.job.stage || '제작 중') + '. 완료 후 다시 생성하세요.', true); }
-    if (!confirm('선택한 대본을 저장하고 현재 목소리로 음성과 자막을 새로 제작할까요?\n인월드 사용량이 발생합니다. 완성 영상은 음성 제작 후 다시 렌더해야 반영됩니다.')) return;
+    if (!confirm('선택한 대본을 저장하고 현재 목소리로 음성과 자막을 새로 제작할까요?\n설정에서 선택한 나레이션 방식으로 제작합니다. 인월드 선택 시 사용량이 발생합니다. 완성 영상은 음성 제작 후 다시 렌더해야 반영됩니다.')) return;
     await api('/api/workspace/save', {script_file: scriptFile, kind: 'script', text: scriptText});
     await api('/api/tts', {script_file: scriptFile, force: true});
     startPolling(true); toast('현재 목소리로 음성과 자막을 새로 만듭니다.');
@@ -1255,7 +1257,7 @@ function imagePrice(slot) {
 }
 
 async function enableCodexMode() {
-  try { const available=await fetch('/api/codex/status'); if(available.status===404) throw new Error('현재 제작이 끝난 뒤 프로그램을 종료하고 시작 파일로 다시 실행하세요.'); const deferred=STATE?.job?.status === 'running'; await api('/api/codex/mode', {defer:deferred}); if(!deferred) $('optHook').value=0; await refresh(); toast(deferred ? '현재 영상 완료 후 Codex 전환을 예약했습니다.' : 'Codex 제작 선택 · 제작 시작 후 요청문을 복사해 주세요.'); }
+  try { const available=await fetch('/api/codex/status'); if(available.status===404) throw new Error('현재 제작이 끝난 뒤 프로그램을 종료하고 시작 파일로 다시 실행하세요.'); const deferred=STATE?.job?.status === 'running'; await api('/api/codex/mode', {defer:deferred}); if(!deferred) $('optHook').value=5; await refresh(); toast(deferred ? '현재 영상 완료 후 Codex 전환을 예약했습니다.' : 'Codex 제작 선택 · 제작 시작 후 요청문을 복사해 주세요.'); }
   catch(e) { toast(e.message,true); }
 }
 async function refreshCodexStatus() {
@@ -1271,3 +1273,38 @@ async function copyCodexRequest() {
   } catch(e) { toast(e.message,true); }
 }
 setInterval(refreshCodexStatus, 3000);
+let LOCAL_VOICE = null;
+async function refreshLocalVoice() {
+  try {
+    LOCAL_VOICE = await api('/api/local-voice/status');
+    $('localVoiceStatus').textContent = `${LOCAL_VOICE.runtime_ready ? '로컬 모델 설치됨' : '로컬 모델 설치 필요'} · 한국어 ${LOCAL_VOICE.profiles.ko ? '녹음 저장됨' : '녹음 필요'} · 일본어 ${LOCAL_VOICE.profiles.ja ? '녹음 저장됨' : '녹음 필요'} · CPU 실행`;
+    if (!$('cloneTranscript').value) fillCloneScript();
+  } catch (_) { $('localVoiceStatus').textContent='현재 제작 완료 후 프로그램을 다시 실행하면 로컬 음성을 등록할 수 있습니다.'; }
+}
+function fillCloneScript() {
+  if (LOCAL_VOICE?.scripts) $('cloneTranscript').value=LOCAL_VOICE.scripts[$('cloneLanguage').value] || '';
+}
+async function saveVoiceEngine(language) {
+  try { await api('/api/config', {['나레이션_방식_'+language]: $(language==='ja' ? 'voiceEngineJa' : 'voiceEngineKo').value}); toast('나레이션 방식 저장됨'); await refresh(); }
+  catch(e) { toast(e.message,true); }
+}
+async function saveCloneVoice() {
+  const file=$('cloneAudio').files[0], text=$('cloneTranscript').value.trim();
+  if (!file || !text) return toast('녹음 파일과 실제 읽은 대본을 넣으세요.',true);
+  if (file.size>10*1024*1024) return toast('10MB 이하 녹음을 선택하세요.',true);
+  $('saveCloneButton').disabled=true;
+  try {
+    const audio=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);});
+    await api('/api/local-voice/profile', {language:$('cloneLanguage').value,audio,text});
+    toast('복제용 녹음·대본 저장됨. 위 나레이션에서 로컬 복제를 선택하세요.'); await refreshLocalVoice();
+  } catch(e) { toast(e.message,true); }
+  finally { $('saveCloneButton').disabled=false; }
+}
+async function previewCloneVoice() {
+  try { await api('/api/local-voice/preview', {language:$('cloneLanguage').value}); startPolling(true); toast('짧은 복제 음성 제작을 시작했습니다. 만들기 화면에서 진행을 확인하세요.'); }
+  catch(e) { toast(e.message,true); }
+}
+async function openClonePreview() {
+  await refreshLocalVoice(); const path=LOCAL_VOICE?.previews?.[$('cloneLanguage').value];
+  if (path) await openPath(path); else toast('복제 목소리 시험을 먼저 완료하세요.',true);
+}

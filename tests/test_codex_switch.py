@@ -28,7 +28,7 @@ class DeferredCodexTest(unittest.TestCase):
             self.queue['status']='done'
             self.assertTrue(switch.tick(self.root,value['token']))
             self.assertTrue(switch.tick(self.root,value['token']))
-        self.assertEqual(self.posts,[{}])
+        self.assertEqual(self.posts,[{}, {'후킹_장면수': 5}])
         self.assertEqual(read(switch.state_file(self.root))['status'],'done')
     def test_error_does_not_switch_and_cancel_releases_reservation(self):
         with patch.object(switch,'call',side_effect=self.call):

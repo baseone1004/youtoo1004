@@ -79,9 +79,23 @@ def tick(root, token):
             finished = job.get('started') == value['started'] and job.get('status') == 'done'
         if not finished or job.get('status') == 'running' or queue.get('status') == 'running':
             return False
+        result = (item.get('result') or {}) if value['item'] else (job.get('result') or {})
+        if result.get('video') and result.get('script'):
+            source, script = Path(result['video']).resolve(), Path(result['script']).resolve()
+            if source.is_file() and source.is_relative_to(root / '대본') and script.is_relative_to(root / '대본'):
+                import video_export
+                import 채널_프로필
+                result['desktop_video'] = video_export.export(source, script, 채널_프로필.name('person'), source.parent)
         call(value['port'], '/api/codex/mode', {})
+        # Older running servers turned motion off when enabling Codex.
+        call(value['port'], '/api/config', {'후킹_장면수': 5})
         value.update(status='done', completed=time.time())
         write(path, value)
+        if value.get('refresh_backend'):
+            try:
+                call(value['port'], '/api/restart', {})
+            except OSError:
+                pass  # Transition is saved even if the restart closes the connection.
         return True
 
 

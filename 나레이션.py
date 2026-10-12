@@ -295,7 +295,7 @@ def verify_subtitle_sync(srt_path, audio_duration, method="estimated"):
         prev = end
     return dict(ok=not issues, method=method, cues=len(cues), audio_duration=audio_duration,
                 last_caption_end=cues[-1][1] if cues else 0, issues=issues,
-                detail="문자별 음성 타임스탬프 사용" if method == "character" else "기존 음성의 쉼·글자 수로 추정한 자막")
+                detail="문자별 음성 타임스탬프 사용" if method == "character" else "각 자막 구간의 실제 생성 음성 길이 사용" if method == 'audio-cue' else "기존 음성의 쉼·글자 수로 추정한 자막")
 
 
 def repair_speech_part(tts, text, path, ffmpeg, ffprobe, cancel=None, log=print):

@@ -25,7 +25,7 @@
 <section id="view-wizard">
 <div class="beginner-guide" id="beginnerGuide" role="status">먼저 제작할 채널을 고르고, 아래에 영상 주제를 적어 주세요.</div>
 <div class="panel"><div class="inner row"><label for="productionAccount"><b>제작할 유튜브 채널</b></label><select id="productionAccount" style="min-width:0;max-width:100%" onchange="selectReferenceAccount(this.value)"></select><span class="hint" id="channelWindowHint">주제를 고르기 전에 채널을 선택하세요.</span></div></div>
-<div class="panel"><div class="inner"><div class="row"><button class="btn" onclick="enableCodexMode()">Codex로 제작하기</button><button class="btn" onclick="copyCodexRequest()">Codex 요청문 복사</button><span id="codexStatus" class="hint">기존 KIE 제작과 Codex 연결 중 선택할 수 있습니다.</span></div><p class="hint">Codex를 선택한 뒤 제작을 시작하고, 요청문을 이 프로그램 폴더를 읽을 수 있는 Codex 대화에 보내세요. 프로그램 화면은 열어 두세요. 대본·이미지를 순서대로 받으며 음성은 인월드로 제작합니다. Codex 선택 버튼은 앞부분의 유료 영상 변환을 끕니다. 도구·계정 한도가 적용되며 자동 유료 대체는 하지 않습니다.</p><textarea id="codexRequest" class="hidden" readonly aria-label="Codex 제작 요청문" style="width:100%;min-height:150px"></textarea></div></div>
+<div class="panel"><div class="inner"><div class="row"><button class="btn" onclick="enableCodexMode()">Codex로 제작하기</button><button class="btn" onclick="copyCodexRequest()">Codex 요청문 복사</button><span id="codexStatus" class="hint">기존 KIE 제작과 Codex 연결 중 선택할 수 있습니다.</span></div><p class="hint">Codex를 선택한 뒤 제작을 시작하고, 요청문을 이 프로그램 폴더를 읽을 수 있는 Codex 대화에 보내세요. 프로그램 화면은 열어 두세요. 대본·이미지를 순서대로 받으며 음성은 인월드 또는 로컬 복제로 제작합니다. 앞 5장 영상 변환은 KIE로 처리합니다 (약 325 크레딧). 완성 영상은 바탕화면/영상/채널명에 저장합니다. 도구·계정 한도가 적용되며 자동 유료 대체는 하지 않습니다.</p><textarea id="codexRequest" class="hidden" readonly aria-label="Codex 제작 요청문" style="width:100%;min-height:150px"></textarea></div></div>
 <details class="panel" id="quickAnalysis"><summary style="padding:16px;cursor:pointer" onclick="loadAnalysis(channel)">📊 내 채널 분석</summary><div class="inner"><button class="mini" onclick="refreshChannel(channel).then(()=>loadAnalysis(channel))">채널 다시 읽기</button><div id="chAnalysisQuick" class="hint">연결 상태를 확인하는 중…</div></div></details>
 <div class="welcome"><p class="eyebrow">나의 영상 스튜디오</p><h1>주제만 정하면, 영상이 완성됩니다.</h1><p>1 주제 선택 <span>→</span> 2 제작 시작 <span>→</span> 3 완성 확인</p></div>
 
@@ -237,7 +237,18 @@
   </div>
 
   <div class="card">
-    <h2>2. 나레이션 목소리 (인월드)</h2>
+    <h2>2. 나레이션 · 인월드 / 로컬 복제</h2>
+    <div class="row"><label>한국어 <select id="voiceEngineKo" onchange="saveVoiceEngine('ko')"><option value="inworld">인월드</option><option value="local">로컬 복제 · API 비용 없음</option></select></label><label>일본어 <select id="voiceEngineJa" onchange="saveVoiceEngine('ja')"><option value="inworld">인월드</option><option value="local">로컬 복제 · API 비용 없음</option></select></label></div>
+    <details><summary>로컬 복제 목소리 등록</summary>
+      <p id="localVoiceStatus" class="hint">로컬 모델 확인 중…</p>
+      <p class="hint">채널별 녹음과 실제 읽은 문장을 저장하세요. 배경음악 없는 3~60초 녹음 (약 30초 권장), 최대 10MB. 본인 또는 사용 허락을 받은 목소리를 사용하세요. 녹음은 이 컴퓨터에만 저장하며 생성 중에는 서버에 전송하지 않습니다.</p>
+      <label>녹음 언어 <select id="cloneLanguage" onchange="fillCloneScript()"><option value="ko">마음 채널 · 한국어</option><option value="ja">일본 채널 · 일본어</option></select></label>
+      <p class="hint">아래 대본을 자연스럽게 읽고 녹음하세요. 다르게 읽었다면 실제 읽은 문장으로 수정하세요.</p>
+      <textarea id="cloneTranscript" aria-label="복제용 녹음 대본" rows="6" style="width:100%"></textarea>
+      <div class="row"><button onclick="fillCloneScript()">녹음 대본 넣기</button><input id="cloneAudio" type="file" accept="audio/wav,audio/mpeg,audio/mp4,audio/x-m4a"><button class="primary" id="saveCloneButton" onclick="saveCloneVoice()">녹음·대본 저장</button></div>
+      <div class="row"><button onclick="previewCloneVoice()">복제 목소리 시험 · 짧은 음성</button><button onclick="openClonePreview()">시험 음성 파일 열기</button></div>
+      <p class="hint">로컬 복제는 CPU에서 실행합니다. 긴 대본은 오래 걸릴 수 있으며, 자막 길이에 맞춰 짧게 나누어 읽기 때문에 억양이 끊길 수 있습니다. 녹음 등록 후 짧은 대본으로 목소리를 먼저 확인하세요.</p>
+    </details>
     <p class="lead">제작할 언어를 지원하는 목소리 ID를 넣고 저장하세요. 이야기형은 비워 두면 정보형 목소리를 사용합니다. 자막은 대본 언어로 자동 생성됩니다.</p>
     <div class="keyrow"><b>인월드 (나레이션)</b><span class="stat" id="k_inworld"></span><input type="password" aria-label="인월드 API 키" id="key_inworld" placeholder="Basic 키  (platform.inworld.ai)"><button class="mini" onclick="saveKey('inworld')">저장</button></div>
     <div class="row"><label>모델 <select id="sInworldModel"><option>inworld-tts-1.5-max</option><option>inworld-tts-1-max</option><option>inworld-tts-1</option><option>inworld-tts-2</option><option>inworld-tts-2-flash</option></select></label></div>

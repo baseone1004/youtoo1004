@@ -41,3 +41,5 @@ server.err.log
 
 # Independent channel settings, credentials, queues and generated media.
 채널별_작업공간/
+로컬음성/
+.local-voice/

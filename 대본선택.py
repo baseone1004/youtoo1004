@@ -1310,6 +1310,7 @@ def upload_description(description, tags="", language=None):
 
 
 def workspace_data(script_file):
+    import video_export
     """선택 대본의 편집 가능한 제작 결과와 업로드 정보를 모은다."""
     if os.path.normcase(os.path.realpath(script_file)) not in {os.path.normcase(os.path.realpath(item["path"])) for item in script_files()}:
         raise ValueError("대본 목록에서 파일을 다시 선택하세요.")
@@ -1333,7 +1334,7 @@ def workspace_data(script_file):
     title = saved.get("title") or _block(script_text, "제목") or _block(opt_text, "제목")
     if not title and os.path.basename(script_file) == "final.txt":
         title = re.sub(r"^\d{4}-\d{2}-\d{2}_", "", os.path.basename(os.path.dirname(script_file)))
-    return dict(script_file=os.path.abspath(script_file), language=script_language(script_file), assets=os.path.abspath(assets), script=script_text,
+    return dict(desktop_video=video_export.saved(assets), script_file=os.path.abspath(script_file), language=script_language(script_file), assets=os.path.abspath(assets), script=script_text,
                 prompts=Path(prompts).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(prompts) else "",
                 prompts_file=os.path.abspath(prompts),
                 srt=Path(srt).read_text(encoding="utf-8-sig", errors="replace") if os.path.isfile(srt) else "",
@@ -1397,7 +1398,8 @@ def save_workspace(body):
     return {"ok": True}
 
 def open_workspace_path(path):
-    if not path_inside(BASE, path):
+    import video_export
+    if not path_inside(BASE, path) and not video_export.is_registered(BASE, path):
         raise ValueError("프로그램 작업 폴더 밖의 경로는 열 수 없습니다.")
     absolute = os.path.abspath(path)
     if os.path.isfile(absolute):
@@ -1426,6 +1428,15 @@ def voice_for(cfg, channel):
     return voice, float(speed or 1.0)
 
 def narration_settings(cfg, channel):
+    import local_voice
+    lang = 채널_프로필.language_code(channel)
+    if cfg.get('나레이션_방식_' + lang) == 'local':
+        p = local_voice.profile(BASE, lang)
+        settings = dict(engine='local', voice=p['revision'] if p else '', speed=1.0,
+                        model=local_voice.MODEL, language=lang, timestamps=False, alignment='audio-cue')
+        if lang == 'ko':
+            settings['number_normalization'] = 나레이션.korean_numbers.VERSION
+        return settings
     voice, speed = voice_for(cfg, channel)
     japanese = 채널_프로필.language_code(channel) == "ja"
     settings = dict(voice=voice, speed=speed, model="inworld-tts-2" if japanese else cfg.get("인월드_모델", "inworld-tts-1.5-max"),
@@ -1448,7 +1459,7 @@ def check_narration_sync(script_file):
         raise ValueError("나레이션과 자막을 먼저 만드세요.")
     duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), audio)
     settings = load_json(os.path.join(folder, "나레이션_설정.json"), {})
-    return 나레이션.verify_subtitle_sync(srt, duration, "character" if settings.get("timestamps") else "estimated")
+    return 나레이션.verify_subtitle_sync(srt, duration, settings.get("alignment") or ("character" if settings.get("timestamps") else "estimated"))
 
 def make_tts(job, req):
     if not req.get("force"):
@@ -1493,6 +1504,15 @@ def _make_tts(job, req):
     sents = split_sentences(body, path)
     out = req.get("out_dir") or assets_dir(path)
     settings = narration_settings(cfg, channel)
+    if settings.get('engine') == 'local':
+        import local_voice
+        job.stage = '나레이션 · 로컬 음성 복제'
+        r = local_voice.synthesize(BASE, sents, out, settings['language'], log=job.add, cancel=lambda: job.cancel_requested)
+        settings['voice'] = r['voice_revision']
+        production_library._write(Path(out) / scene_layout.SENTENCE_FLOW, Path(r['flow']).read_bytes())
+        refresh_image_flow(path, out)
+        atomic_write_json(os.path.join(out, '나레이션_설정.json'), settings)
+        return r
     voice, speed = voice_for(cfg, channel)
     if req.get("voice_id"):
         voice = req["voice_id"]
@@ -2370,6 +2390,9 @@ def make_pipeline(job, req):
                 run_render(job, result["srt"], result["flow"], images_dir, result["narration"], out,
                            minimum_duration=minimum_video_seconds(script))
             result["video"] = out
+            import video_export
+            result['desktop_video'] = video_export.export(out, script, 채널_프로필.name(channel_of(script)), assets)
+            job.add('   ✓ 바탕화면 영상 저장: ' + result['desktop_video'])
         except Exception as e:  # noqa: BLE001
             render_error = e
             job.add(f"   ! 최종 영상 합치기 실패: {e}")
@@ -2697,6 +2720,7 @@ class H(BaseHTTPRequestHandler):
                                             대본_글자수=cfg["대본_글자수"], 인월드키있음=bool(cfg.get("인월드_API_키")),
                                             인월드_목소리=cfg.get("인월드_목소리", ""), 인월드_모델=cfg.get("인월드_모델", "inworld-tts-1.5-max"),
                                             인월드_속도=cfg.get("인월드_속도", 1.0),
+                                            나레이션_방식_ko=cfg.get('나레이션_방식_ko', 'inworld'), 나레이션_방식_ja=cfg.get('나레이션_방식_ja', 'inworld'),
                                             인월드_목소리_사람=cfg.get("인월드_목소리_사람", cfg.get("인월드_목소리", "")),
                                             인월드_목소리_민담=cfg.get("인월드_목소리_민담", ""),
                                             인월드_목소리_일본=cfg.get("인월드_목소리_일본", ""), 인월드_속도_일본=cfg.get("인월드_속도_일본", 1.0),
@@ -2808,6 +2832,9 @@ class H(BaseHTTPRequestHandler):
                 self._json(report)
             elif u.path == "/api/workspace":
                 self._json(workspace_data(q.get("script", [""])[0]))
+            elif u.path == '/api/local-voice/status':
+                import local_voice
+                self._json(local_voice.status(BASE))
             elif u.path == "/api/narration/sync":
                 self._json(check_narration_sync(q.get("script", [""])[0]))
             elif u.path == "/api/file":
@@ -2834,10 +2861,27 @@ class H(BaseHTTPRequestHandler):
                 if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
                     raise ValueError("현재 작업을 중단하거나 완료한 뒤 제작 방식을 바꿔 주세요.")
                 cfg = load_json("설정.json", {})
-                cfg.update(AI="codex", 모델="", 후킹_장면수=0)
+                cfg.update(AI="codex", 모델="", 후킹_장면수=5)
                 atomic_write_json("설정.json", cfg)
                 채널_프로필.save("person", {"마스코트": {"생성_모델": "codex"}})
                 self._json({"ok": True}); return
+            if u.path == '/api/local-voice/profile':
+                import local_voice
+                self._json(local_voice.save_profile(BASE, body.get('language'), body.get('audio', ''), body.get('text', ''))); return
+            if u.path == '/api/local-voice/preview':
+                import local_voice
+                lang = body.get('language')
+                if lang not in ('ko', 'ja'):
+                    raise ValueError('녹음 언어를 선택하세요.')
+                def preview(job):
+                    job.stage = '나레이션 · 로컬 복제 목소리 시험'
+                    text = '안녕하세요. 마음을 천천히 살펴보겠습니다.' if lang == 'ko' else 'こんにちは。気持ちをゆっくり見つめてみましょう。'
+                    result = local_voice.synthesize(BASE, [text], local_voice.storage(BASE) / lang / 'preview', lang,
+                                                    log=job.add, cancel=lambda: job.cancel_requested)
+                    result['narration'] = result['mp3']
+                    return result
+                run_job('local_voice_preview', preview)
+                self._json({'ok': True}); return
             if u.path == "/api/workspaces/open":
                 self._json(channel_workspaces.launch(body.get("id", ""))); return
             if u.path == "/api/worker-web":
@@ -3060,7 +3104,10 @@ class H(BaseHTTPRequestHandler):
                 if "AI" in body and body["AI"] not in _공통.PROVIDERS:
                     raise ValueError("지원하는 대본 AI를 선택하세요.")
                 prev_ai = (cfg.get("AI") or "").strip().lower()
-                for k in ("AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
+                for mode in ('나레이션_방식_ko', '나레이션_방식_ja'):
+                    if mode in body and body[mode] not in ('local', 'inworld'):
+                        raise ValueError('나레이션 방식은 로컬 또는 인월드를 선택하세요.')
+                for k in ("나레이션_방식_ko", "나레이션_방식_ja", "AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_목소리_일본", "인월드_속도_일본", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "영상변환_방식", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "프롬프트_묶음",
                           "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
