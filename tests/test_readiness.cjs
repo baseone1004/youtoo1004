@@ -20,5 +20,6 @@ async function check(channels, config, credit, profiles = {}) {
   assert.equal(await check(['mindam'], {...cfg, 인월드_목소리:'common'}, {ok:true,credit:0.1}), true);
   assert.equal(await check(['person'], {...cfg, 인월드_목소리:'korean'}, {ok:true,credit:1}, {person:{언어:'ja'}}), false);
   assert.equal(await check(['person'], {...cfg, 인월드_목소리_일본:'japanese'}, {ok:true,credit:1}, {person:{언어:'ja'}}), true);
-  console.log('Readiness checks passed (7 cases)');
+  assert.equal(await check(['mindam'], {...cfg,AI:'codex',키있음:false,후킹_장면수:0}, {ok:false}, {mindam:{마스코트:{생성_모델:'codex'}}}), true);
+  console.log('Readiness checks passed (8 cases)');
 })().catch(e => { console.error(e); process.exitCode = 1; });

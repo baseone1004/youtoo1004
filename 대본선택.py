@@ -193,6 +193,7 @@ def shutdown_program(server):
                            timeout=10, capture_output=True, check=False)
         except (OSError, subprocess.TimeoutExpired):
             pass
+    __import__("codex_bridge").cancel_all(BASE)
     server.shutdown()
 
 
@@ -1653,8 +1654,6 @@ def aip_wait(path, body=None, job=None, retries=3):
 def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries_left=2, reference_slot=None):
     """KIE Z-Image로 생성하고 중단 후에도 같은 작업을 이어 확인한다."""
     info = aip_wait("/api/info", job=job)
-    if not info.get("kie_key_saved"):
-        raise RuntimeError("설정에서 KIE API 키를 먼저 저장하세요.")
     try:
         with open(prompts_file, encoding="utf-8-sig") as f:
             if "STRICT STYLE LOCK" in f.read():
@@ -1666,9 +1665,11 @@ def run_image_generation(job, prompts_file, images_dir, style_prefix="", retries
     if reference_slot:
         from reference_images import reference_options
         body.update(reference_options(reference_slot))
-    model = body.get("reference_model", "qwen/image-edit") if body.get("reference_image") else "z-image"
+    model = body.get("reference_model", "qwen/image-edit") if body.get("reference_image") or body.get("reference_model") == "codex" else "z-image"
+    if model != "codex" and not info.get("kie_key_saved"):
+        raise RuntimeError("설정에서 KIE API 키를 먼저 저장하세요.")
     price = {"z-image": .8, "bytedance/seedream-v4-edit": 5, "seedream/4.5-edit": 6.5, "qwen/image-edit": 2}.get(model, 0)
-    job.add(f"   KIE 이미지 모델: {model} · 장당 {price:g} 크레딧 · 썸네일·영상 변환 별도")
+    job.add("   Codex 이미지 연결 · 내장 도구 결과 대기 · KIE 이미지 호출 없음" if model == "codex" else f"   KIE 이미지 모델: {model} · 장당 {price:g} 크레딧 · 썸네일·영상 변환 별도")
     current = aip("/api/gen/status")
     if current.get("status") in ("running", "paused"):
         running_dir = ((info.get("config") or {}).get("gen") or {}).get("output_dir") or ""
@@ -2714,6 +2715,11 @@ class H(BaseHTTPRequestHandler):
                                 job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items(),
                                 channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), languages=채널_프로필.LANGUAGES,
                                 layouts=채널_프로필.레이아웃_이름, tones=채널_프로필.사진_톤_이름))
+            elif u.path == "/api/codex/status":
+                import codex_bridge
+                rows = codex_bridge.pending(BASE)
+                self._json(dict(pending=len(rows), kinds=[v["kind"] for _, v in rows],
+                                message=codex_bridge.request_message(BASE)))
             elif u.path == "/api/job":
                 job = STATE["job"]; self._json(job.to_dict() if job else {"status": "none"})
             elif u.path == "/api/version":
@@ -2810,6 +2816,14 @@ class H(BaseHTTPRequestHandler):
             return
         try:
             body = self._body()
+            if u.path == "/api/codex/mode":
+                if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
+                    raise ValueError("현재 작업을 중단하거나 완료한 뒤 제작 방식을 바꿔 주세요.")
+                cfg = load_json("설정.json", {})
+                cfg.update(AI="codex", 모델="", 후킹_장면수=0)
+                atomic_write_json("설정.json", cfg)
+                채널_프로필.save("person", {"마스코트": {"생성_모델": "codex"}})
+                self._json({"ok": True}); return
             if u.path == "/api/workspaces/open":
                 self._json(channel_workspaces.launch(body.get("id", ""))); return
             if u.path == "/api/worker-web":
@@ -2918,6 +2932,7 @@ class H(BaseHTTPRequestHandler):
                         _rq.post(AIP + path, json={}, timeout=5); stopped.append(name)
                     except _rq.RequestException:
                         pass
+                __import__("codex_bridge").cancel_all(BASE)
                 self._json({"ok": True, "stopped": stopped})
             elif u.path == "/api/restart":
                 if not os.environ.get("YOUTOO_ACCOUNT"):
@@ -3161,6 +3176,7 @@ def main():
                 time.sleep(0.25)
             except OSError:
                 break
+    __import__("codex_bridge").cancel_all(BASE)
     backup_work_text()
     cfg = load_json("설정.json", {})
     for ch in 채널_연동.CONFIG_KEY:

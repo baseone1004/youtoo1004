@@ -10,6 +10,7 @@
 import os, sys, json, time, re
 
 PROVIDERS = {
+    "codex": dict(base_url=None, model="Codex 연결", env="", price=(0, 0), max_out=60000, 발급="Codex PC 앱"),
     # 가격은 1백만 토큰당 달러 (입력, 출력) — 대략적인 비용 표시용
     "deepseek": dict(base_url="https://api.deepseek.com", model="deepseek-chat",
                      env="DEEPSEEK_API_KEY", price=(0.27, 1.10), max_out=8000,
@@ -63,13 +64,16 @@ class AI:
         cfg = normalize_provider_config(cfg)
         name = (cfg.get("AI") or "deepseek").strip().lower()
         if name not in PROVIDERS:
-            raise SystemExit(f"설정.json 의 AI 값은 deepseek / deepseek-web / gemini 중 하나여야 합니다. (지금: {name})")
+            raise SystemExit(f"설정.json 의 AI 값은 codex / deepseek / deepseek-web / gemini 중 하나여야 합니다. (지금: {name})")
         p = PROVIDERS[name]
         self.name, self.p = name, p
         self.cfg, self.fallback, self._is_fallback = cfg, None, _is_fallback
         self.model = (cfg.get("모델") or "").strip() or p["model"]
         self.usage = {"in": 0, "out": 0}
         self.cancel_check = None                   # 호출자가 따로 주는 중단 확인. 없으면 모듈의 cancel_hook (화면의 [■ 중단]) 을 본다
+        if name == "codex":
+            self.key, self.client = "", None
+            return
         if name == "deepseek-web":
             import 웹큐
             self.key, self.client = "", None
@@ -121,6 +125,12 @@ class AI:
 
     def ask(self, system, user, max_tokens=None, retries=2):
         self._raise_if_cancelled()
+        if self.name == "codex":
+            import codex_bridge
+            from pathlib import Path
+            print("   Codex 결과 대기 · 화면의 [Codex 요청문 복사]를 눌러 이 대화에 전달하세요.", flush=True)
+            return codex_bridge.wait_result(Path(__file__).resolve().parent / "대본" / "_상태" / ".codex-requests",
+                                           "text", {"system": system, "user": user}, self._cancelled)
         if self.fallback is not None:                 # 이미 예비로 넘어갔으면 계속 예비를 쓴다
             return self.fallback.ask(system, user, max_tokens)
         if self.name == "deepseek-web" and retries > 0:
@@ -215,6 +225,8 @@ class AI:
         i, o = self.p["price"]
         usd = self.usage["in"] / 1e6 * i + self.usage["out"] / 1e6 * o
         extra = (" + 예비 " + self.fallback.cost_text()) if self.fallback is not None else ""
+        if self.name == "codex":
+            return "Codex 연결 · 별도 대본 API 호출 없음 · 계정 사용 한도 적용"
         if self.name == "deepseek-web":
             return f"deepseek-web · 입력 {self.usage['in']:,} / 출력 {self.usage['out']:,} 토큰(어림) · 0원 (웹 채팅)" + extra
         return f"{self.name} · 입력 {self.usage['in']:,} / 출력 {self.usage['out']:,} 토큰 · 약 {usd*환율:,.0f}원" + extra

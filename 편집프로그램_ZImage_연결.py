@@ -148,6 +148,8 @@ def info():''')
     changed = updated != source or gen.read_text(encoding="utf-8") != runner
     target.write_text(updated, encoding="utf-8")
     gen.write_text(runner, encoding="utf-8")
+    for module in ("codex_bridge.py", "process_lock.py"):
+        (editor / "core" / module).write_bytes(Path(__file__).with_name(module).read_bytes())
     legacy_video = editor / "core" / "videogen.py"
     if legacy_video.exists():
         legacy_video.write_text('"""화면 자동 클릭 영상 변환은 제거되었습니다. 영상은 KIE API를 사용합니다."""\n', encoding="utf-8")

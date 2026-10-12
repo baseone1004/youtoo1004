@@ -47,8 +47,9 @@ def save_reference(slot, data_url):
 
 def reference_options(slot):
     mascot = 채널_프로필.get(slot).get("마스코트") or {}
-    if not mascot.get("레퍼런스_사용"):
-        return {}
+    codex = mascot.get("생성_모델") == "codex"
+    if not mascot.get("레퍼런스_사용") or not mascot.get("이미지"):
+        return {"reference_model": "codex"} if codex else {}
     path = (ROOT / mascot.get("이미지", "")).resolve()
     try:
         path.relative_to(ROOT)

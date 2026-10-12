@@ -181,7 +181,7 @@ class Runner:
         with self._lock:
             if self._thread and self._thread.is_alive():
                 raise RuntimeError("이미지 생성이 진행 중입니다. 끝나거나 중단한 뒤 다시 시도하세요.")
-            if not settings.api_key:
+            if not settings.api_key and settings.reference_model != "codex":
                 raise KieImageError("설정에서 KIE API 키를 먼저 저장하세요.")
             if not parse_prompts(settings.prompts_file):
                 raise KieImageError("이미지 프롬프트가 없습니다. 프롬프트를 먼저 만들어 주세요.")
@@ -336,10 +336,47 @@ class Runner:
         except (OSError, ValueError):
             pass
 
+    def _generate_codex(self, scene, s, out, records, journal, regen):
+        try:
+            import codex_bridge
+        except ImportError:
+            from core import codex_bridge
+        slot = str(scene.no)
+        record = records.get(slot, {})
+        if record.get("task_id") and record.get("model") != "codex" and record.get("status") != "saved":
+            raise KieImageError("기존 KIE 요청이 남아 있습니다. 작업 내역을 확인한 뒤 Codex로 바꿔 주세요.")
+        prompt = (s.style_prefix + " " + scene.prompt).strip()
+        reference_hash = hashlib.sha256(Path(s.reference_image).read_bytes()).hexdigest() if s.reference_image else ""
+        fingerprint = hashlib.sha256((prompt + reference_hash).encode()).hexdigest()
+        if record.get("model") != "codex" or record.get("fingerprint") != fingerprint or (regen and record.get("status") == "saved"):
+            record = {"model": "codex", "fingerprint": fingerprint, "status": "pending", "generation": time.time_ns()}
+            record["task_id"] = "codex:" + str(record["generation"])
+            records[slot] = record
+            self._save(journal, records)
+        self.state.image_model, self.state.credits_per_image = "codex", 0
+        payload = {"prompt": prompt, "reference_image": s.reference_image, "reference_hash": reference_hash,
+                   "aspect_ratio": "16:9", "scene": scene.no, "generation": record["generation"]}
+        self.state.add(f"{scene.no:03d} Codex 이미지 결과 대기 · 제작 화면에서 요청문을 복사하세요.")
+        source = codex_bridge.wait_result(out / ".codex-requests", "image", payload, self._stop.is_set)
+        if not self._wait(0):
+            return None
+        dest = out / f"{scene.no:03d}.jpg"
+        temp = out / f"{scene.no:03d}.tmp"
+        with Image.open(source) as image:
+            image.load()
+            image.convert("RGB").save(temp, format="JPEG", quality=95)
+        temp.replace(dest)
+        self._check_similarity(dest)
+        record["status"] = "saved"
+        self._save(journal, records)
+        return dest
+
     def _generate(self, scene, s, out, records, journal, regen=False):
         # Legacy @image references are unsupported; character descriptions come from the prompt/profile.
         prompt = re.sub(r"@image\s*\d+", "the described character", s.style_prefix + " " + scene.prompt).strip()
-        model = s.reference_model if s.reference_image else "z-image"
+        model = s.reference_model if s.reference_image or s.reference_model == "codex" else "z-image"
+        if model == "codex":
+            return self._generate_codex(scene, s, out, records, journal, regen)
         if model == "z-image":
             compact = z_image_prompt(re.sub(r"@image\s*\d+", "the described character", scene.prompt), s.style_prefix)
             if compact != prompt:
@@ -499,7 +536,7 @@ class Runner:
                 if s.skip_existing and not regen and existing:
                     dest = existing[0]
                 else:
-                    st.add(f"{sc.no:03d} KIE {({'qwen/image-edit':'Qwen Image Edit 레퍼런스', 'bytedance/seedream-v4-edit':'Seedream 4.0 레퍼런스'}.get(s.reference_model, 'Seedream 4.5 레퍼런스')) if s.reference_image else 'Z-Image'} 생성 중")
+                    st.add(f"{sc.no:03d} Codex 이미지 결과 대기" if s.reference_model == "codex" else f"{sc.no:03d} KIE {({'qwen/image-edit':'Qwen Image Edit 레퍼런스', 'bytedance/seedream-v4-edit':'Seedream 4.0 레퍼런스'}.get(s.reference_model, 'Seedream 4.5 레퍼런스')) if s.reference_image else 'Z-Image'} 생성 중")
                     dest = self._generate(sc, s, out, records, journal, regen)
                 if dest is None:
                     break

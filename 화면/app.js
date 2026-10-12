@@ -113,16 +113,19 @@ async function checkReady() {
     const selectedChannels = [...new Set([...selection.values()].map(x => x.channel))];
     const requiredChannels = selectedChannels.length ? selectedChannels : [channel];
     const v = requiredChannels.every(ch => (info.profiles?.[ch]?.언어 === 'ja') ? String(info.config.인월드_목소리_일본 || '').trim() : String(info.config[ch === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || info.config.인월드_목소리 || '').trim());
-    if (info.config.AI === 'deepseek-web') items.push([!!info.web_alive, info.web_alive ? '딥시크 웹 연결' : '딥시크 창 안 보임', 'settings']);
+    if (info.config.AI === 'codex') items.push([true, 'Codex 요청문 전달 방식', null]);
+    else if (info.config.AI === 'deepseek-web') items.push([!!info.web_alive, info.web_alive ? '딥시크 웹 연결' : '딥시크 창 안 보임', 'settings']);
     else items.push([!!info.config.키있음, info.config.키있음 ? info.config.AI + ' 키' : info.config.AI + ' 키 없음', 'settings']);
     const voiceReady = !!v && !!info.config.인월드키있음;
     items.push([voiceReady, voiceReady ? '나레이션 설정 완료' : '나레이션 키·목소리 필요', 'settings']);
   } catch (e) { items.push([false, '제작 서버 연결 확인', 'settings']); }
   try {
     const j = await get8765('/api/info');
+    const codexOnly = STATE?.profiles?.[channel]?.마스코트?.생성_모델 === 'codex' && !(STATE?.config?.후킹_장면수);
     const c = j.kie_key_saved && j.image_model === 'z-image' ? await api('/api/kie/credit') : null;
     const ok = !!c && c.ok && Number.isFinite(c.credit) && c.credit > 0;
-    items.push([ok, ok ? 'KIE 연결 확인 완료' : (c && c.ok && c.credit === 0 ? 'KIE 크레딧 충전 필요' : 'KIE 키·연결 확인 필요'), 'settings']);
+    if (codexOnly) items.push([true, 'Codex 이미지 · KIE 요청 없음', null]);
+    else items.push([ok, ok ? 'KIE 연결 확인 완료' : (c && c.ok && c.credit === 0 ? 'KIE 크레딧 충전 필요' : 'KIE 키·연결 확인 필요'), 'settings']);
     items.push([true, '편집프로그램 연결', null]);
   } catch (e) { items.push([false, '편집프로그램 꺼짐 — 시작 파일을 다시 실행하세요', null]); }
   const html = '<span class="lbl">준비 상태</span>' + items.map(([ok, label, tab]) => `<span class="pill ${ok ? 'ok' : 'bad'}" ${(!ok && tab) ? `onclick="showView('${tab}')"` : ''}>${ok ? '✓' : '!'} ${esc(label)}${(!ok && tab) ? ' → 고치기' : ''}</span>`).join('');
@@ -164,7 +167,7 @@ async function refresh() {
   renderProfileNames();
   const activeProfile = (STATE.profiles || {})[channel] || {};
   $('quickLanguage').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(activeProfile.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
-  if (!$('optHook').dataset.initialized) { $('optHook').value = 5; $('optHook').dataset.initialized = '1'; }
+  if (!$('optHook').dataset.initialized) { $('optHook').value = c.AI === 'codex' ? 0 : 5; $('optHook').dataset.initialized = '1'; }
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
   renderStyles(STATE.styles, c.화풍 || '실사');
@@ -184,13 +187,16 @@ async function refresh() {
   $('galFile').innerHTML = scriptOpts || '<option value="">대본 없음</option>';
   if (STATE.scripts.some(s => s.path === prevGal)) $('galFile').value = prevGal;
   if (gone(prevGal)) refreshGallery(true);
+  $('defaultMotionNote').textContent = c.AI === 'codex' ? 'Codex 제작은 기본적으로 정지 이미지와 인월드 음성으로 편집합니다. 움직이는 영상은 고급 설정에서 따로 선택하면 KIE 비용이 발생합니다.' : '기본 제작은 앞 5장을 KIE 움직이는 영상으로 자동 변환합니다. 추가 크레딧이 발생하며 고급 설정에서 0장으로 끌 수 있습니다.';
   // 설정
   $('sAI').value = c.AI; $('sModel').value = c.모델 || '';
   const isWeb = c.AI === 'deepseek-web';
+  const isCodex = c.AI === 'codex';
   $('aiStat').textContent = isWeb ? (STATE.web_alive ? '웹 연결됨' : '웹 연결 안 됨') : (c.키있음 ? '키 저장됨' : '키 없음');
   $('aiStat').className = 'stat ' + ((isWeb ? STATE.web_alive : c.키있음) ? 'ok' : 'bad');
   $('sStatus').textContent = isWeb ? '지금은 딥시크 웹(무료, 키 불필요)을 씁니다.' : (c.키있음 ? `지금은 ${c.AI} · 키 저장됨` : `지금은 ${c.AI} · API 키가 없습니다. 아래에 키를 저장하세요.`);
   $('webHelp').classList.toggle('hidden', !isWeb);
+  if (isCodex) { $('aiStat').textContent='Codex 요청문 연결'; $('aiStat').className='stat ok'; $('sStatus').textContent='Codex 대화에 요청문을 전달하면 결과를 받습니다. 별도 대본 API 키는 쓰지 않습니다.'; }
   $('sWeb').textContent = isWeb ? (STATE.web_alive ? '🟢 딥시크 확장 연결됨 (chat.deepseek.com 탭 감지)' : '🔴 확장이 연결되지 않음 — 크롬에 딥시크_확장을 설치하고 chat.deepseek.com 탭을 열어 두세요') : '';
   for (const [k, v] of Object.entries(STATE.keys || {})) { const el = $('k_' + k); if (!el) continue; el.textContent = v ? '저장됨 ' + v : '없음'; el.className = 'stat ' + (v ? 'ok' : 'bad'); }
   $('sInworldModel').value = c.인월드_모델 || 'inworld-tts-1.5-max';
@@ -210,7 +216,7 @@ async function refresh() {
   // 경고
   const warn = $('envwarn');
   if (isWeb && !STATE.web_alive) { warn.classList.remove('hidden'); warn.textContent = '딥시크 웹 확장이 연결되지 않았습니다. 크롬에서 chat.deepseek.com 탭을 열어 두거나, [설정]에서 "딥시크 웹 쓰는 법"을 보세요.'; }
-  else if (!isWeb && !c.키있음) { warn.classList.remove('hidden'); warn.textContent = 'AI 키가 없습니다. [설정]에서 키를 넣거나 AI를 딥시크 웹(무료)으로 바꾸세요.'; }
+  else if (!isWeb && !isCodex && !c.키있음) { warn.classList.remove('hidden'); warn.textContent = 'AI 키가 없습니다. [설정]에서 키를 넣거나 AI를 딥시크 웹(무료)으로 바꾸세요.'; }
   else warn.classList.add('hidden');
   refreshKieStatus();
   renderOverview(STATE.job); renderQueue(STATE.queue); renderStepBar();
@@ -788,7 +794,7 @@ async function genBodyFromUI() {
   const slot = $('galFile').value.endsWith('final.txt') ? 'mindam' : 'person';
   if (work.language && work.language !== ((STATE.profiles || {})[slot] || {}).언어) throw new Error('선택한 작업의 언어와 제작 채널이 다릅니다. 맨 위에서 해당 채널을 선택하세요.');
   const info = await get8765('/api/info');
-  if (!info.kie_key_saved) throw new Error('설정에서 KIE API 키를 먼저 저장하세요');
+  if (!info.kie_key_saved && imagePrice(slot).name !== 'Codex') throw new Error('설정에서 KIE API 키를 먼저 저장하세요');
   return {prompts_file: galPromptsPath, output_dir: galDir, start_no: 1, end_no: 0,
     skip_existing: true, aspect_ratio: '16:9', style_prefix: (STATE.style_prefixes || {})[styleValue] || '',
     reference_image: referencePathFor($('galFile').value.endsWith('final.txt') ? 'mindam' : 'person'), reference_model: ((((STATE.profiles || {})[$('galFile').value.endsWith('final.txt') ? 'mindam' : 'person'] || {}).마스코트 || {}).생성_모델 || 'qwen/image-edit')};
@@ -1061,8 +1067,8 @@ function renderReference() {
   $('referenceEnabled').checked = !!m.레퍼런스_사용;
   $('referenceEnabled').disabled = !has;
   $('referenceStatus').textContent = m.레퍼런스_사용 ? '생성에 적용' : has ? '사용 안 함' : '이미지 없음';
-  $('imageMode').value = m.레퍼런스_사용 ? (m.생성_모델 || 'qwen/image-edit') : 'z-image';
-  $('referenceModelHint').textContent = m.레퍼런스_사용 ? '사용 모델: ' + (m.생성_모델 === 'seedream/4.5-edit' ? 'Seedream 4.5 · 6.5 크레딧/장' : m.생성_모델 === 'bytedance/seedream-v4-edit' ? 'Seedream 4.0 · 5 크레딧/장' : 'Qwen Image Edit · 2 크레딧/장 · 1024×576') + ' · 장면·재생성·썸네일에 적용' : '사용 모델: Z-Image';
+  $('imageMode').value = m.생성_모델 === 'codex' ? 'codex' : m.레퍼런스_사용 ? (m.생성_모델 || 'qwen/image-edit') : 'z-image';
+  $('referenceModelHint').textContent = m.생성_모델 === 'codex' ? 'Codex 이미지 도구 · 레퍼런스가 있으면 함께 전달 · KIE 이미지 청구 없음 · Codex 한도 적용' : m.레퍼런스_사용 ? '사용 모델: ' + (m.생성_모델 === 'seedream/4.5-edit' ? 'Seedream 4.5 · 6.5 크레딧/장' : m.생성_모델 === 'bytedance/seedream-v4-edit' ? 'Seedream 4.0 · 5 크레딧/장' : 'Qwen Image Edit · 2 크레딧/장 · 1024×576') + ' · 장면·재생성·썸네일에 적용' : '사용 모델: Z-Image';
 }
 async function uploadReference(input) {
   const file = input.files[0]; if (!file) return;
@@ -1201,7 +1207,7 @@ async function recoverImageTask() {
 
 async function saveImageMode() {
   const mode = $('imageMode').value;
-  if (mode !== 'z-image' && !(((STATE.profiles || {})[$('referenceChannel').value] || {}).마스코트 || {}).이미지) { toast('레퍼런스 이미지를 먼저 올려 주세요.', true); return renderReference(); }
+  if (!['z-image','codex'].includes(mode) && !(((STATE.profiles || {})[$('referenceChannel').value] || {}).마스코트 || {}).이미지) { toast('레퍼런스 이미지를 먼저 올려 주세요.', true); return renderReference(); }
   try { await api('/api/profile', {slot:$('referenceChannel').value, data:{마스코트:{레퍼런스_사용:mode !== 'z-image', 생성_모델:mode === 'z-image' ? 'qwen/image-edit' : mode}}}); await refresh(); toast('이미지 모드 저장됨 · 다음 생성부터 적용'); } catch(e) { toast(e.message,true); }
 }
 let savedYtAccounts = [];
@@ -1234,6 +1240,25 @@ async function useYtAccount() {
 
 function imagePrice(slot) {
   const m = (((STATE || {}).profiles || {})[slot] || {}).마스코트 || {};
+  if (m.생성_모델 === 'codex') return {name:'Codex', credits:0};
   if (!m.레퍼런스_사용) return {name:'Z-Image', credits:0.8};
   return m.생성_모델 === 'seedream/4.5-edit' ? {name:'Seedream 4.5', credits:6.5} : m.생성_모델 === 'bytedance/seedream-v4-edit' ? {name:'Seedream 4.0', credits:5} : {name:'Qwen Image Edit', credits:2};
 }
+
+async function enableCodexMode() {
+  try { const available=await fetch('/api/codex/status'); if(available.status===404) throw new Error('현재 제작이 끝난 뒤 프로그램을 종료하고 시작 파일로 다시 실행하세요.'); await api('/api/codex/mode', {}); $('optHook').value=0; await refresh(); toast('Codex 제작 선택 · 제작 시작 후 요청문을 복사해 주세요.'); }
+  catch(e) { toast(e.message,true); }
+}
+async function refreshCodexStatus() {
+  try { const response=await fetch('/api/codex/status'); if(response.status===404) { $('codexStatus').textContent='현재 제작 완료 후 종료·다시 실행하면 Codex 연결을 사용할 수 있습니다.'; return; } if(!response.ok) return; const r=await response.json(); $('codexStatus').textContent=r.pending ? `Codex 결과 대기 ${r.pending}건 · 요청문을 복사해 전달하세요.` : 'Codex 대기 요청 없음'; }
+  catch (_) {}
+}
+async function copyCodexRequest() {
+  try {
+    const response=await fetch('/api/codex/status'); if(response.status===404) throw new Error('현재 제작이 끝난 뒤 프로그램을 종료하고 시작 파일로 다시 실행하세요.'); if(!response.ok) throw new Error('Codex 연결 상태를 읽지 못했습니다.'); const r=await response.json();
+    $('codexRequest').value=r.message; $('codexRequest').classList.remove('hidden');
+    try { await navigator.clipboard.writeText(r.message); toast('복사 완료 · Codex 대화에 붙여 넣으세요.'); }
+    catch (_) { $('codexRequest').focus(); $('codexRequest').select(); toast('요청문을 선택했습니다. 복사해서 Codex에 보내세요.'); }
+  } catch(e) { toast(e.message,true); }
+}
+setInterval(refreshCodexStatus, 3000);

@@ -25,6 +25,7 @@
 <section id="view-wizard">
 <div class="beginner-guide" id="beginnerGuide" role="status">먼저 제작할 채널을 고르고, 아래에 영상 주제를 적어 주세요.</div>
 <div class="panel"><div class="inner row"><label for="productionAccount"><b>제작할 유튜브 채널</b></label><select id="productionAccount" style="min-width:0;max-width:100%" onchange="selectReferenceAccount(this.value)"></select><span class="hint" id="channelWindowHint">주제를 고르기 전에 채널을 선택하세요.</span></div></div>
+<div class="panel"><div class="inner"><div class="row"><button class="btn" onclick="enableCodexMode()">Codex로 제작하기</button><button class="btn" onclick="copyCodexRequest()">Codex 요청문 복사</button><span id="codexStatus" class="hint">기존 KIE 제작과 Codex 연결 중 선택할 수 있습니다.</span></div><p class="hint">Codex를 선택한 뒤 제작을 시작하고, 요청문을 이 프로그램 폴더를 읽을 수 있는 Codex 대화에 보내세요. 프로그램 화면은 열어 두세요. 대본·이미지를 순서대로 받으며 음성은 인월드로 제작합니다. Codex 선택 버튼은 앞부분의 유료 영상 변환을 끕니다. 도구·계정 한도가 적용되며 자동 유료 대체는 하지 않습니다.</p><textarea id="codexRequest" class="hidden" readonly aria-label="Codex 제작 요청문" style="width:100%;min-height:150px"></textarea></div></div>
 <details class="panel" id="quickAnalysis"><summary style="padding:16px;cursor:pointer" onclick="loadAnalysis(channel)">📊 내 채널 분석</summary><div class="inner"><button class="mini" onclick="refreshChannel(channel).then(()=>loadAnalysis(channel))">채널 다시 읽기</button><div id="chAnalysisQuick" class="hint">연결 상태를 확인하는 중…</div></div></details>
 <div class="welcome"><p class="eyebrow">나의 영상 스튜디오</p><h1>주제만 정하면, 영상이 완성됩니다.</h1><p>1 주제 선택 <span>→</span> 2 제작 시작 <span>→</span> 3 완성 확인</p></div>
 
@@ -54,7 +55,7 @@
     <div id="mindamLenRow" data-advanced class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
     <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상 (추가 크레딧) <input type="number" id="optHook" value="5" min="0" max="30" style="width:70px"> 장면</label></div>
     <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
-    <p class="hint">기본 제작은 앞 5장을 KIE 움직이는 영상으로 자동 변환합니다. 추가 크레딧이 발생하며, 고급 설정에서 장면 수를 0으로 바꾸면 끌 수 있습니다.</p>
+    <p class="hint" id="defaultMotionNote">기본 제작은 앞 5장을 KIE 움직이는 영상으로 자동 변환합니다. 추가 크레딧이 발생하며, 고급 설정에서 장면 수를 0으로 바꾸면 끌 수 있습니다.</p>
     <p id="quickImageCost" class="hint"></p><div id="startHint" class="hint" style="margin-top:8px"></div>
     <ol class="order" id="orderList" style="margin-top:8px"></ol><span class="hidden" id="orderCount"></span>
     <div class="row" data-advanced style="margin-top:12px"><span class="tag-lbl">이미 만든 대본으로 이어서</span><select id="contFile" style="min-width:min(100%,380px)"></select><button onclick="continuePipeline()">이어서 만들기</button></div>
@@ -222,7 +223,7 @@
 
   <div class="card">
     <h2>1. 대본을 쓰는 AI <span class="stat" id="aiStat"></span></h2>
-    <div class="row"><label>AI <select id="sAI" onchange="saveAI()"><option value="deepseek-web">딥시크 웹 (무료 · 크롬 확장 필요)</option><option value="deepseek">딥시크 API</option><option value="gemini">제미나이 API</option></select></label><label>모델 <input type="text" id="sModel" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
+    <div class="row"><label>AI <select id="sAI" onchange="saveAI()"><option value="codex">Codex 연결 (요청문 전달 방식)</option><option value="deepseek-web">딥시크 웹 (무료 · 크롬 확장 필요)</option><option value="deepseek">딥시크 API</option><option value="gemini">제미나이 API</option></select></label><label>모델 <input type="text" id="sModel" placeholder="비우면 기본" style="min-width:160px" onchange="saveAI()"></label></div>
     <p class="hint" id="sStatus"></p>
     <details class="box soft" id="webHelp" open><summary>딥시크 웹(무료) 쓰는 법</summary><div><ol class="guide hint">
       <li>크롬 주소창에 <code>chrome://extensions</code> → 오른쪽 위 <b>개발자 모드</b> 켜기 → <b>압축해제된 확장 프로그램을 로드</b> → 이 폴더의 <code>딥시크_확장</code> 선택</li>
@@ -266,7 +267,7 @@
         <button class="mini ghost" onclick="removeReference()">연결 해제</button>
       </div>
     </div>
-    <div class="row"><label>이미지 생성 모드</label><select aria-label="이미지 생성 모드" style="max-width:100%;min-width:0" id="imageMode" onchange="saveImageMode()"><option value="z-image">절약 · Z-Image · 0.8 크레딧/장 (레퍼런스 끔)</option><option value="qwen/image-edit">레퍼런스 최저가 · Qwen Image Edit · 2 크레딧/장 (16:9 · 1024×576)</option><option value="bytedance/seedream-v4-edit">레퍼런스 · Seedream 4.0 · 5 크레딧/장</option><option value="seedream/4.5-edit">레퍼런스 고급 · Seedream 4.5 · 6.5 크레딧/장</option></select></div><p id="referenceModelHint" class="hint"></p>
+    <div class="row"><label>이미지 생성 모드</label><select aria-label="이미지 생성 모드" style="max-width:100%;min-width:0" id="imageMode" onchange="saveImageMode()"><option value="codex">Codex 내장 이미지 도구 (요청문 전달)</option><option value="z-image">절약 · Z-Image · 0.8 크레딧/장 (레퍼런스 끔)</option><option value="qwen/image-edit">레퍼런스 최저가 · Qwen Image Edit · 2 크레딧/장 (16:9 · 1024×576)</option><option value="bytedance/seedream-v4-edit">레퍼런스 · Seedream 4.0 · 5 크레딧/장</option><option value="seedream/4.5-edit">레퍼런스 고급 · Seedream 4.5 · 6.5 크레딧/장</option></select></div><p id="referenceModelHint" class="hint"></p>
     <p class="hint">선택한 모델의 KIE 크레딧이 사용됩니다. 가격은 2026-10-08 확인 기준이며 변경될 수 있습니다. 제작 시 이미지를 KIE에 전송합니다. 외형의 완전한 일치는 보장되지 않습니다. 사용을 끄면 Z-Image로 만듭니다.</p>
   </div>
 
