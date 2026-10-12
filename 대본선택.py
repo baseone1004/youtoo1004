@@ -2722,6 +2722,9 @@ class H(BaseHTTPRequestHandler):
                 result = load_json(str(folder / ".kie-video-status.json"), {})
                 records = load_json(str(folder / ".kie-video-tasks.json"), {})
                 result["recorded_scenes"] = [int(Path(k).stem) for k in records if Path(k).stem.isdigit()]
+                waiting = [Path(k).stem for k,v in records.items() if v.get("status") != "saved"]
+                if not result.get("status") and waiting:
+                    result.update(status="pending", scene=waiting[0], error="")
                 self._json(result)
             elif u.path == "/api/codex/status":
                 import codex_bridge

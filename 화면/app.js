@@ -864,7 +864,7 @@ async function refreshKieFiles() {
     $('kieScenes').textContent = [1, 2, 3, 4, 5].map(n => `${pad3(n)} ${done.has(n) ? '✓' : '대기'}`).join(' · ');
     if (!kieJobId) {
       const state = await api('/api/video-status?dir=' + encodeURIComponent(galDir));
-      $('kieProgress').textContent = state.status === 'error' && count < 5 ? `❌ ${state.scene || ''}번 영상 변환: ${state.error} · 완성 ${count}/5개` : count === 5 ? '✅ 앞 5장 영상 변환 완료' : `영상 ${count}/5개 완료`;
+      $('kieProgress').textContent = state.status === 'pending' ? `⏳ ${state.scene}번 접수된 KIE 작업 확인 중 · 완성 ${count}/5개` : state.status === 'error' && count < 5 ? `❌ ${state.scene || ''}번 영상 변환: ${state.error} · 완성 ${count}/5개` : count === 5 ? '✅ 앞 5장 영상 변환 완료' : `영상 ${count}/5개 완료`;
     }
   } catch (e) {                                   // 서버가 잠깐 안 받을 때(다시 시작 중 등) — 5초 뒤 다시 읽는다
     $('kieScenes').textContent = '영상 파일을 다시 확인하는 중… (' + e.message + ')';
