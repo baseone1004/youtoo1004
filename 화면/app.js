@@ -106,6 +106,9 @@ function renderStepBar() {
 
 // ── 준비 상태 ─────────────────────────────────────────
 let readinessIssues = [];
+function renderingWithoutScriptAI(job) {
+  return job?.status === 'running' && /최종|렌더/.test(String(job.stage || ''));
+}
 async function checkReady() {
   const items = [];
   try {
@@ -114,7 +117,10 @@ async function checkReady() {
     const requiredChannels = selectedChannels.length ? selectedChannels : [channel];
     const v = requiredChannels.every(ch => (info.profiles?.[ch]?.언어 === 'ja') ? String(info.config.인월드_목소리_일본 || '').trim() : String(info.config[ch === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || info.config.인월드_목소리 || '').trim());
     if (info.config.AI === 'codex') items.push([true, 'Codex 요청문 전달 방식', null]);
-    else if (info.config.AI === 'deepseek-web') items.push([!!info.web_alive, info.web_alive ? '딥시크 웹 연결' : '딥시크 창 안 보임', 'settings']);
+    else if (info.config.AI === 'deepseek-web') {
+      const rendering = renderingWithoutScriptAI(info.job);
+      items.push([!!info.web_alive || rendering, rendering && !info.web_alive ? '최종 편집 중 · 딥시크 연결 불필요' : info.web_alive ? '딥시크 웹 연결' : '딥시크 창 안 보임', rendering ? null : 'settings']);
+    }
     else items.push([!!info.config.키있음, info.config.키있음 ? info.config.AI + ' 키' : info.config.AI + ' 키 없음', 'settings']);
     const local = await api('/api/local-voice/status').catch(() => ({runtime_ready:false,profiles:{}}));
     const voiceReady = requiredChannels.every(ch => { const lang=info.profiles?.[ch]?.언어 || 'ko'; return info.config['나레이션_방식_'+lang] === 'local' ? local.runtime_ready && local.profiles[lang] : !!v && !!info.config.인월드키있음; });
@@ -220,7 +226,7 @@ async function refresh() {
   loadAnalysis(channel); loadBench();
   // 경고
   const warn = $('envwarn');
-  if (isWeb && !STATE.web_alive) { warn.classList.remove('hidden'); warn.textContent = '딥시크 웹 확장이 연결되지 않았습니다. 크롬에서 chat.deepseek.com 탭을 열어 두거나, [설정]에서 "딥시크 웹 쓰는 법"을 보세요.'; }
+  if (isWeb && !STATE.web_alive && !renderingWithoutScriptAI(STATE.job)) { warn.classList.remove('hidden'); warn.textContent = '딥시크 웹 확장이 연결되지 않았습니다. 크롬에서 chat.deepseek.com 탭을 열어 두거나, [설정]에서 "딥시크 웹 쓰는 법"을 보세요.'; }
   else if (!isWeb && !isCodex && !c.키있음) { warn.classList.remove('hidden'); warn.textContent = 'AI 키가 없습니다. [설정]에서 키를 넣거나 AI를 딥시크 웹(무료)으로 바꾸세요.'; }
   else warn.classList.add('hidden');
   refreshKieStatus();
@@ -444,7 +450,7 @@ async function poll() {
     else if (Date.now() - lastWorkLoad > 15000) loadWorkspace(false);
   }
   renderStageCards();
-  if (j.status === 'running' && STATE && STATE.config.AI === 'deepseek-web') {
+  if (j.status === 'running' && STATE && STATE.config.AI === 'deepseek-web' && !renderingWithoutScriptAI(j)) {
     try { const w = await api('/api/web/status'); const t = (w.taken || [])[0]; $('pgWeb').classList.remove('hidden');
       $('pgWeb').textContent = !w.alive ? '🔴 딥시크 확장이 끊겼습니다 — chat.deepseek.com 창을 열어 두세요' : (t ? `🌐 딥시크 웹 응답 중 · ${t.progress || '전송 중'} · ${t.since}초` : '🌐 딥시크 웹 연결됨'); } catch (e) {}
   } else $('pgWeb').classList.add('hidden');
