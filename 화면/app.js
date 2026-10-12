@@ -168,6 +168,8 @@ async function refresh() {
   const activeProfile = (STATE.profiles || {})[channel] || {};
   $('quickLanguage').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(activeProfile.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
   if (!$('optHook').dataset.initialized) { $('optHook').value = c.AI === 'codex' ? 0 : 5; $('optHook').dataset.initialized = '1'; }
+  if (c.AI === 'codex' && $('optHook').dataset.ai !== 'codex') $('optHook').value=0;
+  $('optHook').dataset.ai=c.AI;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
   renderStyles(STATE.styles, c.화풍 || '실사');
@@ -1253,11 +1255,11 @@ function imagePrice(slot) {
 }
 
 async function enableCodexMode() {
-  try { const available=await fetch('/api/codex/status'); if(available.status===404) throw new Error('현재 제작이 끝난 뒤 프로그램을 종료하고 시작 파일로 다시 실행하세요.'); await api('/api/codex/mode', {}); $('optHook').value=0; await refresh(); toast('Codex 제작 선택 · 제작 시작 후 요청문을 복사해 주세요.'); }
+  try { const available=await fetch('/api/codex/status'); if(available.status===404) throw new Error('현재 제작이 끝난 뒤 프로그램을 종료하고 시작 파일로 다시 실행하세요.'); const deferred=STATE?.job?.status === 'running'; await api('/api/codex/mode', {defer:deferred}); if(!deferred) $('optHook').value=0; await refresh(); toast(deferred ? '현재 영상 완료 후 Codex 전환을 예약했습니다.' : 'Codex 제작 선택 · 제작 시작 후 요청문을 복사해 주세요.'); }
   catch(e) { toast(e.message,true); }
 }
 async function refreshCodexStatus() {
-  try { const response=await fetch('/api/codex/status'); if(response.status===404) { $('codexStatus').textContent='현재 제작 완료 후 종료·다시 실행하면 Codex 연결을 사용할 수 있습니다.'; return; } if(!response.ok) return; const r=await response.json(); $('codexStatus').textContent=r.pending ? `Codex 결과 대기 ${r.pending}건 · 요청문을 복사해 전달하세요.` : 'Codex 대기 요청 없음'; }
+  try { const response=await fetch('/api/codex/status'); if(response.status===404) { $('codexStatus').textContent='현재 제작 완료 후 종료·다시 실행하면 Codex 연결을 사용할 수 있습니다.'; return; } if(!response.ok) return; const r=await response.json(); let transition={}; try { const saved=await api('/api/file?path='+encodeURIComponent(STATE.base_dir+'\\대본\\_상태\\codex-switch.json')); transition=JSON.parse(saved.text || '{}'); } catch (_) {} if(transition.status==='waiting') { $('codexStatus').textContent='예약됨 · 현재 영상 완료 후 Codex로 자동 전환합니다.'; return; } $('codexStatus').textContent=r.pending ? `Codex 결과 대기 ${r.pending}건 · 요청문을 복사해 전달하세요.` : 'Codex 대기 요청 없음'; }
   catch (_) {}
 }
 async function copyCodexRequest() {

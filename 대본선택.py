@@ -2828,6 +2828,9 @@ class H(BaseHTTPRequestHandler):
         try:
             body = self._body()
             if u.path == "/api/codex/mode":
+                if body.get("defer"):
+                    import codex_switch
+                    self._json(codex_switch.reserve(BASE, PORT)); return
                 if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
                     raise ValueError("현재 작업을 중단하거나 완료한 뒤 제작 방식을 바꿔 주세요.")
                 cfg = load_json("설정.json", {})
@@ -3192,6 +3195,7 @@ def main():
     cfg = load_json("설정.json", {})
     for ch in 채널_연동.CONFIG_KEY:
         채널_연동.fetch_in_background(cfg, ch)      # 내 채널 제목을 미리 받아 둔다 (없거나 오래됐을 때만)
+    __import__("codex_switch").resume_reserved(BASE)
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     print(f"대본 만들기 화면: {ADDR}  (종료: 이 창을 닫거나 Ctrl+C)")
     threading.Thread(target=auto_resume_queue, daemon=True, name="auto-resume").start()
