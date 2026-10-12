@@ -35,7 +35,23 @@ def _save(path, records):
 
 
 class KieError(RuntimeError):
-    pass
+    def __init__(self, message, rejected=False):
+        super().__init__(message)
+        self.rejected = rejected
+
+
+def error_text(code, message=""):
+    code = str(code)
+    if code in {"401", "403"}:
+        return "KIE API 키를 확인하세요."
+    if code == "402" or any(x in str(message).lower() for x in ("credit", "balance", "insufficient")):
+        return "KIE 크레딧이 부족합니다. 충전하거나 정지 이미지로 편집하세요."
+    if code == "429":
+        return "KIE 요청이 몰렸습니다. 잠시 뒤 이어서 변환하세요."
+    if code.startswith("5"):
+        return "KIE 서버 오류입니다. 접수 여부가 불확실한 요청은 재결제하지 않고 멈춥니다."
+    return "KIE 영상 요청 오류 · 응답 코드 " + (code if code.isdigit() else "확인 필요")
+
 
 
 class Kie:
@@ -44,6 +60,14 @@ class Kie:
             raise KieError("KIE API 키가 없습니다. https://kie.ai/api-key 에서 발급받아 설정에 넣으세요.")
         self.h = {"Authorization": f"Bearer {api_key.strip()}"}
         self.log = log or (lambda s: None)
+
+    def credit(self):
+        r = requests.get(f"{API}/api/v1/chat/credit", headers=self.h, timeout=20)
+        data = self._json(r).get("data")
+        try:
+            return float(data)
+        except (TypeError, ValueError):
+            raise KieError("KIE 잔액을 확인하지 못했습니다. 연결을 확인한 뒤 이어서 변환하세요.") from None
 
     # -- 파일 업로드 (공개 URL 필요) ---------------------------------------
     def upload(self, path: str | Path, upload_path: str = "auto-image-placer") -> str:
@@ -107,7 +131,7 @@ class Kie:
                     raise KieError(f"결과 URL 이 비어 있습니다: {res}")
                 return urls
             if state == "fail":
-                raise KieError(f"생성 실패: {d.get('failMsg') or d.get('failCode') or d}")
+                raise KieError("생성 실패: " + error_text(d.get("failCode"), d.get("failMsg")))
             time.sleep(interval)
         raise KieError("시간 초과 (15분)")
 
@@ -133,12 +157,13 @@ class Kie:
         try:
             j = r.json()
         except ValueError:
-            raise KieError(f"HTTP {r.status_code}: {r.text[:200]}")
-        code = j.get("code", r.status_code)
-        if r.status_code != 200 or (code not in (200, 0)):
-            msg = j.get("msg") or j.get("message") or r.text[:200]
-            hint = {401: " (API 키 확인)", 402: " (크레딧 부족)", 429: " (요청 과다, 잠시 후)"}.get(code, "")
-            raise KieError(f"KIE 오류 {code}: {msg}{hint}")
+            raise KieError("KIE 응답을 읽지 못했습니다. 접수 여부를 확인한 뒤 이어서 변환하세요.")
+        if not isinstance(j, dict):
+            raise KieError("KIE 응답 형식을 확인하지 못했습니다. 접수 내역을 확인하세요.")
+        code = str(j.get("code", r.status_code))
+        if r.status_code != 200 or code not in ("200", "0"):
+            rejected = code in {"400","401","402","403","404","422","429"} and r.status_code < 500
+            raise KieError(error_text(code, j.get("msg") or j.get("message")), rejected=rejected)
         return j
 
 
@@ -159,6 +184,10 @@ def image_to_video(api_key: str, image: str, prompt: str, out_path: str, model: 
             if record.get("status") == "submitting" and not record.get("task_id"):
                 raise KieError(f"{dest.stem}번 영상의 접수 응답을 받지 못했습니다. KIE 작업 내역의 작업 번호를 확인해야 중복 결제 없이 이어갈 수 있습니다.")
             if not record.get("task_id"):
+                if model == "veo-3-1":
+                    balance = k.credit()
+                    if balance < 65:
+                        raise KieError(f"KIE 크레딧이 부족합니다. 현재 {balance:g}크레딧 · 이 영상 조건의 예상 비용 65크레딧/개입니다. 충전하거나 정지 이미지로 편집하세요.")
                 log(f"   업로드: {Path(image).name}")
                 url = k.upload(image)
                 if cancel and cancel():
@@ -168,7 +197,7 @@ def image_to_video(api_key: str, image: str, prompt: str, out_path: str, model: 
                 try:
                     task = k.create_task(model, prompt, url, aspect_ratio, duration)
                 except KieError as exc:
-                    if "taskId" not in str(exc):
+                    if exc.rejected:
                         records.pop(key, None)
                         _save(journal, records)
                     raise
@@ -189,8 +218,14 @@ def image_to_video(api_key: str, image: str, prompt: str, out_path: str, model: 
             result = k.download(urls[0], dest)
             record["status"] = "saved"
             _save(journal, records)
+            _save(dest.parent / ".kie-video-status.json", {"status": "done", "scene": dest.stem, "error": "", "updated": time.time()})
             return result
+        except KieError as exc:
+            _save(dest.parent / ".kie-video-status.json", {"status": "error", "scene": dest.stem, "error": str(exc), "updated": time.time()})
+            raise
         except requests.RequestException:
-            raise KieError("KIE 통신 또는 다운로드 연결이 끊겼습니다. 이어서 변환하면 저장된 작업 번호로 다시 확인합니다.") from None
+            message = "KIE 통신 또는 다운로드 연결이 끊겼습니다. 이어서 변환하면 저장된 작업 번호로 다시 확인합니다."
+            _save(dest.parent / ".kie-video-status.json", {"status": "error", "scene": dest.stem, "error": message, "updated": time.time()})
+            raise KieError(message) from None
         except (OSError, ValueError) as exc:
             raise KieError("영상 작업 기록·파일 처리 오류: " + type(exc).__name__) from None

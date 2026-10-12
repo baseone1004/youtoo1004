@@ -2715,6 +2715,14 @@ class H(BaseHTTPRequestHandler):
                                 job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items(),
                                 channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), languages=채널_프로필.LANGUAGES,
                                 layouts=채널_프로필.레이아웃_이름, tones=채널_프로필.사진_톤_이름))
+            elif u.path == "/api/video-status":
+                folder = Path(q.get("dir", [""])[0]).resolve()
+                if not folder.is_relative_to(Path(BASE).resolve() / "대본"):
+                    raise ValueError("대본의 이미지 폴더를 선택하세요.")
+                result = load_json(str(folder / ".kie-video-status.json"), {})
+                records = load_json(str(folder / ".kie-video-tasks.json"), {})
+                result["recorded_scenes"] = [int(Path(k).stem) for k in records if Path(k).stem.isdigit()]
+                self._json(result)
             elif u.path == "/api/codex/status":
                 import codex_bridge
                 rows = codex_bridge.pending(BASE)

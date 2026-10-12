@@ -862,7 +862,10 @@ async function refreshKieFiles() {
     const done = new Set((await listImages(galDir)).filter(x => x.video).map(x => x.no));
     const count = [1, 2, 3, 4, 5].filter(n => done.has(n)).length;
     $('kieScenes').textContent = [1, 2, 3, 4, 5].map(n => `${pad3(n)} ${done.has(n) ? '✓' : '대기'}`).join(' · ');
-    if (!kieJobId) $('kieProgress').textContent = count === 5 ? '✅ 앞 5장 영상 변환 완료' : `영상 ${count}/5개 완료`;
+    if (!kieJobId) {
+      const state = await api('/api/video-status?dir=' + encodeURIComponent(galDir));
+      $('kieProgress').textContent = state.status === 'error' && count < 5 ? `❌ ${state.scene || ''}번 영상 변환: ${state.error} · 완성 ${count}/5개` : count === 5 ? '✅ 앞 5장 영상 변환 완료' : `영상 ${count}/5개 완료`;
+    }
   } catch (e) {                                   // 서버가 잠깐 안 받을 때(다시 시작 중 등) — 5초 뒤 다시 읽는다
     $('kieScenes').textContent = '영상 파일을 다시 확인하는 중… (' + e.message + ')';
     if (!refreshKieFiles._retry) refreshKieFiles._retry = setTimeout(() => { refreshKieFiles._retry = null; refreshKieFiles(); }, 5000);
@@ -885,6 +888,10 @@ async function startFirstFiveVideos() {
     const missing = [1, 2, 3, 4, 5].filter(no => !ready.has(no));
     if (missing.length) return toast('앞 5장 이미지가 먼저 필요합니다. 없는 장면: ' + missing.map(pad3).join(', '), true);
     if (!hasKey) { showView('settings'); return toast('설정에서 KIE API 키를 먼저 저장하세요.', true); }
+    const completed = new Set((await listImages(galDir)).filter(x=>x.video).map(x=>x.no));
+    const recorded = new Set((await api('/api/video-status?dir=' + encodeURIComponent(galDir))).recorded_scenes || []);
+    const remaining = [1,2,3,4,5].filter(n=>!completed.has(n) && !recorded.has(n)).length;
+    if (kieCredit !== null && kieCredit < remaining * 65) return toast(`영상 ${remaining}개 예상 ${remaining*65}크레딧 · 현재 ${kieCredit}크레딧입니다. 충전하거나 정지 이미지로 편집하세요.`,true);
     if (!confirm('앞 5장 이미지를 움직이는 영상으로 변환할까요? 장면마다 KIE 크레딧이 사용됩니다.')) return;
     const info = await get8765('/api/info'), ui = (info.config || {}).gen_ui || {};
     const j = await post8765('/api/hook/start', {api_key: '', images_dir: galDir, prompts_file: galPromptsPath, scenes: [1, 2, 3, 4, 5], model: ui.kie_model || 'veo-3-1', aspect_ratio: ui.kie_ratio || '16:9', duration: 0, motion_prompt: ui.motion_prompt || 'Subtle 2D motion, preserve characters and composition.', use_scene_prompt: true, output_dir: ''});

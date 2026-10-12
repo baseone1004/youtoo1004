@@ -8,6 +8,40 @@ import kie_video as video
 
 
 class VideoResumeTests(unittest.TestCase):
+    def setUp(self):
+        self.credit_patch=patch.object(video.Kie,"credit",return_value=10000)
+        self.credit_patch.start(); self.addCleanup(self.credit_patch.stop)
+
+    def test_low_credit_stops_before_upload_and_keeps_visible_error(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(video.Kie,"credit",return_value=56.6), patch.object(video.Kie,"upload") as upload, patch.object(video.Kie,"create_task") as create:
+            dest=Path(td)/"002.mp4"
+            with self.assertRaisesRegex(video.KieError,"56.6"):
+                video.image_to_video("mock","002.jpg","move",dest)
+            upload.assert_not_called(); create.assert_not_called()
+            status=json.loads((dest.parent/".kie-video-status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["scene"],"002")
+            self.assertIn("65",status["error"])
+
+    def test_server_rejection_unknown_preserves_submission(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(video.Kie,"upload",return_value="url"), patch.object(video.Kie,"create_task",side_effect=video.KieError("KIE server error")):
+            dest=Path(td)/"002.mp4"
+            with self.assertRaises(video.KieError):
+                video.image_to_video("mock","002.jpg","move",dest)
+            self.assertEqual(json.loads((dest.parent/".kie-video-tasks.json").read_text())["002.mp4"]["status"],"submitting")
+
+
+    def test_string_success_code_and_safe_server_error(self):
+        class Response:
+            status_code=200
+            def json(self): return {"code":"200","data":65}
+        self.assertEqual(video.Kie._json(Response())["data"],65)
+        class Failed(Response):
+            def json(self): return {"code":500,"msg":"secret-debug-details"}
+        with self.assertRaises(video.KieError) as e:
+            video.Kie._json(Failed())
+        self.assertFalse(e.exception.rejected)
+        self.assertNotIn("secret-debug-details",str(e.exception))
+
     def test_timeout_resumes_existing_task_without_new_charge(self):
         with tempfile.TemporaryDirectory() as td:
             dest=Path(td)/"005.mp4"
