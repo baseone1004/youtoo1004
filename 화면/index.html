@@ -3,7 +3,8 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>유튜브 영상 자동 제작</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="/static/style.css">
+<style>.hidden{display:none!important}</style>
+<link rel="stylesheet" href="/static/style.css?v=20261012-2" onerror="this.dataset.failed='1';document.getElementById('uiLoadError')?.classList.remove('hidden')">
 </head><body>
 
 <header class="top"><div class="top-inner">
@@ -16,6 +17,7 @@
     <button class="quit" onclick="exitProgram()">종료</button>
   </nav>
 </div></header>
+<div id="uiLoadError" class="hidden" role="alert" style="padding:16px;background:#222F4A;color:#E5EBF4">화면 파일을 불러오지 못했습니다. 제작 파일은 삭제되지 않았습니다. <button onclick="location.reload()">화면 다시 불러오기</button></div>
 
 <div class="ready-bar" id="readyBar"><span class="lbl">준비 상태 확인 중…</span></div>
 
@@ -68,7 +70,7 @@
   <div class="pipe" id="pipe" data-advanced>
     <div data-stage="script"><b>① 대본</b><small>대기</small></div><div data-stage="audio"><b>② 음성·길이 확인</b><small>대기</small></div><div data-stage="prompt"><b>③ 프롬프트</b><small>대기</small></div><div data-stage="image"><b>④ 이미지</b><small>대기</small></div><div data-stage="motion"><b>⑤ 영상변환</b><small>대기</small></div><div data-stage="render"><b>⑥ 최종편집</b><small>대기</small></div>
   </div>
-  <div class="stage-now" id="pgStage">지금은 진행 중인 작업이 없습니다.</div>
+  <div class="stage-now" id="pgStage">제작 상태를 확인하는 중입니다…</div>
   <div class="hint" id="pgSub"></div>
   <div class="bar"><i id="pgBar"></i></div>
   <div id="pgWeb" class="hint hidden"></div>
@@ -92,7 +94,7 @@
   <details class="inner" ontoggle="if(this.open) loadProductionLibrary()"><summary>📁 작업 보관함 · 완성 영상 · 문서 복구</summary><p class="hint">제작 자료와 업로드 영상을 한곳에서 확인합니다. 시작·저장·제작 시 대본·프롬프트·자막을 최대 3개 버전으로 자동 백업합니다. 복원은 없는 파일만 복구하며 기존 파일을 덮어쓰지 않습니다.</p><button class="mini" onclick="loadProductionLibrary()">보관함 새로고침</button><div id="productionLibrary" style="max-height:420px;overflow:auto;margin-top:12px"></div></details>
   <p class="hint" id="mediaMatchingStatus" role="status"></p>
   <p class="hint" id="subtitleSyncStatus" role="status"></p>
-  <div id="workEmpty" class="hint" style="padding:0 18px 14px">아직 만든 작업이 없습니다. 위에서 주제를 넣고 제작을 시작하세요.</div>
+  <div id="workEmpty" class="hint" style="padding:0 18px 14px">저장된 작업 목록을 불러오는 중입니다…</div>
 </div>
 
 <p class="hint" data-advanced>세부 편집 화면입니다. 맨 위의 ‘간편 화면’으로 기본 화면에 돌아갈 수 있습니다.</p>
@@ -313,5 +315,6 @@
 </main>
 
 <div id="toastBox"></div>
-<script src="/static/app.js"></script>
+<script>if(document.querySelector('link[data-failed]'))document.getElementById('uiLoadError').classList.remove('hidden');</script>
+<script src="/static/app.js?v=20261012-2" onerror="document.getElementById('uiLoadError').classList.remove('hidden')"></script>
 </body></html>

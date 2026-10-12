@@ -184,6 +184,7 @@ async function refresh() {
   const gone = p => p && !STATE.scripts.some(s => s.path === p);
   if (gone(prevWork) || gone(prevGal)) { WORK = null; clearGallery(); localStorage.removeItem('workScript'); localStorage.removeItem('selectedScript'); }
   $('workFile').innerHTML = scriptOpts || '<option value="">완성된 대본 없음</option>';
+  if (!STATE.scripts.length) $('workEmpty').textContent = '아직 만든 작업이 없습니다. 위에서 주제를 넣고 제작을 시작하세요.';
   if (STATE.scripts.some(s => s.path === prevWork)) $('workFile').value = prevWork;
   if ($('workFile').value && (!WORK || WORK.script_file !== $('workFile').value)) { $('galFile').value = $('workFile').value; loadWorkspace(false); }
   // 고급
