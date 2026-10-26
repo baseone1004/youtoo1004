@@ -1881,6 +1881,10 @@ def _run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
                 fit="cover", ken_burns=ken_burns, kb_zoom=0.12, transition="none", transition_duration=0.5, burn_srt=True,
                 srt_font="Malgun Gothic", srt_font_size=22, srt_bold=True, srt_outline=3.5, crf=18, preset="medium")
     body.update(keep); body["burn_srt"] = True
+    if "/민담/" in os.path.abspath(srt).replace("\\", "/"):
+        # 이야기형은 시대 분위기에 맞는 바탕체 자막을 사용한다. 크기·색·위치는 편집기 설정을 유지한다.
+        body["srt_font"] = "Batang"
+        body["srt_bold"] = False
     if re.search(r"[ぁ-んァ-ン]", Path(srt).read_text(encoding="utf-8-sig")) and os.path.isfile(os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothM.ttc")):
         body["srt_font"] = "Yu Gothic"
     j = aip_wait("/api/render", body, job=job)

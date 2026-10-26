@@ -81,7 +81,7 @@ _lock = threading.Lock()
         "브랜드": {"주색": "#1C120A", "강조색": "#FFD54A", "바탕색": "#F3E9D2", "보조색": "#B3261E", "배지": "옛날서재", "사진_톤": "sepia"},
         "화풍_접미": "soft muted natural colors, gentle warm lamplight or daylight, clean full-frame composition, consistent channel look",
         "썸네일": {
-            "레이아웃": "pop_bold",
+            "레이아웃": "ink_gold",
             "화풍": ("bright clean anime-style 2D illustration for a YouTube thumbnail, large clear expressive eyes, smooth cel shading, cheerful saturated colors, sunny daylight, "
                    "saturated colors (pink, green, red and jade hanbok), warm sunny daylight, expressive emotional faces with large clear eyes, "
                    "Joseon village or hanok background, full-bleed 16:9, no text, no watermark"),
