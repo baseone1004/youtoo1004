@@ -313,7 +313,7 @@ POP_STRONG_WORDS = ("소름", "충격", "절대", "손절", "경고", "거짓말
 
 
 def layout_jalnan_pop(im, top, bottom, b=None):
-    """잘난체 두 줄: 윗줄 하늘색, 아랫줄 노랑, 굵은 검정 테두리 + 그림자. 그림은 가득 채우고 아래를 살짝 어둡게."""
+    """잘난체 두 줄: 채널 강조색·보조색, 굵은 검정 테두리 + 그림자."""
     im = _shade_bottom(im, 0.45, 0.55)
     d = ImageDraw.Draw(im)
     top, bottom = _clean_marks(top), _clean_marks(bottom)
@@ -321,12 +321,12 @@ def layout_jalnan_pop(im, top, bottom, b=None):
         top, bottom = "", top
     max_w = W - 80
     lines = ([top] if top else []) + _wrap(bottom, 13)
-    import random as _rd, zlib as _zl
-    rng = _rd.Random(_zl.crc32((top + "|" + bottom).encode("utf-8")))          # 문구마다 다르게, 같은 문구는 늘 같은 색
-    # 규칙: 아랫줄(핵심)은 노랑 또는 형광연두 · 윗줄은 하늘색 또는 흰색 · 센 낱말이 든 줄만 빨강
+    # 채널 프로필의 강조색과 보조색을 써서 업로드마다 같은 브랜드 색을 유지한다.
+    b = b or {}
+    color_top = b.get("강조색") or "#4BE3C4"
+    color_bottom = b.get("보조색") or "#FFD54A"
+    # 센 낱말은 가독성을 위해 기존처럼 빨강으로 강조한다.
     strong = any(w in (top + bottom) for w in POP_STRONG_WORDS)
-    color_bottom = rng.choice(("#FFE23A", "#B4FF3A"))
-    color_top = rng.choice(("#7DDCFF", "#FFFFFF"))
     if strong:
         if any(w in bottom for w in POP_STRONG_WORDS):
             color_bottom = "#FF3B3B"
@@ -559,7 +559,7 @@ def layout_jp_cozy(im, top, bottom, b):
         x = (W-draw.textlength(line,font=font))/2
         stroke=max(5,font.size//16)
         draw.text((x+4,y+5),line,font=font,fill=BLACK,stroke_width=stroke+2,stroke_fill=BLACK)
-        _outlined(draw,(x,y),line,font,WHITE if i == 0 else "#FFF000",stroke=stroke)
+        _outlined(draw,(x,y),line,font,WHITE if i == 0 else (b.get("강조색") or "#FFE08A"),stroke=stroke)
         y += int(font.size*1.14)
     return im
 

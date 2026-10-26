@@ -48,9 +48,13 @@ def save_reference(slot, data_url):
 def reference_options(slot):
     mascot = 채널_프로필.get(slot).get("마스코트") or {}
     codex = mascot.get("생성_모델") == "codex"
-    if not mascot.get("레퍼런스_사용") or not mascot.get("이미지"):
+    if not mascot.get("레퍼런스_사용"):
         return {"reference_model": "codex"} if codex else {}
-    path = (ROOT / mascot.get("이미지", "")).resolve()
+    mapped = 채널_프로필.brand_reference(채널_프로필.language_code(slot))
+    reference = (mapped.get("reference") if mapped else None) or mascot.get("이미지")
+    if not reference:
+        return {"reference_model": "codex"} if codex else {}
+    path = (ROOT / reference).resolve()
     try:
         path.relative_to(ROOT)
     except ValueError:

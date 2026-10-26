@@ -1,0 +1,18 @@
+{
+  "channels": [
+    {
+      "name": "心のしくみ便り",
+      "language": "ja",
+      "reference": "레퍼런스/일본채널_心のしくみ便り.png",
+      "source": "일본채널.png",
+      "mascot_description": "a small, friendly cream-colored tea cup mascot with a blue patterned bowl, a tiny gold question mark above its head, a warm smile, and a golden tassel; preserve the exact cup shape, face, colors and accessories from the reference image"
+    },
+    {
+      "name": "마음등불심리노트",
+      "language": "ko",
+      "reference": "레퍼런스/한국채널_마음등불심리노트.png",
+      "source": "마음등불.png",
+      "mascot_description": "a small, adorable lantern spirit with a round expressive face, deep navy blue lantern-like body and cap, a glowing mint-green flame, and warm golden light; preserve the exact face, silhouette, colors and accessories from the reference image"
+    }
+  ]
+}

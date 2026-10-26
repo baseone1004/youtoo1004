@@ -102,6 +102,16 @@ import 썸네일_합성
 _cache = None
 
 
+def brand_reference(language):
+    """Optional fixed channel name and mascot reference configured for each language."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "채널_브랜드_레퍼런스.json"), encoding="utf-8-sig") as f:
+            channels = json.load(f).get("channels", [])
+    except (OSError, ValueError, TypeError):
+        channels = []
+    return next((item for item in channels if item.get("language") == language), {})
+
+
 def _merge(base, over):
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
@@ -245,12 +255,12 @@ def fill(text, slot):
 def mascot_reference_note(slot):
     """공통 외형 설명은 이미지 모델과 관계없이 프롬프트에 반복한다."""
     m = get(slot).get("마스코트") or {}
-    if not m.get("이름"):
-        return ""
-    description = (m.get("설명") or m.get("프롬프트") or "").strip()
+    mapped = brand_reference(language_code(slot)) if language_code(slot) == "ja" else {}
+    description = (mapped.get("mascot_description") or m.get("설명") or m.get("프롬프트") or "").strip()
     if not description:
         return ""
-    return (f"[캐릭터 설명] 채널 마스코트 '{m['이름']}': {description}. "
+    mascot_name = mapped.get("mascot_name") or m.get("이름") or "마스코트"
+    return (f"[캐릭터 설명] 채널 마스코트 '{mascot_name}': {description}. "
             "마스코트 장면(C형)마다 이 외형·색상·소품을 글로 구체적으로 반복한다. "
             "참조 이미지나 @image 표기를 사용하지 않는다. 대상 장면(A형)에는 마스코트를 넣지 않는다.\n")
 
@@ -260,12 +270,13 @@ def brand(slot):
     p = get(slot)
     b = dict(p.get("브랜드") or {})
     if language_code(slot) == "ja":
-        b = dict({"주색":"#18344A", "강조색":"#FFE08A", "바탕색":"#FFF8ED", "보조색":"#D65745", "사진_톤":"warm", "배지":"心の話"}, **(p.get("브랜드_일본") or {}))
+        mapped = brand_reference("ja")
+        b = dict({"주색":"#18344A", "강조색":"#FFE08A", "바탕색":"#FFF8ED", "보조색":"#D65745", "사진_톤":"warm", "배지": mapped.get("name") or "心のしくみ便り"}, **(p.get("브랜드_일본") or {}))
     if not (b.get("배지") or "").strip():
         b["배지"] = p["이름"]
     b["언어"] = language_code(slot)
     if b["언어"] == "ja" and re.search(r"[가-힣]", b.get("배지", "")):
-        b["배지"] = p.get("일본어_채널명") or "心の話"
+        b["배지"] = p.get("일본어_채널명") or brand_reference("ja").get("name") or "心のしくみ便り"
     return b
 
 
