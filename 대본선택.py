@@ -2177,6 +2177,15 @@ def make_upload_package(script_file, result):
     for index, thumb in enumerate(thumbnails, 1):
         if os.path.isfile(thumb):
             shutil.copy2(thumb, package / f"썸네일_{index}.jpg")
+    shorts = result.get("shorts") or []
+    if shorts:
+        shorts_dir = package / "쇼츠"
+        shorts_dir.mkdir(parents=True, exist_ok=True)
+        for item in shorts:
+            for key in ("path", "srt", "metadata"):
+                source = item.get(key)
+                if source and os.path.isfile(source):
+                    shutil.copy2(source, shorts_dir / os.path.basename(source))
     return os.path.abspath(package)
 
 
@@ -2397,6 +2406,35 @@ def make_pipeline(job, req):
             render_error = e
             job.add(f"   ! 최종 영상 합치기 실패: {e}")
     check_cancelled()
+    # 6.5) 완성 롱폼에서 서로 다른 하이라이트 쇼츠 생성
+    try:
+        shorts_count = max(0, min(2, int(steps.get("shorts", 0) or 0)))
+    except (TypeError, ValueError):
+        shorts_count = 0
+    if shorts_count:
+        final_video = result.get("video") or os.path.join(assets, "최종.mp4")
+        if os.path.isfile(final_video) and result.get("srt") and os.path.isfile(result["srt"]):
+            job.stage = "⑥.5 쇼츠 제작"
+            try:
+                import shorts as shorts_maker
+                try:
+                    shorts_ai = AI(대본생성.load_cfg())
+                except Exception as ai_error:  # noqa: BLE001
+                    shorts_ai = None
+                    job.add(f"   AI 쇼츠 구간 추천을 사용할 수 없어 자막 기준으로 고릅니다: {ai_error}")
+                result["shorts"] = shorts_maker.create(
+                    final_video, result["srt"], os.path.join(assets, "쇼츠"),
+                    result.get("title") or Path(script).stem,
+                    script_language(script), 나레이션.find_ffmpeg("ffmpeg"),
+                    ai=shorts_ai, count=shorts_count,
+                    cancel=lambda: job.cancel_requested, log=job.add)
+                job.add(f"   ✓ 쇼츠 {len(result['shorts'])}편 준비 완료")
+            except Exception as e:  # noqa: BLE001
+                check_cancelled()
+                result["shorts_error"] = str(e)
+                job.add(f"   ! 쇼츠 제작을 건너뜁니다 (롱폼 제작은 계속): {e}")
+        else:
+            job.add("   ! 완성 영상 또는 자막이 없어 쇼츠를 건너뜁니다.")
     job.stage = "⑦ 업로드 폴더 정리"
     result["upload_dir"] = make_upload_package(script, result)
     job.add("   ✓ 업로드 폴더: " + result["upload_dir"])

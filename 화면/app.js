@@ -365,14 +365,14 @@ function markLen() { document.querySelectorAll('#personLen button').forEach(b =>
 function setLen(min) { targetChars = Math.round(min * cpm); markLen(); api('/api/config', {대본_글자수: targetChars}).catch(() => {}); }
 function productionOptions() {
   return {guideline: '', target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: '', style: styleValue, chunk: +((STATE && STATE.config || {}).프롬프트_묶음 || 30), thumb_position: 'auto',
-    steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: +$('optHook').value, render: true, thumbnail: $('optThumb').checked}};
+    steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: +$('optHook').value, render: true, thumbnail: $('optThumb').checked, shorts: Math.max(0, Math.min(2, +$('optShorts').value || 0))}};
 }
 async function startProduction() {
   await addCustomTopic(true);                       // 입력칸에 적어 둔 주제도 함께
   if (!selection.size) { $('customTitle').focus(); return toast('주제를 체크하거나 적어 주세요.', true); }
   const options = productionOptions();
   if (!await checkReady()) { showView('settings'); return toast('확인할 항목: ' + readinessIssues.join(' · '), true); }
-  if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 선택한 영상변환 → 썸네일 → 최종 영상 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
+  if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 선택한 영상변환 → 썸네일 → 최종 영상 → 쇼츠 ${options.steps.shorts}편 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
   try {
     const q = await api('/api/queue/start', {items: [...selection.values()], options});
     selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); startPolling(true); window.scrollTo({top: 0, behavior: 'smooth'});
@@ -406,13 +406,13 @@ function renderOverview(job) {
   const r = job.result || {}, done = {script: !!(r.script || r.file), prompt: !!r.prompts, image: !!r.images, motion: !!r.hook, audio: !!(r.narration || r.mp3), render: !!r.video};
   for (const x of steps) if (done[x.dataset.stage]) { x.classList.add('done'); x.querySelector('small').textContent = '완료'; }
   const s = String(job.stage || '');
-  const current = s.includes('최종') ? 'render' : s.includes('후킹') ? 'motion' : s.includes('이미지') ? 'image' : s.includes('나레이션') ? 'audio' : s.includes('프롬프트') ? 'prompt' : s.includes('대본') ? 'script' : '';
+  const current = s.includes('쇼츠') || s.includes('최종') ? 'render' : s.includes('후킹') ? 'motion' : s.includes('이미지') ? 'image' : s.includes('나레이션') ? 'audio' : s.includes('프롬프트') ? 'prompt' : s.includes('대본') ? 'script' : '';
   if (job.status === 'done') steps.forEach(x => { x.classList.add('done'); x.classList.remove('now'); x.querySelector('small').textContent = '완료'; });
   else if (job.status === 'running' && current) { const x = steps.find(v => v.dataset.stage === current); if (x) { x.classList.add('now'); x.querySelector('small').textContent = '진행 중'; } }
 }
 function humanStage(j) {
   const s = j.stage || '';
-  const map = [[/대본/, '대본을 쓰고 있습니다'], [/프롬프트/, '장면별 이미지 설명을 만들고 있습니다'], [/25분 분량 보충/, '25분 이상이 되도록 대본 내용을 보충하고 있습니다'], [/나레이션/, '나레이션 음성과 자막을 만들고 있습니다'], [/이미지 자동|이미지 생성/, 'KIE Z-Image로 이미지를 만들고 있습니다'], [/후킹/, '앞부분 움직이는 영상을 만들고 있습니다'], [/썸네일/, '썸네일을 만들고 있습니다'], [/최종|렌더/, '최종 영상을 합치고 있습니다']];
+  const map = [[/쇼츠/, '완성 영상에서 쇼츠 하이라이트를 만들고 있습니다'], [/대본/, '대본을 쓰고 있습니다'], [/프롬프트/, '장면별 이미지 설명을 만들고 있습니다'], [/25분 분량 보충/, '25분 이상이 되도록 대본 내용을 보충하고 있습니다'], [/나레이션/, '나레이션 음성과 자막을 만들고 있습니다'], [/이미지 자동|이미지 생성/, 'KIE Z-Image로 이미지를 만들고 있습니다'], [/후킹/, '앞부분 움직이는 영상을 만들고 있습니다'], [/썸네일/, '썸네일을 만들고 있습니다'], [/최종|렌더/, '최종 영상을 합치고 있습니다']];
   const hit = map.find(([re]) => re.test(s));
   return (hit ? hit[1] : (s || '준비 중')) + (s && document.body.classList.contains('advanced') ? ` (${s})` : '');
 }
@@ -470,6 +470,7 @@ async function poll() {
       + line('유튜브 제목·설명·태그', r.opt, `<button class="mini" onclick="showFile('${js(r.opt)}')">보기</button>`)
       + line('나레이션', r.mp3 || r.narration) + line('이미지 폴더', r.images, `<button class="mini" onclick="openPath('${js(r.images)}')">열기</button>`)
       + line('최종 영상', r.desktop_video || r.video, `<button class="mini" onclick="openPath('${js(r.desktop_video || r.video)}')">열기</button>`)
+      + (r.shorts && r.shorts.length ? r.shorts.map((short, i) => line(`쇼츠 ${i + 1}${short.title ? ` · ${esc(short.title)}` : ''}`, short.path, `<button class="mini" onclick="openPath('${js(short.path)}')">열기</button>`)).join('') : '')
       + (r.thumbnails && r.thumbnails.length ? line(`썸네일 ${r.thumbnails.length}장`, r.thumbnails[0], `<button class="mini" onclick="openPath('${js(r.thumbnails[0])}')">열기</button>`) : '')
       + line('업로드 폴더', r.upload_dir, `<button class="mini" onclick="openPath('${js(r.upload_dir)}')">열기</button>`)
       + line('결과 폴더', r.assets, `<button class="mini" onclick="openPath('${js(r.assets)}')">열기</button>`)
