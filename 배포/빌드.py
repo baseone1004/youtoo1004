@@ -258,8 +258,12 @@ def validate_release(out, python_exe=None):
     leaked = [k for k in sensitive if str(cfg.get(k) or "").strip()]
     if leaked:
         raise RuntimeError("배포 설정에 개인 인증정보가 들어 있습니다: " + ", ".join(leaked))
-    forbidden = {"대본", "업로드", "로그_시작.txt", "로그_대본선택.txt"}
-    unexpected = [p.name for p in app.iterdir() if p.name in forbidden]
+    # Runtime output folders are deliberately created empty so first launch can
+    # save work immediately. Reject their contents, not the empty directories.
+    runtime_dirs = (app / "대본", app / "업로드")
+    unexpected = [str(p.relative_to(app)) for root in runtime_dirs if root.exists()
+                  for p in root.rglob("*") if p.is_file()]
+    unexpected.extend(p.name for p in (app / "로그_시작.txt", app / "로그_대본선택.txt") if p.exists())
     if unexpected:
         raise RuntimeError("개인 작업 파일이 배포판에 포함됐습니다: " + ", ".join(unexpected))
     exe = Path(python_exe) if python_exe else Path(sys.executable)
