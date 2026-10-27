@@ -12,6 +12,8 @@ MAX_BYTES = 10 * 1024 * 1024
 def save_reference(slot, data_url):
     if slot not in 채널_프로필.SLOTS:
         raise ValueError("채널을 먼저 선택하세요.")
+    if slot == "person" and 채널_프로필.brand_reference(채널_프로필.language_code(slot)).get("reference"):
+        raise ValueError("심리 채널 레퍼런스 이미지는 채널 브랜드 기준으로 고정되어 있어 여기서 변경할 수 없습니다.")
     if not isinstance(data_url, str) or len(data_url) > MAX_BYTES * 4 // 3 + 200:
         raise ValueError("10MB 이하 이미지를 선택하세요.")
     try:
@@ -50,7 +52,9 @@ def reference_options(slot):
     codex = mascot.get("생성_모델") == "codex"
     if not mascot.get("레퍼런스_사용"):
         return {"reference_model": "codex"} if codex else {}
-    mapped = 채널_프로필.brand_reference(채널_프로필.language_code(slot))
+    # Language-level channel mascots belong to the psychology/info channel only.
+    # Folk-tale images must not inherit the Korean channel mascot as a character reference.
+    mapped = 채널_프로필.brand_reference(채널_프로필.language_code(slot)) if slot == "person" else {}
     reference = (mapped.get("reference") if mapped else None) or mascot.get("이미지")
     if not reference:
         return {"reference_model": "codex"} if codex else {}

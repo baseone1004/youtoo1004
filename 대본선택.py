@@ -1064,40 +1064,74 @@ def prompts_complete(path, script_file):
 
 
 인물표_지시 = ("너는 사극 삽화 감독이다. 아래 [등장인물] 을 읽고, 이 편의 모든 그림 프롬프트에서 똑같이 되풀이할 인물별 영어 생김새 구절을 정한다.\n"
-            "형식: 한 줄에 한 명, 다른 말 없이.\n"
+            "주인공뿐 아니라 이야기에서 다시 나오는 조연과 이름 있는 단역도 빠뜨리지 않는다.\n"
+            "형식: 한 줄에 한 명, 다른 말 없이. 인물표에 없는 새 인물을 기존 인물처럼 재사용하지 않는다.\n"
             "이름 / 성별·나이 / 역할 한 구절 / clothing: 영어 두에서 여섯 단어 / hair: 영어 두에서 여섯 단어 / face & build: 영어 두에서 여섯 단어\n"
             "규칙: 대본의 묘사(옷 색과 감, 머리 모양, 흉터, 체형, 키)를 그대로 옮긴다. 지어내지 않는다. 옷은 조선 시대 한복 명칭을 영어로(jeogori, chima, dopo, gat, straw sandals).\n"
-            "아이(열일곱 살 아래)는 나이를 적고 beard, topknot, wrinkles 같은 어른 표현을 쓰지 않는다. 주요 인물부터 순서대로 최대 여덟 명. "
+            "아이(열일곱 살 아래)는 나이를 적고 beard, topknot, wrinkles 같은 어른 표현을 쓰지 않는다. 인물 수를 임의로 줄이지 않는다. "
             "같은 인물의 다른 시기(거지였다가 벼슬을 얻은 경우)는 '이름 (뒤)' 로 한 줄 더 쓴다.")
+
+
+def _character_key(value):
+    return re.sub(r"[^가-힣A-Za-z0-9]", "", str(value or "")).lower()
+
+
+def _planned_character_names(chars):
+    names = []
+    for raw in (chars or "").splitlines():
+        line = re.sub(r"^\s*[-*•]\s*", "", raw).strip()
+        if not line:
+            continue
+        if "/" not in line:
+            continue
+        name = line.split("/", 1)[0].strip()
+        name = re.sub(r"^(주인공|조력자|악역|곁사람|단역|주요 인물)\s*[-–—:]\s*", "", name).strip()
+        key = _character_key(name)
+        if key and key not in names:
+            names.append(key)
+    return names
+
+
+def _validate_character_sheet(sheet, chars):
+    rows = [ln.strip() for ln in (sheet or "").splitlines() if ln.count("/") >= 4 and "clothing" in ln.lower()]
+    covered = {_character_key(ln.split("/", 1)[0]) for ln in rows}
+    missing = [name for name in _planned_character_names(chars) if name not in covered]
+    if missing:
+        raise RuntimeError("인물 고정표에 계획된 인물이 빠져 이미지 생성을 멈췄습니다. 인물표를 확인해 주세요.")
+    return rows
 
 
 def character_sheet(script_file, ai, log=print):
     """이야기형(민담) 한 편의 '인물 고정표'. 기획.txt 의 [등장인물] 을 영어 생김새 세 구절(옷·머리·얼굴)로 정리해 인물표.txt 에 저장하고,
-    이미지 프롬프트·썸네일 요청마다 같은 표를 넣어 묶음(30장면)마다 인물 생김새가 달라지지 않게 한다. 정보형이거나 기획.txt 가 없으면 빈 문자열."""
+    이미지 프롬프트·썸네일 요청마다 같은 표를 넣어 장면마다 인물 생김새가 달라지지 않게 한다. 인물 명단이 없거나 고정표가 불완전하면 생성을 멈춘다."""
     if channel_of(script_file) != "mindam":
         return ""
     workdir = os.path.dirname(script_file)
     sheet_path = os.path.join(workdir, "인물표.txt")
+    plan_path = os.path.join(workdir, "기획.txt")
+    chars = ""
+    if os.path.isfile(plan_path):
+        with open(plan_path, encoding="utf-8-sig") as f:
+            chars = 민담_대본.block_of(f.read(), "등장인물")
+    if not chars.strip():
+        with open(script_file, encoding="utf-8-sig") as f:
+            chars = 민담_대본.block_of(f.read(), "등장인물")
     if os.path.isfile(sheet_path):
         with open(sheet_path, encoding="utf-8-sig") as f:
             text = f.read().strip()
         if text:
+            _validate_character_sheet(text, chars)
             log(f"   인물 고정표 재사용: {sheet_path}")
             return text
-    plan_path = os.path.join(workdir, "기획.txt")
-    if not os.path.isfile(plan_path):
-        return ""
-    with open(plan_path, encoding="utf-8-sig") as f:
-        chars = 민담_대본.block_of(f.read(), "등장인물")
     if not chars.strip():
-        return ""
+        raise RuntimeError("이야기 인물표를 만들 [등장인물] 목록이 없어 이미지 생성을 멈췄습니다.")
     log("   인물 고정표 만드는 중 (한 편에 한 번) ")
     text = ai.ask(인물표_지시, f"[등장인물]\n{chars}").replace("```", "").strip()
     lines = [ln.strip() for ln in text.splitlines() if ln.count("/") >= 4 and "clothing" in ln.lower()]
     if not lines:
-        log("   ! 인물 고정표를 읽지 못해 이번 편은 지침의 생김새 규칙만으로 만듭니다")
-        return ""
+        raise RuntimeError("인물 고정표를 만들지 못해 이미지 생성을 멈췄습니다. 다시 이어서 시도해 주세요.")
     text = "\n".join(lines)
+    _validate_character_sheet(text, chars)
     with open(sheet_path, "w", encoding="utf-8") as f:
         f.write(text + "\n")
     log(f"   ✓ 인물 고정표 {len(lines)}명 → {sheet_path}")
@@ -1109,8 +1143,10 @@ def sheet_note(sheet):
     if not sheet:
         return ""
     return ("[인물 고정표 — 이 편의 모든 장면에서 같은 낱말로]\n" + sheet + "\n"
-            "위 인물이 나오는 프롬프트마다 clothing·hair·face & build 세 구절을 이 표의 영어 그대로 되풀이한다. 새로 정하거나 바꾸지 않는다. "
-            "장소나 때가 바뀔 때만 겉옷이나 소품을 더한다.\n\n")
+            "위 인물이 나오는 프롬프트마다 이름/역할을 확인하고 clothing·hair·face & build 세 구절을 이 표의 영어 그대로 되풀이한다. "
+            "같은 사람의 얼굴·눈·체형·피부색·머리·기본 의상은 장면마다 바꾸거나 다른 인물과 섞지 않는다. "
+            "같은 인물이 두 번 나오면 동일한 시각적 정체성을 유지한다. 인물표에 없는 단역을 주인공처럼 반복하지 않는다. "
+            "이야기에 명시된 시간 변화나 변장일 때만 그 변화만 반영하고, 원래 인상착의는 유지한다.\n\n")
 
 
 def make_image_prompts(job, req):
