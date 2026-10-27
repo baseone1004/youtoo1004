@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-import tempfile
 from pathlib import Path
 
 
@@ -110,15 +109,37 @@ def _safe_stem(value):
     return (value[:52] or "쇼츠")
 
 
+def _filter_path(path):
+    value = str(Path(path).resolve()).replace("\\", "/")
+    for char in ("\\", ":", "'", ",", "[", "]", ";"):
+        value = value.replace(char, "\\" + char)
+    return value
+
+
 def _render(ffmpeg, video, output, start, end, cancel=None):
     duration = end - start
+    output_path = Path(output)
+    output_stem = re.sub(r"\.rendering(?:-\d+)?$", "", output_path.stem)
+    subtitle = output_path.with_name(output_stem + ".srt")
+    if subtitle.is_file():
+        subtitle_text = subtitle.read_text(encoding="utf-8-sig", errors="replace")
+        path_text = str(subtitle.resolve()).replace("\\", "/")
+        font = "Batang" if "/민담/" in path_text else "Yu Gothic" if re.search(r"[ぁ-んァ-ン]", subtitle_text) else "Malgun Gothic"
+        subtitle_filter = (
+            f"subtitles=filename='{_filter_path(subtitle)}':"
+            f"force_style='FontName={font},FontSize=48,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+            "BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=64,MarginR=64,MarginV=300,WrapStyle=2'"
+        )
+    else:
+        subtitle_filter = "null"
     graph = (
         "[0:v]split=2[bg][fg];"
         "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
         "boxblur=24:12,eq=brightness=-0.28,setsar=1[back];"
         "[fg]scale=1080:608:force_original_aspect_ratio=decrease,"
-        "pad=1080:608:(ow-iw)/2:(oh-ih)/2,setsar=1[front];"
-        "[back][front]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]"
+        "pad=1080:608:(ow-iw)/2:(oh-ih)/2,"
+        "drawbox=x=0:y=ih-76:w=iw:h=76:color=black@0.4:t=fill,setsar=1[front];"
+        f"[back][front]overlay=(W-w)/2:(H-h)/2,{subtitle_filter},format=yuv420p[v]"
     )
     command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", video,
                "-t", f"{duration:.3f}", "-filter_complex", graph, "-map", "[v]", "-map", "0:a?",
@@ -167,7 +188,7 @@ def create(video, srt, out_dir, title, language, ffmpeg, ai=None, count=2, cance
     if len(windows) < count:
         raise ValueError(f"쇼츠 {count}편을 만들 수 있는 서로 다른 자막 구간이 부족합니다. 현재 {len(windows)}편 구간만 찾았습니다. 대본·자막을 확인한 뒤 다시 제작하세요.")
     source = Path(video)
-    generation = f"{source.stat().st_mtime_ns}_{source.stat().st_size}"
+    generation = f"captioned-v2_{source.stat().st_mtime_ns}_{source.stat().st_size}"
     target = Path(out_dir) / generation
     target.mkdir(parents=True, exist_ok=True)
     results = []
@@ -178,15 +199,6 @@ def create(video, srt, out_dir, title, language, ffmpeg, ai=None, count=2, cance
         clip_title = window["title"] or f"{title} · 쇼츠 {index}"
         stem = f"쇼츠_{index:02d}_{_safe_stem(clip_title)}"
         output = target / (stem + ".mp4")
-        if not output.is_file():
-            fd, temp = tempfile.mkstemp(prefix="short_", suffix=".mp4", dir=target)
-            os.close(fd)
-            try:
-                _render(ffmpeg, os.path.abspath(video), temp, start, end, cancel)
-                os.replace(temp, output)
-            finally:
-                if os.path.exists(temp):
-                    os.remove(temp)
         clip_cues = cues[window["first"]:window["last"] + 1]
         subtitles = []
         for cue_index, cue in enumerate(clip_cues, 1):
@@ -195,6 +207,14 @@ def create(video, srt, out_dir, title, language, ffmpeg, ai=None, count=2, cance
             subtitles.append(f"{cue_index}\n{_timestamp(relative_start)} --> {_timestamp(relative_end)}\n{cue['text']}\n")
         srt_out = target / (stem + ".srt")
         srt_out.write_text("\n".join(subtitles), encoding="utf-8")
+        if not output.is_file():
+            temp = target / f"{stem}.rendering-{os.getpid()}.mp4"
+            try:
+                _render(ffmpeg, os.path.abspath(video), str(temp), start, end, cancel)
+                os.replace(temp, output)
+            finally:
+                if os.path.exists(temp):
+                    os.remove(temp)
         metadata = {"title": clip_title, "source_title": title, "language": language,
                     "start_seconds": round(start, 3), "end_seconds": round(end, 3),
                     "duration_seconds": round(end - start, 3), "video": output.name, "subtitle": srt_out.name}
