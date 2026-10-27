@@ -3,6 +3,7 @@
 
     python 배포/빌드.py                # 배포판/유튜브영상자동제작/ + zip
     python 배포/빌드.py --no-zip       # 폴더만
+    python 배포/빌드.py --owner-profile --out 배포판/내채널 --no-zip  # 내 채널명·고정 레퍼런스 포함
     python 배포/빌드.py --editor "D:\\편집프로그램"   # 선택 사항: 외부 편집기 포함
 
 만들어지는 구조:
@@ -14,7 +15,7 @@
       app/                     ← 이 프로그램 + ffmpeg (외부 편집기는 선택 사항)
         시작.py 대본선택.py … 화면/ 지침/ assets/ 딥시크_확장/
         편집프로그램/bin/ffmpeg.exe, ffprobe.exe
-        설정.json (빈 값)  채널_프로필.json 없음 → 기본값
+        설정.json (빈 값)  판매용은 일반 프로필, --owner-profile은 내 프로필·고정 레퍼런스 포함
 개인 자료(설정.json 의 키, 대본/, 업로드/, 채널_프로필.json, 계획·후보 json, 로그)는 넣지 않는다."""
 import argparse
 import datetime
@@ -105,7 +106,7 @@ def copy_tree(src, dst, skip_dirs=("__pycache__",), skip_suffix=(".pyc", ".log",
             shutil.copy2(p, dst / rel)
 
 
-def build_app(out_app, editor):
+def build_app(out_app, editor, owner_profile=False):
     log("1) 프로그램 파일 복사")
     out_app.mkdir(parents=True)
     for p in ROOT.iterdir():
@@ -118,8 +119,34 @@ def build_app(out_app, editor):
     (out_app / "설정.json").write_text(json.dumps(기본_설정, ensure_ascii=False, indent=2), encoding="utf-8")
     for d in ("대본", "업로드", "대본/민담", "대본/_상태"):
         (out_app / d).mkdir(parents=True, exist_ok=True)
-    # 구매자용 채널 프로필: 제작자의 개인 채널명·마스코트가 남지 않도록 일반 값으로
-    (out_app / "채널_프로필.json").write_text(json.dumps(구매자_프로필, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Generic buyer builds omit the creator's personal channel names and art.
+    # Personal builds opt in to copying only the channel profile and the exact
+    # referenced image files; settings, API keys, jobs and media are still omitted.
+    if owner_profile:
+        profile_path = ROOT / "채널_프로필.json"
+        brand_path = ROOT / "채널_브랜드_레퍼런스.json"
+        if not profile_path.is_file() or not brand_path.is_file():
+            raise RuntimeError("개인용 빌드에 필요한 채널 프로필 또는 브랜드 레퍼런스 파일이 없습니다.")
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        brand = json.loads(brand_path.read_text(encoding="utf-8-sig"))
+        references = {item.get("reference", "") for item in brand.get("channels", [])}
+        references.update((item.get("마스코트") or {}).get("이미지", "") for item in profile.values()
+                          if isinstance(item, dict))
+        for reference in sorted(path for path in references if path):
+            source = (ROOT / reference).resolve()
+            try:
+                source.relative_to(ROOT.resolve())
+            except ValueError:
+                raise RuntimeError("채널 레퍼런스 경로가 프로젝트 폴더 밖을 가리킵니다.") from None
+            if source.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or not source.is_file():
+                raise RuntimeError("개인 채널 레퍼런스 이미지가 없거나 지원하지 않는 형식입니다: " + reference)
+            destination = out_app / reference
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+        shutil.copy2(profile_path, out_app / "채널_프로필.json")
+        shutil.copy2(brand_path, out_app / "채널_브랜드_레퍼런스.json")
+    else:
+        (out_app / "채널_프로필.json").write_text(json.dumps(구매자_프로필, ensure_ascii=False, indent=2), encoding="utf-8")
     log("2) 미디어 엔진 준비")
     out_ed = out_app / "편집프로그램"
     out_ed.mkdir(parents=True, exist_ok=True)
@@ -283,6 +310,8 @@ def main():
     ap.add_argument("--editor", default="")
     ap.add_argument("--out", default=str(ROOT / "배포판" / "유튜브영상자동제작"))
     ap.add_argument("--no-zip", action="store_true")
+    ap.add_argument("--owner-profile", action="store_true",
+                    help="개인용 패키지에 현재 채널 프로필과 고정 브랜드 레퍼런스만 포함")
     ap.add_argument("--skip-download", action="store_true", help="ffmpeg 를 내려받지 않고 이 컴퓨터의 것을 복사")
     a = ap.parse_args()
     out = Path(a.out)
@@ -290,13 +319,13 @@ def main():
         shutil.rmtree(out)
     out.mkdir(parents=True)
     editor = find_editor(a.editor)
-    build_app(out / "app", editor)
+    build_app(out / "app", editor, a.owner_profile)
     build_ffmpeg(out / "app", a.skip_download)
     build_python(out / "python", ROOT / "배포" / "requirements.txt")
     write_launchers(out)
     validate_release(out, out / "python" / "python.exe")
     size = sum(p.stat().st_size for p in out.rglob("*") if p.is_file()) / 1e6
-    log(f"✓ 배포 폴더 완성: {out} ({size:,.0f} MB)")
+    log(f"✓ {'개인용' if a.owner_profile else '판매용 기본'} 배포 폴더 완성: {out} ({size:,.0f} MB)")
     if not a.no_zip:
         z = make_zip(out)
         log(f"✓ {z} ({z.stat().st_size / 1e6:,.0f} MB)")
