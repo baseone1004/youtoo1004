@@ -299,12 +299,12 @@
     <p class="hint">넣으면 조회수·좋아요·게시일까지 정확히 읽어 채널 분석에 씁니다 (없으면 제목만 읽음). 발급: console.cloud.google.com → 프로젝트 만들기 → <b>YouTube Data API v3</b> 사용 설정 → 사용자 인증 정보 → API 키 만들기. 무료입니다.</p>
     <div class="keyrow"><b>API 키</b><input type="password" id="ytKey" placeholder="AIza…"><button class="mini primary" onclick="saveYtKey()">저장</button><button class="mini" onclick="testYtKey()">연결 확인</button><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener" class="mini" style="font-size:13px">↗ 발급 페이지</a></div>
     <h3>YouTube 업로드 로그인 <span class="stat" id="ytOAuthStatus"></span></h3>
-    <p class="hint">Google Cloud에서 YouTube Data API v3를 사용 설정하고 OAuth 클라이언트를 <b>데스크톱 앱</b>으로 만들어 JSON을 내려받으세요. 아래 파일은 이 PC에만 저장됩니다. 그런 다음 위 계정 목록에서 채널을 골라 Google 로그인을 연결합니다. 업로드는 항상 비공개로 전송합니다. 영상 검토를 마친 뒤 YouTube Studio에서 직접 공개하세요.</p>
+    <p class="hint">Google Cloud에서 YouTube Data API v3를 사용 설정하고 OAuth 클라이언트를 <b>데스크톱 앱</b>으로 만들어 JSON을 내려받으세요. <b>웹 애플리케이션은 선택하지 마세요.</b> 승인된 JavaScript 원본이나 리디렉션 URI도 입력할 필요가 없습니다. 내려받은 JSON에 <code>installed</code> 항목이 있어야 합니다. 아래 파일은 이 PC에만 저장됩니다. 그런 다음 위 계정 목록에서 채널을 골라 Google 로그인을 연결합니다. 업로드는 항상 비공개로 전송합니다. 영상 검토를 마친 뒤 YouTube Studio에서 직접 공개하세요.</p>
     <details class="inner"><summary>처음 연결하기 · OAuth JSON 준비 순서</summary>
       <ol class="hint">
         <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>에서 프로젝트를 만들거나 선택합니다.</li>
         <li><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API v3</a>를 사용 설정합니다.</li>
-        <li><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">Google Auth Platform · Clients</a>에서 클라이언트를 만들고 애플리케이션 유형을 <b>데스크톱 앱</b>으로 선택한 다음 JSON을 내려받습니다. 로그인 테스트 사용자 설정이 표시되면 사용할 Google 계정을 추가하세요.</li>
+        <li><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">Google Auth Platform · Clients</a>에서 새 클라이언트를 만들고 애플리케이션 유형을 <b>데스크톱 앱</b>으로 선택한 다음 JSON을 내려받습니다. <b>웹 애플리케이션 유형은 쓰지 말고, JavaScript 원본·리디렉션 URI를 입력하지 마세요.</b> JSON 안에 <code>installed</code>가 있는지 확인합니다. 로그인 테스트 사용자 설정이 표시되면 사용할 Google 계정을 추가하세요.</li>
         <li>이 화면에서 JSON 파일을 선택해 저장하고, 저장된 YouTube 계정을 골라 <b>선택 계정 Google 로그인</b>을 누릅니다. 브라우저에서 올바른 채널로 로그인하고 권한을 허용하세요.</li>
         <li>작업 보관함의 완성 패키지에서 <b>YouTube 업로드</b>를 누릅니다. 롱폼과 생성된 쇼츠가 항상 비공개로 전송됩니다. YouTube Studio에서 영상·자막을 검토한 뒤 직접 공개하세요.</li>
       </ol>
