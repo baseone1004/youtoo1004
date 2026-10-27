@@ -6,7 +6,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const js = s => String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 const pad3 = n => String(n).padStart(3, '0');
 
-let STATE = null, WORK = null, pollTimer = null;
+let STATE = null, WORK = null, pollTimer = null, savedYtAccounts = [];
 let channel = 'person';                       // 1단계 채널 탭
 const selection = new Map();                  // key "channel|title" → {channel,title,topic}
 const custom = {person: [], mindam: []};      // 직접 적은 주제
@@ -151,20 +151,11 @@ async function refresh() {
   const nextImagePrice = imagePrice(channel);
   $('quickImageCost').textContent = `다음 이미지 생성: ${nextImagePrice.name} · 1장 ${nextImagePrice.credits} 크레딧 · 100장 ${(nextImagePrice.credits * 100).toFixed(0)} 크레딧 (장수는 대본 작성 후 결정, 썸네일·영상 변환 별도)`;
   await refreshYtAccounts();
-  const accountOptions = savedYtAccounts.length
-    ? savedYtAccounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}${a.language === 'ja' ? ' · 일본어' : ' · 한국어'}</option>`).join('')
-    : '<option value="">YouTube 채널 미연결</option>';
-  $('referenceAccount').innerHTML = accountOptions;
-  const activeAccount = savedYtAccounts.find(a => (a.selected_slots || []).includes('person'));
-  if (activeAccount) $('referenceAccount').value = activeAccount.id;
-  $('productionAccount').innerHTML = accountOptions;
-  if (activeAccount) $('productionAccount').value = activeAccount.id;
-  $('productionAccount').disabled = !!STATE.dedicated;
-  $('referenceAccount').disabled = !!STATE.dedicated;
+  const activeAccount = renderChannelAccountSelectors();
   $('channelWindowHint').textContent = savedYtAccounts.length
-    ? '이 창에서 채널을 선택하고 한 편씩 제작하세요.'
+    ? (activeAccount ? '이 창에서 채널을 선택하고 한 편씩 제작하세요.' : '현재 제작 유형에 연결된 계정을 선택해 적용하세요.')
     : '미연결 상태에서도 영상 파일은 만들 수 있습니다. 내 채널 주제 제외와 직접 업로드를 쓰려면 YouTube 채널을 연결하세요.';
-  $('channelConnectButton').classList.toggle('hidden', savedYtAccounts.length > 0);
+  $('channelConnectButton').classList.toggle('hidden', !!activeAccount);
   if (activeAccount) document.title = `${activeAccount.name} · 영상 제작`;
   $('customTitle').placeholder = ((STATE.profiles || {}).person || {}).언어 === 'ja' ? '例：いい人なのに、会ったあと疲れるのはなぜ？' : '예: 좋은 사람인데 만나고 나면 피곤한 이유';
   renderBeginnerGuide();
@@ -249,6 +240,7 @@ async function refresh() {
 // ── 1단계: 주제 고르기 ─────────────────────────────────
 function setChannel(ch) {
   channel = ch;
+  renderChannelAccountSelectors();
   document.querySelectorAll('#chSeg button').forEach(b => b.classList.toggle('on', b.dataset.ch === ch));
   const pf = (STATE && STATE.profiles && STATE.profiles[ch]) || {};
   $('chHint').textContent = `${pf.이름 || ''} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
@@ -1267,17 +1259,36 @@ async function saveImageMode() {
   if (!['z-image','codex'].includes(mode) && !(((STATE.profiles || {})[$('referenceChannel').value] || {}).마스코트 || {}).이미지) { toast('레퍼런스 이미지를 먼저 올려 주세요.', true); return renderReference(); }
   try { await api('/api/profile', {slot:$('referenceChannel').value, data:{마스코트:{레퍼런스_사용:mode !== 'z-image', 생성_모델:mode === 'z-image' ? 'qwen/image-edit' : mode}}}); await refresh(); toast('이미지 모드 저장됨 · 다음 생성부터 적용'); } catch(e) { toast(e.message,true); }
 }
-let savedYtAccounts = [];
+function accountSlot(account) {
+  return account?.slot || ((account?.selected_slots || []).includes('mindam') ? 'mindam' : 'person');
+}
+function renderChannelAccountSelectors() {
+  if (!$('productionAccount') || !$('referenceAccount')) return null;
+  const active = savedYtAccounts.find(a => accountSlot(a) === channel && (a.selected_slots || []).includes(channel));
+  const label = channel === 'mindam' ? '이야기형' : '정보형';
+  const options = `<option value="">${esc(active ? `${label} 계정 선택됨` : `${label} 채널 계정 선택`)}</option>` +
+    savedYtAccounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)} · ${accountSlot(a) === 'mindam' ? '이야기형' : '정보형'} · ${a.language === 'ja' ? '일본어' : '한국어'}</option>`).join('');
+  $('productionAccount').innerHTML = options;
+  $('referenceAccount').innerHTML = options;
+  $('productionAccount').value = active?.id || '';
+  $('referenceAccount').value = active?.id || '';
+  $('productionAccount').disabled = !!STATE?.dedicated;
+  $('referenceAccount').disabled = !!STATE?.dedicated;
+  return active || null;
+}
 async function selectReferenceAccount(accountId = $('referenceAccount').value) {
   if (!accountId) return;
   try {
+    const account = savedYtAccounts.find(a => a.id === accountId);
+    if (!account) throw new Error('저장된 YouTube 계정을 찾지 못했습니다. 목록을 새로고침하세요.');
+    const targetSlot = accountSlot(account);
     const state = await genStatus();
     if (['running','paused'].includes(state.status)) throw new Error('이미지 생성이 끝난 뒤 채널을 바꿔 주세요.');
-    const selected = await api('/api/youtube/accounts/select', {id: accountId, slot:'person'});
+    const selected = await api('/api/youtube/accounts/select', {id: accountId, slot:targetSlot});
     if (selected.workspace_url) { window.location.href=selected.workspace_url; return; }
     selection.clear(); custom.person = []; custom.mindam = [];
-    channel = 'person'; profileSlot = 'person';
-    await refresh(); $('referenceChannel').value = 'person'; renderReference();
+    channel = targetSlot; profileSlot = targetSlot;
+    await refresh(); $('referenceChannel').value = targetSlot; renderReference();
     toast('선택한 채널의 레퍼런스·프로필을 불러왔습니다.');
   } catch(e) { toast(e.message,true); await refresh(); }
 }
@@ -1287,10 +1298,10 @@ function fillYtAccountForm() {
   $('ytAccountName').value=account.name; $('ytAccountUrl').value=account.url; $('ytAccountKey').value=''; $('ytAccountLanguage').value=account.language || (((STATE || {}).profiles || {})[channel] || {}).언어 || 'ko';
 }
 async function refreshYtAccounts() {
-  try { const response = await fetch('/api/youtube/accounts'); if (response.status === 404) { $('ytAccounts').innerHTML='<option>제작 완료 후 프로그램 재시작 필요</option>'; return; } if (!response.ok) return; const r = await response.json(); savedYtAccounts = r.accounts; const previous=$('ytAccounts').value; $('ytAccounts').innerHTML=r.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.url)}${a.language === 'ja' ? ' · 일본어' : a.language === 'ko' ? ' · 한국어' : ''}${a.key_saved ? ' · 키 저장됨' : ''}</option>`).join(''); if(previous) $('ytAccounts').value=previous; await refreshYoutubeOAuthStatus(); } catch(e) { toast(e.message,true); }
+  try { const response = await fetch('/api/youtube/accounts'); if (response.status === 404) { $('ytAccounts').innerHTML='<option>제작 완료 후 프로그램 재시작 필요</option>'; return; } if (!response.ok) return; const r = await response.json(); savedYtAccounts = r.accounts; const previous=$('ytAccounts').value; $('ytAccounts').innerHTML=r.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${accountSlot(a) === 'mindam' ? '이야기형' : '정보형'} · ${a.url}${a.language === 'ja' ? ' · 일본어' : a.language === 'ko' ? ' · 한국어' : ''}${a.key_saved ? ' · 키 저장됨' : ''}</option>`).join(''); if(previous) $('ytAccounts').value=previous; await refreshYoutubeOAuthStatus(); } catch(e) { toast(e.message,true); }
 }
 async function saveYtAccount() {
-  try { await api('/api/youtube/accounts',{name:$('ytAccountName').value,url:$('ytAccountUrl').value,api_key:$('ytAccountKey').value,language:$('ytAccountLanguage').value}); $('ytAccountKey').value=''; await refreshYtAccounts(); toast('유튜브 계정 저장됨'); } catch(e) { toast(e.message,true); }
+  try { const name=$('ytAccountName').value.trim(), language=name === '心のしくみ便り' ? 'ja' : $('ytAccountLanguage').value; if (name === '心のしくみ便り') $('ytAccountLanguage').value='ja'; await api('/api/youtube/accounts',{name,url:$('ytAccountUrl').value,api_key:$('ytAccountKey').value,language,slot:channel}); $('ytAccountKey').value=''; await refreshYtAccounts(); toast('유튜브 계정 저장됨'); } catch(e) { toast(e.message,true); }
 }
 async function useYtAccount() {
   try { const r=await api('/api/youtube/accounts/select',{id:$('ytAccounts').value,slot:channel}); if(r.workspace_url){window.location.href=r.workspace_url;return;} await refresh(); toast('선택한 유튜브 계정 적용됨'); } catch(e) { toast(e.message,true); }
@@ -1336,14 +1347,12 @@ async function disconnectYoutubeAccount() {
   catch(e) { toast(e.message, true); }
 }
 async function uploadLibraryPackage(id, name) {
-  const privacy = $('youtubePrivacy').value, include_shorts = $('youtubeIncludeShorts').checked;
-  const visibility = {private:'비공개',unlisted:'일부 공개',public:'공개'}[privacy] || '비공개';
+  const privacy = 'private', include_shorts = $('youtubeIncludeShorts').checked;
+  const visibility = '비공개 (검토 후 YouTube Studio에서 직접 공개)';
   const count = include_shorts ? '롱폼과 생성된 쇼츠' : '롱폼 영상';
-  if (!confirm(`${name}\\n\\n${count}을(를) YouTube에 ${visibility}로 올릴까요?\\n선택한 계정의 로그인 채널로 전송됩니다.`)) return;
-  const confirm_public = privacy !== 'public' || confirm('이 영상들을 지금 공개 상태로 게시합니다. 맞나요?');
-  if (!confirm_public) return;
+  if (!confirm(`${name}\\n\\n${count}을(를) YouTube에 ${visibility}로 올릴까요?\\n공개는 YouTube Studio에서 검토 후 직접 진행하세요.`)) return;
   try {
-    await api('/api/youtube/upload', {package_id:id, privacy, include_shorts, confirm_public});
+    await api('/api/youtube/upload', {package_id:id, privacy, include_shorts});
     startPolling(true);
     toast(`${visibility} 업로드를 시작했습니다. 완료와 링크는 진행 화면에서 확인하세요.`);
   } catch(e) {

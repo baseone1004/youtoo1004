@@ -3514,9 +3514,9 @@ class H(BaseHTTPRequestHandler):
                 if not row:
                     raise ValueError("업로드 패키지를 보관함에서 다시 선택하세요.")
                 account, _slot = youtube_upload.account_for_package(BASE, row["folder"], accounts, cfg)
-                if body.get("privacy") == "public" and body.get("confirm_public") is not True:
-                    raise ValueError("공개 업로드는 별도 확인이 필요합니다.")
-                check = youtube_upload.preflight(BASE, row["folder"], account, body.get("privacy", "private"),
+                if body.get("privacy", "private") != "private":
+                    raise ValueError("업로드 공개 범위는 비공개로 고정되어 있습니다. 검토 후 YouTube Studio에서 직접 공개하세요.")
+                check = youtube_upload.preflight(BASE, row["folder"], account, "private",
                                                  include_shorts=body.get("include_shorts") is True)
                 with QUEUE.lock:
                     if QUEUE.data.get("status") == "running":
@@ -3524,7 +3524,7 @@ class H(BaseHTTPRequestHandler):
                 def upload_video(job):
                     job.stage = "YouTube 업로드 준비"
                     job.add(f"▶ {account.get('name', 'YouTube 채널')}에 업로드합니다.")
-                    return youtube_upload.upload_package(BASE, row["folder"], account, body.get("privacy", "private"),
+                    return youtube_upload.upload_package(BASE, row["folder"], account, "private",
                                                          job, include_shorts=body.get("include_shorts") is True)
                 run_job("youtube_upload", upload_video)
                 self._json({"ok": True, "channel": check["channel"], "title": check["title"], "video_count": check["video_count"]})

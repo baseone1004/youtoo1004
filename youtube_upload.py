@@ -368,8 +368,8 @@ def _file_key(package, file):
 def preflight(root, package, account, privacy, include_shorts=True):
     """Check auth, export files, destination identity and retry ambiguity before upload."""
     package = Path(package).resolve()
-    if privacy not in {"private", "unlisted", "public"}:
-        raise ValueError("공개 범위를 선택하세요.")
+    if privacy != "private":
+        raise ValueError("YouTube 업로드는 비공개로만 허용됩니다. 검토 후 YouTube Studio에서 직접 공개하세요.")
     if not package.is_relative_to((_root(root) / "업로드").resolve()) or not package.is_dir():
         raise ValueError("업로드 폴더 안의 완성 패키지만 전송할 수 있습니다.")
     _credentials, channel = _authorized(root, account["id"])
@@ -416,8 +416,8 @@ def upload_package(root, package, account, privacy, job, include_shorts=True):
     upload_root = (root / "업로드").resolve()
     if not package.is_relative_to(upload_root) or not package.is_dir():
         raise ValueError("업로드 폴더 안의 완성 패키지만 전송할 수 있습니다.")
-    if privacy not in {"private", "unlisted", "public"}:
-        raise ValueError("공개 범위를 선택하세요.")
+    if privacy != "private":
+        raise ValueError("YouTube 업로드는 비공개로만 허용됩니다. 검토 후 YouTube Studio에서 직접 공개하세요.")
     account_id = _safe_id(account["id"])
     credentials, channel = _authorized(root, account_id)
     youtube = build("youtube", "v3", credentials=credentials, cache_discovery=False)
