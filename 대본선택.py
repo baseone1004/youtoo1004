@@ -1217,7 +1217,7 @@ def make_image_prompts(job, req):
     chunk = int(req.get("chunk") or 25)
     if channel_of(path) == "mindam":               # 이야기형 블록은 정보형의 서너 배 길이 → 한 번에 적게 묻는다 (답이 잘리는 것을 막는다)
         chunk = min(chunk, 민담_프롬프트_묶음)
-    job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 → 장면 {len(units)}개 · {chunk}장면씩 · 화풍 {req.get('style', '실사')}"
+    job.add(f"AI: {ai.name} ({ai.model}) · 문장 {len(sents)}개 → 장면 {len(units)}개 · {chunk}장면씩 · 화풍 {req.get('style', '애니')}"
             + (" · 연속 문장을 묶어 이미지 수 절약" if len(units) != len(sents) else ""))
     refresh_image_flow(path)                     # 자막 전체를 덮는지 유료 생성 전에 검사
     if path.endswith("final.txt"):
@@ -2214,7 +2214,7 @@ def make_thumbnails(job, req):
     # 썸네일 화풍·구도는 채널 프로필에서 온다 (화풍을 비워 두면 장면 화풍을 그대로 쓴다)
     profile = 채널_프로필.get("mindam" if is_mindam else "person")
     tp = 채널_프로필.thumbnail_profile("mindam" if is_mindam else "person")
-    style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "실사"), req.get("style", "실사")), 화풍["밝은 애니 사극" if is_mindam else "실사"])
+    style = (tp.get("화풍") or "").strip() or 화풍.get(화풍_별칭.get(req.get("style", "애니"), req.get("style", "애니")), 화풍["밝은 애니 사극" if is_mindam else "애니"])
     if 채널_프로필.style_tail("mindam" if is_mindam else "person"):
         style = style.rstrip(". ") + ", " + 채널_프로필.style_tail("mindam" if is_mindam else "person")
     position = "bottom"
@@ -3145,7 +3145,7 @@ class H(BaseHTTPRequestHandler):
                                             인월드_목소리_일본=cfg.get("인월드_목소리_일본", ""), 인월드_속도_일본=cfg.get("인월드_속도_일본", 1.0),
                                             인월드_속도_사람=cfg.get("인월드_속도_사람", cfg.get("인월드_속도", 1.0)),
                                             인월드_속도_민담=cfg.get("인월드_속도_민담", cfg.get("인월드_속도", 1.0)),
-                                            분당_글자수=cfg.get("분당_글자수", 270), 화풍=화풍_별칭.get(cfg.get("화풍", "실사"), cfg.get("화풍", "실사")),
+                                            분당_글자수=cfg.get("분당_글자수", 270), 화풍=화풍_별칭.get(cfg.get("화풍", "애니"), cfg.get("화풍", "애니")),
                                             영상변환_방식=cfg.get("영상변환_방식", ""),
                                             후킹_장면수=cfg.get("후킹_장면수", 0), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
                                             텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),

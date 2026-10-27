@@ -181,7 +181,7 @@ async function refresh() {
   $('optHook').dataset.ai=c.AI;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
-  renderStyles(STATE.styles, c.화풍 || '실사');
+  renderStyles(STATE.styles, c.화풍 || '애니');
   renderLenButtons(c.분당_글자수 || 270, c.대본_글자수);
   const scriptOpts = STATE.scripts.map(s => `<option value="${esc(s.path)}">${esc(s.name)}</option>`).join('');
   const keep = (sel, html, empty) => { const old = sel.value; sel.innerHTML = html || `<option value="">${empty}</option>`; if (old && [...sel.options].some(o => o.value === old)) sel.value = old; };
@@ -344,7 +344,7 @@ function renderSelection() {
 })();
 
 // ── 2단계: 그림체·길이·시작 ─────────────────────────────
-let styleValue = '실사';
+let styleValue = '애니';
 function renderStyles(list, cur) {
   const desc = STATE.style_info || {}, groups = STATE.style_groups || {'그림체': list};
   $('styleBox').innerHTML = Object.entries(groups).map(([g, names]) => `<div class="stylegrp"><div class="stylegrp-t">${esc(g)}</div><div class="styles">${names.map(s => `<button type="button" data-val="${esc(s)}" onclick="pickStyle('${js(s)}')">${esc(s)}<small>${esc(desc[s] || '')}</small></button>`).join('')}</div></div>`).join('');
