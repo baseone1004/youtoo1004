@@ -40,6 +40,24 @@ VERSION = str(int(os.path.getmtime(os.path.abspath(__file__))))      # 파일이
 ADDR = f"http://127.0.0.1:{PORT}"
 LOCAL_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 DEEPSEEK_ORIGIN = "https://chat.deepseek.com"
+_MEDIA_TOOLS_STATUS = None
+_MEDIA_TOOLS_LOCK = threading.Lock()
+
+
+def media_tools_status():
+    """앱 시작 후 한 번 확인해 준비 화면에서 FFmpeg 누락을 조기에 안내한다."""
+    global _MEDIA_TOOLS_STATUS
+    with _MEDIA_TOOLS_LOCK:
+        if _MEDIA_TOOLS_STATUS is None:
+            status = {}
+            for name in ("ffmpeg", "ffprobe"):
+                try:
+                    path = 나레이션.find_ffmpeg(name)
+                    status[name] = bool(path and os.path.isfile(path))
+                except (FileNotFoundError, OSError):
+                    status[name] = False
+            _MEDIA_TOOLS_STATUS = status
+        return dict(_MEDIA_TOOLS_STATUS)
 
 
 def path_inside(root, path):
@@ -3084,7 +3102,7 @@ class H(BaseHTTPRequestHandler):
                 cfg = 대본생성.load_cfg()
                 job = STATE["job"]
                 hide_mindam = bool(cfg.get("이야기형_숨김"))          # 이야기형(민담) 채널을 당분간 쓰지 않을 때: 화면·목록에서 감춘다 (파일은 그대로)
-                self._json(dict(topics=topics(), guidelines=guideline_files(),
+                self._json(dict(topics=topics(), guidelines=guideline_files(), media_tools=media_tools_status(),
                                 scripts=[x for x in script_files() if not (hide_mindam and os.path.basename(x["path"]) == "final.txt")],
                                 hidden_channels=(["mindam"] if hide_mindam else []),
                                 keys={"deepseek": mask(cfg.get("API_키_deepseek") or (cfg.get("API_키") if cfg["AI"] in ("deepseek", "deepseek-web") else "")),

@@ -133,7 +133,9 @@ async function checkReady() {
     const ok = !!c && c.ok && Number.isFinite(c.credit) && c.credit > 0;
     if (codexOnly) items.push([true, 'Codex 이미지 · KIE 요청 없음', null]);
     else items.push([ok, ok ? 'KIE 연결 확인 완료' : (c && c.ok && c.credit === 0 ? 'KIE 크레딧 충전 필요' : 'KIE 키·연결 확인 필요'), 'settings']);
-    items.push([true, '내장 FFmpeg 영상 렌더링 준비', null]);
+    const mediaTools = info.media_tools || {};
+    const renderReady = mediaTools.ffmpeg === true && mediaTools.ffprobe === true;
+    items.push([renderReady, renderReady ? 'FFmpeg·ffprobe 렌더링 준비됨' : 'FFmpeg 또는 ffprobe 설치 필요 · 설치 후 시작 파일 다시 실행', null]);
   } catch (e) { items.push([false, '편집프로그램 꺼짐 — 시작 파일을 다시 실행하세요', null]); }
   const html = '<span class="lbl">준비 상태</span>' + items.map(([ok, label, tab]) => `<span class="pill ${ok ? 'ok' : 'bad'}" ${(!ok && tab) ? `onclick="showView('${tab}')"` : ''}>${ok ? '✓' : '!'} ${esc(label)}${(!ok && tab) ? ' → 고치기' : ''}</span>`).join('');
   readinessIssues = items.filter(x => !x[0]).map(x => x[1]);
