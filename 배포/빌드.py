@@ -116,7 +116,10 @@ def build_app(out_app, editor, owner_profile=False):
     for d in APP_DIRS:
         copy_tree(ROOT / d, out_app / d)
     (out_app / "지침" / "민담" / "최근_사용_이름.txt").write_text("", encoding="utf-8")
-    (out_app / "설정.json").write_text(json.dumps(기본_설정, ensure_ascii=False, indent=2), encoding="utf-8")
+    release_settings = dict(기본_설정)
+    if owner_profile:
+        release_settings.update(AI="codex", 후킹_장면수=5)
+    (out_app / "설정.json").write_text(json.dumps(release_settings, ensure_ascii=False, indent=2), encoding="utf-8")
     for d in ("대본", "업로드", "대본/민담", "대본/_상태"):
         (out_app / d).mkdir(parents=True, exist_ok=True)
     # Generic buyer builds omit the creator's personal channel names and art.
