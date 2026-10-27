@@ -17,6 +17,7 @@ class ResumeAudioTest(unittest.TestCase):
                 for name in ('나레이션.mp3', '나레이션.srt', '플로우.txt'):
                     (root / name).write_text('cached', encoding='utf-8')
             stack.enter_context(patch.object(app, 'assets_dir', return_value=td))
+            stack.enter_context(patch.object(app.대본생성, 'load_cfg', return_value={}))
             stack.enter_context(patch.object(app, 'narration_matches', return_value=True))
             stack.enter_context(patch.object(app, 'narration_cache_matches', return_value=True))
             stack.enter_context(patch.object(app.채널_프로필, 'language_code', return_value=language))

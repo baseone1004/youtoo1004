@@ -65,6 +65,7 @@ class KiePipelineTest(unittest.TestCase):
             package = root / "업로드"; package.mkdir()
             job = app.Job("pipeline")
             with patch.object(app, "ensure_script_language"), \
+                    patch.object(app.대본생성, "load_cfg", return_value={}), \
                     patch.object(app, "assets_dir", return_value=str(root)), \
                     patch.object(app, "channel_of", return_value="person"), \
                     patch.object(app, "narration_matches", return_value=True), \
