@@ -44,4 +44,5 @@ server.err.log
 로컬음성/
 .local-voice/
 youtube_oauth_client.json
+youtube_oauth_clients/
 youtube_auth/

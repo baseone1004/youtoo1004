@@ -1313,7 +1313,7 @@ async function refreshYoutubeOAuthStatus() {
     const auth = account && state.accounts && state.accounts[account.id];
     const el = $('ytOAuthStatus'), help = $('ytOAuthHelp');
     if (!account) { el.textContent = '채널 계정을 먼저 저장하세요'; el.className = 'stat'; return; }
-    if (!state.client_saved) { el.textContent = 'OAuth JSON 미등록'; el.className = 'stat'; help.textContent = 'Google Cloud에서 YouTube Data API v3를 사용 설정하고 데스크톱 OAuth JSON을 등록하세요.'; return; }
+    if (!(state.clients && state.clients[account.id])) { el.textContent = '선택 계정 OAuth JSON 미등록'; el.className = 'stat'; help.textContent = `Google Cloud에서 받은 데스크톱 OAuth JSON 파일을 선택하고 [OAuth JSON 저장]을 누르세요. 이 파일은 ${account.name} 계정에만 암호화해 저장됩니다.`; return; }
     if (auth && auth.status === 'running') { el.textContent = auth.stage || 'Google 로그인 대기'; el.className = 'stat now'; help.textContent = '열린 브라우저에서 올바른 YouTube 채널로 로그인하고 권한을 허용하세요.'; setTimeout(refreshYoutubeOAuthStatus, 1800); return; }
     if (auth && auth.status === 'error') { el.textContent = '연결 실패'; el.className = 'stat bad'; help.textContent = auth.error || '브라우저 로그인에 실패했습니다.'; return; }
     if (auth && auth.connected) { el.textContent = `연결됨 · ${auth.channel}`; el.className = 'stat ok'; help.textContent = `연결된 YouTube 채널: ${auth.channel} · 업로드 공개 범위: ${$('youtubePrivacy').value}`; return; }
@@ -1322,11 +1322,12 @@ async function refreshYoutubeOAuthStatus() {
 }
 async function saveYoutubeOAuthClient() {
   const file = $('ytOAuthClientFile').files?.[0]; if (!file) return toast('Google Cloud에서 내려받은 데스크톱 OAuth JSON 파일을 선택하세요.', true);
+  const account = savedYtAccounts.find(a => a.id === $('ytAccounts').value);
+  if (!account) return toast('OAuth JSON을 저장할 YouTube 계정을 먼저 선택하세요.', true);
   try {
     const client_config = JSON.parse(await file.text());
-    await api('/api/youtube/oauth/client', {client_config});
-    $('ytOAuthClientFile').value = '';
-    toast('OAuth 설정을 이 PC에 저장했습니다.');
+    await api('/api/youtube/oauth/client', {client_config, account_id: account.id});
+    toast(`${account.name} 계정에 OAuth 설정을 암호화해 저장했습니다.`);
     await refreshYoutubeOAuthStatus();
   } catch(e) { toast(e.message || 'OAuth JSON 파일을 읽지 못했습니다.', true); }
 }

@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 CLIENT_FILE = "youtube_oauth_client.json"
+CLIENT_DIR = "youtube_oauth_clients"
 TOKEN_DIR = "youtube_auth"
 _DPAPI_PREFIX = b"YOUTOO-DPAPI1:"
 _LOCAL_PREFIX = b"YOUTOO-LOCAL1:"
@@ -36,8 +37,18 @@ def _root(root):
     return Path(root).resolve()
 
 
-def _client_path(root):
-    return _root(root) / CLIENT_FILE
+def _client_path(root, account_id=None):
+    if account_id is None:
+        return _root(root) / CLIENT_FILE
+    return _root(root) / CLIENT_DIR / (_safe_id(account_id) + ".json")
+
+
+def _client_for_account(root, account_id):
+    account_path = _client_path(root, account_id)
+    if account_path.is_file():
+        return account_path
+    # Keep older installations working until each channel receives its own client.
+    return _client_path(root)
 
 
 def _token_path(root, account_id):
@@ -141,8 +152,8 @@ def _read_private_json(path):
     return json.loads(_unprotect(Path(path).read_bytes()).decode("utf-8"))
 
 
-def save_client(root, value):
-    """Store an installed/desktop OAuth client downloaded from Google Cloud."""
+def save_client(root, value, account_id=None):
+    """Store an installed/desktop OAuth client globally or for one channel."""
     if isinstance(value, str):
         if len(value.encode("utf-8")) > 100_000:
             raise ValueError("OAuth 클라이언트 JSON이 너무 큽니다.")
@@ -158,7 +169,8 @@ def save_client(root, value):
             raise ValueError("OAuth JSON에 필수 항목이 없습니다: " + key)
     if not client["auth_uri"].startswith("https://") or not client["token_uri"].startswith("https://"):
         raise ValueError("OAuth 인증 주소는 HTTPS여야 합니다.")
-    _write_private_json(_client_path(root), value)
+    target = _client_path(root, account_id)
+    _write_private_json(target, value)
     return {"client_saved": True}
 
 
@@ -183,9 +195,12 @@ def _authorized(root, account_id):
 
 
 def status(root, accounts):
-    result = {"client_saved": _client_path(root).is_file(), "accounts": {}}
+    legacy_client = _client_path(root).is_file()
+    result = {"client_saved": legacy_client or any(_client_path(root, a["id"]).is_file() for a in accounts),
+              "clients": {}, "accounts": {}}
     for account in accounts:
         account_id = _safe_id(account["id"])
+        result["clients"][account_id] = _client_for_account(root, account_id).is_file()
         path = _token_path(root, account_id)
         state = {"connected": False, "channel": "", "channel_id": ""}
         if path.is_file():
@@ -222,7 +237,7 @@ def _expected_channel_id(youtube, url):
 def connect(root, account):
     """Begin OAuth in a worker thread; the caller polls status()."""
     account_id = _safe_id(account["id"])
-    client_path = _client_path(root)
+    client_path = _client_for_account(root, account_id)
     if not client_path.is_file():
         raise ValueError("먼저 Google Cloud의 데스크톱 OAuth JSON 파일을 등록하세요.")
     with _lock:

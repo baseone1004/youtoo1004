@@ -3481,7 +3481,12 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": True, "accounts": public_accounts(cfg)})
             elif u.path == "/api/youtube/oauth/client":
                 import youtube_upload
-                self._json(youtube_upload.save_client(BASE, body.get("client_config")))
+                cfg = load_json("설정.json", {})
+                youtube_accounts.migrate(cfg)
+                account = next((a for a in cfg.get("유튜브_계정", []) if a.get("id") == body.get("account_id")), None)
+                if not account:
+                    raise ValueError("OAuth JSON을 연결할 YouTube 계정을 먼저 선택하세요.")
+                self._json(youtube_upload.save_client(BASE, body.get("client_config"), account["id"]))
             elif u.path == "/api/youtube/oauth/connect":
                 import youtube_upload
                 cfg = load_json("설정.json", {})
