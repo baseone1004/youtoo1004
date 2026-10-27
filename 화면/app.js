@@ -577,7 +577,7 @@ async function loadProductionLibrary() {
       const resumable = queue.status === 'paused' || queueItems.some(x => ['pending', 'error'].includes(x.status));
       return resumable
         ? '<div class="hint"><b>이어 만들 제작이 대기 중입니다.</b><p>아직 보관함에 완성 결과가 없습니다. 위 제작 현황의 <b>이어 만들기</b>를 누르면 멈춘 지점부터 계속합니다.</p><button class="mini primary" onclick="queueControl(\'resume\')">▶ 이어 만들기</button></div>'
-        : '<div class="hint"><b>완성되었거나 복구할 작업이 아직 없습니다.</b><p>채널과 주제를 선택해 제작을 시작하면 대본·음성·이미지·영상 결과가 이곳에 표시됩니다.</p><button class="mini primary" onclick="showView(\'wizard\')">주제 선택으로 가기</button></div>';
+        : '<div class="hint"><b>완성되었거나 복구할 작업이 아직 없습니다.</b><p>채널과 주제를 선택해 제작을 시작하면 대본·음성·이미지·영상 결과가 이곳에 표시됩니다.</p><button class="mini primary" onclick="showView(\'wizard\');$(\'step-1\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">주제 선택으로 가기</button></div>';
     })();
   } catch (e) { box.textContent = e.message; }
 }
