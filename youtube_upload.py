@@ -251,7 +251,13 @@ def connect(root, account):
             chosen = next((item for item in mine if item.get("id") == expected), None) if expected else None
             if expected and not chosen:
                 names = ", ".join((x.get("snippet") or {}).get("title", "") for x in mine)
-                raise RuntimeError(f"로그인한 Google 계정의 채널이 저장한 채널 주소와 다릅니다. 주소에서 확인한 채널 ID: {expected} · 로그인 채널: {names}")
+                expected_name = str(account.get("name") or "선택한 채널").strip()
+                raise RuntimeError(
+                    f"'{expected_name}' 계정과 로그인한 YouTube 채널이 다릅니다. "
+                    f"현재 로그인 채널: {names or '확인할 수 없음'}. "
+                    f"계정 목록에서 '{expected_name}'을 선택하고 Google 로그인을 다시 누르세요. "
+                    "로그인 창에서 올바른 Google 계정과 브랜드 채널을 선택했는지도 확인하세요."
+                )
             if not chosen:
                 raise RuntimeError("채널 주소를 안전하게 확인할 수 없습니다. 채널 URL을 @핸들이나 /channel/UC… 주소로 바꾼 뒤 다시 연결하세요.")
             info = {"id": chosen["id"], "title": (chosen.get("snippet") or {}).get("title", "")}
