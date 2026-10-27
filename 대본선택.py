@@ -222,6 +222,12 @@ KIND_LABEL = {"bench": "채널 벤치마킹", "script": "대본 만들기", "min
               "optimize": "제목·설명·태그", "tts": "나레이션", "pipeline": "한 편 자동 제작", "queue_pipeline": "연속 제작", "thumbnail": "썸네일"}
 
 
+def require_queue_idle_for_account_change():
+    status = queue_snapshot().get("status")
+    if status in ("running", "paused"):
+        raise ValueError("대기열이 진행 중이거나 일시정지 상태입니다. [계속]으로 마치거나 [대기열 취소] 후 채널 계정을 바꿔 주세요. 대기 중인 영상이 다른 채널에 만들어지는 일을 막습니다.")
+
+
 def select_saved_account(body):
     if os.environ.get("YOUTOO_ACCOUNT"):
         raise ValueError("기본 프로그램 창에서 채널을 선택해 주세요.")
@@ -229,8 +235,9 @@ def select_saved_account(body):
     if slot not in 채널_프로필.SLOTS:
         raise ValueError("적용할 채널을 선택하세요.")
     with LOCK:
-        if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
+        if STATE.get("job") and STATE["job"].status == "running":
             raise ValueError("현재 제작이 끝나거나 중단한 뒤 채널을 바꿔 주세요. 한 편씩 제작합니다.")
+        require_queue_idle_for_account_change()
         current = aip("/api/gen/status")
         if current.get("status") in ("running", "paused"):
             raise ValueError("이미지 생성을 중단하거나 완료한 뒤 채널을 바꿔 주세요.")
@@ -3441,14 +3448,16 @@ class H(BaseHTTPRequestHandler):
                 slot = body.get("slot") or "person"
                 self._json(dict(ok=True, images=brand_preview(slot)))
             elif u.path == "/api/reference/upload":
+                if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") in ("running", "paused"):
+                    raise ValueError("대기열을 마치거나 취소한 뒤 레퍼런스를 바꿔 주세요. 그래야 다음 장면부터 같은 채널 그림을 유지합니다.")
                 from reference_images import save_reference
                 saved = save_reference(body.get("slot"), body.get("data_url"))
                 self._json(dict(ok=True, profile=saved))
             elif u.path == "/api/profile":
                 slot = body.get("slot") or "person"
                 patch = body.get("data") or {}
-                if "언어" in patch and patch["언어"] != 채널_프로필.language_code(slot) and ((STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running"):
-                    raise ValueError("제작이 끝난 뒤 언어를 바꿔 주세요. 진행 중인 대본·목소리의 언어를 유지합니다.")
+                if patch and ((STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") in ("running", "paused")):
+                    raise ValueError("대기열을 마치거나 취소한 뒤 채널 프로필·언어를 바꿔 주세요. 대기 중인 영상의 목소리·그림체·브랜드를 유지합니다.")
                 saved = 채널_프로필.save(slot, patch)
                 if "언어" in patch:
                     cfg = load_json("설정.json", {})
@@ -3470,12 +3479,14 @@ class H(BaseHTTPRequestHandler):
                     record = channel_workspaces.read_json(channel_workspaces.workspace_dir(body.get("id", "")) / ".workspace.json")
                     if record and channel_workspaces.own_server(record):
                         raise ValueError("해당 채널 전용 창을 종료한 뒤 계정을 삭제하세요. 저장된 제작물은 그대로 유지됩니다.")
-                    if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
+                    if STATE.get("job") and STATE["job"].status == "running":
                         raise ValueError("제작이 끝난 뒤 계정을 삭제하세요.")
+                    require_queue_idle_for_account_change()
                     delete_account(cfg, body.get("id"))
                     import youtube_upload
                     youtube_upload.disconnect(BASE, body.get("id"))
                 else:
+                    require_queue_idle_for_account_change()
                     save_account(cfg, body)
                 atomic_write_json("설정.json", cfg)
                 if u.path.endswith("/select"):

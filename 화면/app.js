@@ -152,9 +152,12 @@ async function refresh() {
   $('quickImageCost').textContent = `다음 이미지 생성: ${nextImagePrice.name} · 1장 ${nextImagePrice.credits} 크레딧 · 100장 ${(nextImagePrice.credits * 100).toFixed(0)} 크레딧 (장수는 대본 작성 후 결정, 썸네일·영상 변환 별도)`;
   await refreshYtAccounts();
   const activeAccount = renderChannelAccountSelectors();
-  $('channelWindowHint').textContent = savedYtAccounts.length
-    ? (activeAccount ? '이 창에서 채널을 선택하고 한 편씩 제작하세요.' : '현재 제작 유형에 연결된 계정을 선택해 적용하세요.')
-    : '미연결 상태에서도 영상 파일은 만들 수 있습니다. 내 채널 주제 제외와 직접 업로드를 쓰려면 YouTube 채널을 연결하세요.';
+  const queueBusy = ['running', 'paused'].includes(STATE.queue?.status);
+  $('channelWindowHint').textContent = queueBusy
+    ? '대기열이 실행·일시정지 상태입니다. [계속]으로 마치거나 [대기열 취소] 후 채널을 바꾸세요.'
+    : savedYtAccounts.length
+      ? (activeAccount ? '이 창에서 채널을 선택하고 한 편씩 제작하세요.' : '현재 제작 유형에 연결된 계정을 선택해 적용하세요.')
+      : '미연결 상태에서도 영상 파일은 만들 수 있습니다. 내 채널 주제 제외와 직접 업로드를 쓰려면 YouTube 채널을 연결하세요.';
   $('channelConnectButton').classList.toggle('hidden', !!activeAccount);
   if (activeAccount) document.title = `${activeAccount.name} · 영상 제작`;
   $('customTitle').placeholder = ((STATE.profiles || {}).person || {}).언어 === 'ja' ? '例：いい人なのに、会ったあと疲れるのはなぜ？' : '예: 좋은 사람인데 만나고 나면 피곤한 이유';
@@ -1272,8 +1275,9 @@ function renderChannelAccountSelectors() {
   $('referenceAccount').innerHTML = options;
   $('productionAccount').value = active?.id || '';
   $('referenceAccount').value = active?.id || '';
-  $('productionAccount').disabled = !!STATE?.dedicated;
-  $('referenceAccount').disabled = !!STATE?.dedicated;
+  const queueBusy = ['running', 'paused'].includes(STATE?.queue?.status);
+  $('productionAccount').disabled = !!STATE?.dedicated || queueBusy;
+  $('referenceAccount').disabled = !!STATE?.dedicated || queueBusy;
   return active || null;
 }
 async function selectReferenceAccount(accountId = $('referenceAccount').value) {
