@@ -381,8 +381,11 @@ def preflight(root, package, account, privacy, include_shorts=True):
         raise ValueError("완성된 최종.mp4를 찾지 못했거나 파일이 너무 작습니다.")
     files = [long_video]
     shorts = package / "쇼츠"
-    if include_shorts and shorts.is_dir():
-        files.extend(p for p in shorts.glob("*.mp4") if p.is_file())
+    if include_shorts:
+        short_files = sorted(p for p in shorts.glob("*.mp4") if p.is_file()) if shorts.is_dir() else []
+        if len(short_files) != 2:
+            raise ValueError(f"이 업로드 패키지의 쇼츠가 {len(short_files)}/2편입니다. 원본 대본을 다시 선택해 쇼츠 2편을 완성하거나, 쇼츠 업로드를 끄세요.")
+        files.extend(short_files)
     manifest_path = package / "youtube_uploads.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
     if manifest.get("account_id") not in (None, account["id"]) and manifest.get("items"):
@@ -429,7 +432,10 @@ def upload_package(root, package, account, privacy, job, include_shorts=True):
     files = [(long_video, metadata["title"])]
     if include_shorts:
         shorts_dir = package / "쇼츠"
-        for video in sorted(shorts_dir.glob("*.mp4")) if shorts_dir.is_dir() else []:
+        short_files = sorted(p for p in shorts_dir.glob("*.mp4") if p.is_file()) if shorts_dir.is_dir() else []
+        if len(short_files) != 2:
+            raise ValueError(f"이 업로드 패키지의 쇼츠가 {len(short_files)}/2편입니다. 원본 대본을 다시 선택해 쇼츠 2편을 완성하거나, 쇼츠 업로드를 끄세요.")
+        for video in short_files:
             sidecar = video.with_suffix(".json")
             short_title = metadata["title"] + " · 쇼츠"
             if sidecar.is_file():

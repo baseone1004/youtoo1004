@@ -44,15 +44,18 @@ class WorkspaceEditorTest(unittest.TestCase):
             (thumbs / "썸네일_1.jpg").write_bytes(b"image")
             video = assets / "최종.mp4"
             video.write_bytes(b"video")
+            subtitle = assets / "나레이션.srt"
+            subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n검토할 자막", encoding="utf-8")
             (root / "작업_유튜브최적화.txt").write_text(
                 "[최종 추천]\n검색에 맞춘 제목\n[설명글]\n영상 설명\n[태그]\n인생, 심리", encoding="utf-8")
             with patch.object(app, "BASE", str(root)):
-                package = Path(app.make_upload_package(str(script), {"video": str(video)}))
+                package = Path(app.make_upload_package(str(script), {"video": str(video), "srt": str(subtitle)}))
             self.assertEqual((package / "제목.txt").read_text(encoding="utf-8"), "검색에 맞춘 제목")
             self.assertTrue((package / "설명.txt").is_file())
             self.assertTrue((package / "태그.txt").is_file())
             self.assertTrue((package / "썸네일_1.jpg").is_file())
             self.assertTrue((package / "최종.mp4").is_file())
+            self.assertEqual((package / "자막.srt").read_text(encoding="utf-8").strip(), subtitle.read_text(encoding="utf-8").strip())
 
     def test_load_and_save_script_subtitle_and_metadata(self):
         with tempfile.TemporaryDirectory() as td:

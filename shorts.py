@@ -164,8 +164,8 @@ def create(video, srt, out_dir, title, language, ffmpeg, ai=None, count=2, cance
             windows.append(candidate)
             if len(windows) == count:
                 break
-    if not windows:
-        raise ValueError("30초 이상 자막이 이어지는 쇼츠 구간을 찾지 못했습니다.")
+    if len(windows) < count:
+        raise ValueError(f"쇼츠 {count}편을 만들 수 있는 서로 다른 자막 구간이 부족합니다. 현재 {len(windows)}편 구간만 찾았습니다. 대본·자막을 확인한 뒤 다시 제작하세요.")
     source = Path(video)
     generation = f"{source.stat().st_mtime_ns}_{source.stat().st_size}"
     target = Path(out_dir) / generation

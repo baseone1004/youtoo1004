@@ -138,9 +138,20 @@ def library(root):
                      "mtime": max(p.stat().st_mtime if p.exists() else 0, a.stat().st_mtime if a.exists() else 0)})
     for p in (root / "업로드").glob("*/*"):
         if p.is_dir() and (p / "최종.mp4").is_file():
+            source_script = ""
+            try:
+                marker = json.loads((p / "제작원본.json").read_text(encoding="utf-8"))
+                candidate = (root / marker.get("script", "")).resolve()
+                if candidate.is_relative_to(scripts.resolve()) and candidate.is_file():
+                    source_script = str(candidate)
+            except (OSError, ValueError, TypeError):
+                pass
+            short_count = len(list((p / "쇼츠").glob("*.mp4")))
             rows.append({"id": "upload/" + p.relative_to(root / "업로드").as_posix(), "name": p.parent.name + " / " + p.name,
-                         "folder": str(p), "video": str(p / "최종.mp4"), "script_exists": False,
-                         "recoverable": False, "package": True, "mtime": p.stat().st_mtime})
+                         "folder": str(p), "video": str(p / "최종.mp4"), "script_exists": bool(source_script),
+                         "script": source_script,
+                         "short_count": short_count, "recoverable": False, "package": True,
+                         "mtime": p.stat().st_mtime})
     return sorted(rows, key=lambda x: -x["mtime"])
 
 

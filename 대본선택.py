@@ -2201,7 +2201,8 @@ def make_upload_package(script_file, result):
     channel_dir = 대본생성.safe_name(채널_프로필.get("mindam" if is_mindam else "person").get("업로드_폴더") or ("민담" if is_mindam else "심리해독소"))
     package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
     package.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(package / "제작원본.json", {"script": os.path.relpath(os.path.abspath(script_file), BASE)})
+    atomic_write_json(package / "제작원본.json", {"script": os.path.relpath(os.path.abspath(script_file), BASE),
+                                                  "language": script_language(script_file)})
     metadata = dict(title=title, description=description.strip(), tags=tags.strip(),
                     sources=saved.get("sources") or _block(script_text, "출처"))
     write_upload_texts(package, metadata, separate=True)
@@ -2213,6 +2214,9 @@ def make_upload_package(script_file, result):
     video = result.get("video") or os.path.join(assets, "최종.mp4")
     if os.path.isfile(video):
         shutil.copy2(video, package / "최종.mp4")
+    subtitle = result.get("srt") or os.path.join(assets, "나레이션.srt")
+    if os.path.isfile(subtitle):
+        shutil.copy2(subtitle, package / "자막.srt")
     thumbnails = result.get("thumbnails") or sorted(glob.glob(os.path.join(assets, "썸네일", "썸네일_*.jpg")))
     for index, thumb in enumerate(thumbnails, 1):
         if os.path.isfile(thumb):
@@ -2472,6 +2476,7 @@ def make_pipeline(job, req):
             except Exception as e:  # noqa: BLE001
                 check_cancelled()
                 result["shorts_error"] = str(e)
+                result.setdefault("issues", []).append(f"쇼츠 {shorts_count}편 미완료: {e}")
                 job.add(f"   ! 쇼츠 제작을 건너뜁니다 (롱폼 제작은 계속): {e}")
         else:
             job.add("   ! 완성 영상 또는 자막이 없어 쇼츠를 건너뜁니다.")

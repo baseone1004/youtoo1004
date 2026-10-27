@@ -93,6 +93,23 @@ class ProductionLibraryTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertTrue(rows[0]["package"])
             self.assertFalse(rows[0]["recoverable"])
+            self.assertEqual(rows[0]["short_count"], 0)
+
+    def test_upload_package_exposes_only_safe_existing_source_for_short_recovery(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script = root / "대본" / "한국어" / "작업.txt"
+            script.parent.mkdir(parents=True)
+            script.write_text("[대본]\n본문", encoding="utf-8")
+            folder = root / "업로드" / "마음등불심리노트" / "완성한 작업"
+            (folder / "쇼츠").mkdir(parents=True)
+            (folder / "최종.mp4").write_bytes(b"video")
+            (folder / "제작원본.json").write_text(json.dumps({"script": "대본/한국어/작업.txt"}), encoding="utf-8")
+            (folder / "쇼츠" / "short1.mp4").write_bytes(b"short1")
+            row = next(item for item in lib.library(root) if item.get("package"))
+            self.assertEqual(row["script"], str(script.resolve()))
+            self.assertTrue(row["script_exists"])
+            self.assertEqual(row["short_count"], 1)
 
 
 if __name__ == "__main__":

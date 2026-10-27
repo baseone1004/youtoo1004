@@ -60,6 +60,24 @@ class YouTubeUploadTests(unittest.TestCase):
                 result = youtube_upload.preflight(root, package, account, "private", include_shorts=False)
             self.assertEqual(result, {"channel": "내 채널", "video_count": 1, "title": "검토할 제목"})
 
+    def test_uploading_short_bundle_requires_exactly_two_generated_shorts(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            package = root / "업로드" / "channel" / "video"
+            shorts = package / "쇼츠"
+            shorts.mkdir(parents=True)
+            (package / "업로드정보.txt").write_text("[제목]\n제목\n\n[설명]\n설명\n\n[태그]\n", encoding="utf-8")
+            (package / "최종.mp4").write_bytes(b"x" * 1_100_000)
+            account = {"id": "ko", "language": "ko"}
+            auth = patch.object(youtube_upload, "_authorized", return_value=(object(), {"id": "UC1", "title": "내 채널"}))
+            with auth:
+                with self.assertRaisesRegex(ValueError, "0/2편"):
+                    youtube_upload.preflight(root, package, account, "private", include_shorts=True)
+                (shorts / "short1.mp4").write_bytes(b"first")
+                (shorts / "short2.mp4").write_bytes(b"second")
+                result = youtube_upload.preflight(root, package, account, "private", include_shorts=True)
+            self.assertEqual(result["video_count"], 3)
+
     def test_ambiguous_upload_requires_manual_confirmation_and_preserves_successes(self):
         with tempfile.TemporaryDirectory() as td:
             package = Path(td) / "업로드" / "channel" / "video"
