@@ -572,11 +572,22 @@ async function loadProductionLibrary() {
   const box = $('productionLibrary');
   try {
     const r = await api('/api/library');
+    let reservations = [];
+    try {
+      const scheduled = await api('/api/youtube/upload/schedule');
+      reservations = scheduled.items || [];
+      renderUploadReservations(reservations);
+    } catch (e) { $('uploadScheduleList').textContent = '예약 목록을 불러오지 못했습니다: ' + e.message; }
+    setDefaultUploadScheduleTime();
     const items = r.items || [];
     box.innerHTML = items.map(x => {
       const state = x.package ? `업로드 준비 완료 · 쇼츠 ${x.short_count || 0}/2${x.short_count < 2 && x.script_exists ? ' · 대본을 선택해 쇼츠를 이어서 만드세요' : ''}` : `${x.script_exists ? '대본 있음' : '대본 없음'} · ${x.audio ? '음성 있음' : '음성 대기'} · 장면 파일 ${x.media_count}개`;
       const workLabel = x.package && (x.short_count || 0) < 2 ? '쇼츠 복구용 대본 선택' : '작업 선택';
-      return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.package ? `<button class="mini primary" onclick="uploadLibraryPackage('${js(x.id)}','${js(x.name)}')">YouTube 업로드</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">${workLabel}</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}<button class="mini" onclick="markWorkUploaded('${js(x.id)}')">업로드 완료 후 정리</button></div>`;
+      const reservation = reservations.find(y => y.package_id === x.id && ['pending', 'working', 'done', 'attention'].includes(y.status));
+      const reservationButton = x.package ? (reservation
+        ? `<button class="mini" disabled>${reservation.status === 'done' ? '예약 업로드 완료' : reservation.status === 'attention' ? '업로드 확인 필요' : '업로드 예약됨'}</button>`
+        : `<button class="mini primary" onclick="scheduleLibraryPackage('${js(x.id)}','${js(x.name)}')">비공개 업로드 예약</button>`) : '';
+      return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.package ? `<button class="mini primary" onclick="uploadLibraryPackage('${js(x.id)}','${js(x.name)}')">YouTube 업로드</button>${reservationButton}` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">${workLabel}</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}<button class="mini" onclick="markWorkUploaded('${js(x.id)}')">업로드 완료 후 정리</button></div>`;
     }).join('') || (() => {
       const queue = STATE?.queue || {};
       const queueItems = queue.items || [];
@@ -586,6 +597,41 @@ async function loadProductionLibrary() {
         : '<div class="hint"><b>완성되었거나 복구할 작업이 아직 없습니다.</b><p>채널과 주제를 선택해 제작을 시작하면 대본·음성·이미지·영상 결과가 이곳에 표시됩니다.</p><button class="mini primary" onclick="showView(\'wizard\');$(\'step-1\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">주제 선택으로 가기</button></div>';
     })();
   } catch (e) { box.textContent = e.message; }
+}
+function setDefaultUploadScheduleTime() {
+  const input = $('libraryUploadAt');
+  if (!input || input.value) return;
+  const value = new Date(Date.now() + 60 * 60 * 1000);
+  value.setMinutes(Math.ceil(value.getMinutes() / 5) * 5, 0, 0);
+  const part = n => String(n).padStart(2, '0');
+  input.value = `${value.getFullYear()}-${part(value.getMonth() + 1)}-${part(value.getDate())}T${part(value.getHours())}:${part(value.getMinutes())}`;
+}
+function renderUploadReservations(items) {
+  const box = $('uploadScheduleList');
+  if (!box) return;
+  const labels = {pending:'예약 대기', working:'업로드 중', done:'비공개 업로드 완료', attention:'YouTube Studio 확인 필요', cancelled:'취소됨'};
+  box.innerHTML = items.length ? items.map(x => {
+    const urls = ((x.result || {}).uploaded || []).filter(y => y.url).map(y => `<a href="${esc(y.url)}" target="_blank" rel="noopener">${esc(y.file || 'YouTube 영상')}</a>`).join(' · ');
+    const error = x.status === 'attention' ? `<small class="hint">${esc(x.error || '업로드 여부를 YouTube Studio에서 확인하세요. 자동 재전송은 하지 않습니다.')}</small>` : '';
+    return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:220px"><b>${esc(x.channel_name)} · ${esc(x.package_name)}</b><br><small class="hint">${esc(x.scheduled_at.replace('T',' '))} · ${esc(labels[x.status] || x.status)}${x.include_shorts ? ' · 쇼츠 포함' : ' · 롱폼만'}</small>${urls ? `<br>${urls}` : ''}${error ? `<br>${error}` : ''}</span>${x.status === 'pending' ? `<button class="mini" onclick="cancelUploadReservation('${js(x.id)}')">예약 취소</button>` : ''}</div>`;
+  }).join('') : '<p class="hint">예약된 업로드가 없습니다.</p>';
+}
+async function scheduleLibraryPackage(id, name) {
+  const scheduled_at = $('libraryUploadAt')?.value || '';
+  const include_shorts = !!$('libraryScheduleShorts')?.checked;
+  if (!scheduled_at) return toast('예약 날짜와 시간을 선택하세요.', true);
+  const contents = include_shorts ? '롱폼 1편과 쇼츠 2편' : '롱폼 1편';
+  if (!confirm(`${name}\n\n${scheduled_at.replace('T',' ')}에 ${contents}을(를) YouTube에 비공개로 예약합니다.\nPC와 프로그램이 켜져 있어야 실행됩니다. 공개는 YouTube Studio에서 직접 해야 합니다.`)) return;
+  try {
+    const result = await api('/api/youtube/upload/schedule', {package_id:id, scheduled_at, include_shorts});
+    toast(`${result.item.channel_name} 채널의 비공개 업로드를 예약했습니다.`);
+    await loadProductionLibrary();
+  } catch (e) { toast(e.message, true); }
+}
+async function cancelUploadReservation(id) {
+  if (!confirm('이 비공개 업로드 예약을 취소할까요?')) return;
+  try { await api('/api/youtube/upload/schedule/cancel', {id}); toast('업로드 예약을 취소했습니다.'); await loadProductionLibrary(); }
+  catch (e) { toast(e.message, true); }
 }
 function openProductionLibrary() {
   showView('wizard');

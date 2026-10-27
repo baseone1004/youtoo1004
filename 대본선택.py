@@ -26,6 +26,7 @@ import 채널_프로필
 import 주제_추천
 import 유튜브_API
 import youtube_accounts
+import youtube_upload_schedule
 import production_library
 import scene_layout
 import production_duration
@@ -3255,6 +3256,10 @@ class H(BaseHTTPRequestHandler):
                                 video=os.path.abspath(os.path.join(a, "최종.mp4")) if os.path.exists(os.path.join(a, "최종.mp4")) else ""))
             elif u.path == "/api/library":
                 self._json({"items": production_library.library(BASE)})
+            elif u.path == "/api/youtube/upload/schedule":
+                self._json({"items": youtube_upload_schedule.public_items(BASE),
+                            "max_per_channel_day": youtube_upload_schedule.MAX_LONG_FORMS_PER_ACCOUNT_DAY,
+                            "timezone": "local"})
             elif u.path == "/api/media/check":
                 sf = q.get("script", [""])[0]
                 data = workspace_data(sf)
@@ -3522,6 +3527,27 @@ class H(BaseHTTPRequestHandler):
                     raise ValueError("업로드 패키지를 보관함에서 다시 선택하세요.")
                 account, _slot = youtube_upload.account_for_package(BASE, row["folder"], accounts, cfg)
                 self._json(youtube_upload.reset_uncertain(BASE, row["folder"], account["id"], body.get("confirmed_not_uploaded") is True))
+            elif u.path == "/api/youtube/upload/schedule/cancel":
+                item = youtube_upload_schedule.cancel(BASE, str(body.get("id") or ""))
+                self._json({"ok": True, "id": item["id"], "status": item["status"]})
+            elif u.path == "/api/youtube/upload/schedule":
+                cfg = load_json("설정.json", {})
+                youtube_accounts.migrate(cfg)
+                accounts = cfg.get("유튜브_계정") or []
+                package_id = str(body.get("package_id") or "")
+                row = next((x for x in production_library.library(BASE)
+                            if x.get("id") == package_id and x.get("package")), None)
+                if not row:
+                    raise ValueError("보관함에서 완성된 업로드 패키지를 선택하세요.")
+                account, _slot = youtube_upload.account_for_package(BASE, row["folder"], accounts, cfg)
+                check = youtube_upload.preflight(BASE, row["folder"], account, "private",
+                                                 include_shorts=body.get("include_shorts") is True)
+                item = youtube_upload_schedule.add(
+                    BASE, package_id=package_id, package_name=row["name"], folder=row["folder"],
+                    account_id=account["id"], channel_name=check.get("channel") or account.get("name", ""),
+                    scheduled_at=body.get("scheduled_at"), include_shorts=body.get("include_shorts") is True)
+                self._json({"ok": True, "item": {key: item.get(key) for key in
+                            ("id", "package_id", "package_name", "channel_name", "scheduled_at", "include_shorts", "visibility", "status")}})
             elif u.path == "/api/youtube/upload":
                 import youtube_upload
                 cfg = load_json("설정.json", {})
@@ -3720,6 +3746,69 @@ def auto_resume_queue():
             QUEUE.save()
 
 
+def scheduled_upload_worker():
+    """Run only explicitly reserved uploads; interrupted uploads require manual review."""
+    youtube_upload_schedule.recover_interrupted(BASE)
+    while True:
+        try:
+            with LOCK:
+                job_busy = bool(STATE.get("job") and STATE["job"].status == "running")
+            with QUEUE.lock:
+                queue_busy = QUEUE.data.get("status") in ("running", "paused")
+            if job_busy or queue_busy:
+                time.sleep(10)
+                continue
+            item = youtube_upload_schedule.claim_due(BASE)
+            if not item:
+                time.sleep(10)
+                continue
+            try:
+                cfg = load_json("설정.json", {})
+                youtube_accounts.migrate(cfg)
+                accounts = cfg.get("유튜브_계정") or []
+                account = next((a for a in accounts if a.get("id") == item.get("account_id")), None)
+                row = next((x for x in production_library.library(BASE)
+                            if x.get("id") == item.get("package_id") and x.get("package")), None)
+                if not account or not row:
+                    raise ValueError("예약한 채널 계정이나 업로드 패키지를 찾지 못했습니다. 예약을 확인하세요.")
+                if row.get("folder") != item.get("folder"):
+                    raise ValueError("예약한 패키지 경로가 바뀌었습니다. 안전을 위해 업로드를 멈췄습니다.")
+                check = youtube_upload.preflight(BASE, row["folder"], account, "private",
+                                                 include_shorts=item.get("include_shorts") is True)
+
+                def upload_reserved(job):
+                    job.stage = "예약된 비공개 업로드 준비"
+                    job.add(f"▶ 예약 업로드 · {account.get('name', 'YouTube 채널')} · 검토 후 공개")
+                    return youtube_upload.upload_package(BASE, row["folder"], account, "private", job,
+                                                         include_shorts=item.get("include_shorts") is True)
+
+                try:
+                    job = run_job("youtube_upload", upload_reserved)
+                except RuntimeError as exc:
+                    if "지금 '" in str(exc) and "작업이 돌고 있습니다" in str(exc):
+                        youtube_upload_schedule.release(BASE, item["id"])
+                        time.sleep(10)
+                        continue
+                    raise
+                while job.status == "running":
+                    time.sleep(1)
+                if job.status != "done":
+                    raise RuntimeError(job.error or "예약 업로드가 끝나지 않았습니다.")
+                result = dict(job.result or {})
+                result["preflight_channel"] = check.get("channel", "")
+                youtube_upload_schedule.finish(BASE, item["id"], result=result)
+                telegram_notice(f"✅ 예약된 비공개 업로드가 끝났습니다.\n채널: {item.get('channel_name', '')}\n주제: {item.get('package_name', '')}\nYouTube Studio에서 검토 후 직접 공개하세요.")
+            except Exception as exc:  # noqa: BLE001
+                try:
+                    youtube_upload_schedule.finish(BASE, item["id"], error=f"{type(exc).__name__}: {exc}")
+                except Exception as save_error:  # noqa: BLE001
+                    print("예약 업로드 상태 저장 실패:", type(save_error).__name__, file=sys.__stderr__)
+                telegram_notice(f"⚠ 예약된 비공개 업로드를 확인해야 합니다.\n채널: {item.get('channel_name', '')}\n주제: {item.get('package_name', '')}\nYouTube Studio에서 수신 여부를 먼저 확인하세요. 자동 재전송은 하지 않았습니다.")
+        except Exception as exc:  # noqa: BLE001
+            print("예약 업로드 대기열 오류:", type(exc).__name__, file=sys.__stderr__)
+            time.sleep(15)
+
+
 def main():
     if "--wait-port" in sys.argv:                    # 이전 프로세스가 포트를 놓을 때까지 최대 10초 (접속이 되는 동안은 아직 살아 있는 것)
         import socket
@@ -3739,6 +3828,7 @@ def main():
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     print(f"대본 만들기 화면: {ADDR}  (종료: 이 창을 닫거나 Ctrl+C)")
     threading.Thread(target=auto_resume_queue, daemon=True, name="auto-resume").start()
+    threading.Thread(target=scheduled_upload_worker, daemon=True, name="scheduled-private-upload").start()
     try:
         old = empty_trash(TRASH_KEEP_DAYS)
         if old["removed"]:
