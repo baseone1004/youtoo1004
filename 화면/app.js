@@ -1164,7 +1164,7 @@ async function loadEditorSettings() { loadMascot(); await refreshKieStatus(); }
 
 // ── 채널 프로필 ─────────────────────────────────────
 let profileSlot = 'person';
-function pname(slot) { const p = (STATE && STATE.profiles && STATE.profiles[slot]) || {}; return p.이름 || (slot === 'mindam' ? '이야기형' : '정보형'); }
+function pname(slot) { const p = (STATE && STATE.profiles && STATE.profiles[slot]) || {}; return p.표시_이름 || p.이름 || (slot === 'mindam' ? '이야기형' : '정보형'); }
 function renderProfileNames() {
   const P = STATE.profiles || {}; if (!P.person) return;
   $('brandSub').textContent = (STATE.hidden_channels || []).includes('mindam') ? pname('person') : `${pname('person')} · ${pname('mindam')}`;
@@ -1172,11 +1172,13 @@ function renderProfileNames() {
   document.querySelectorAll('.pname-person').forEach(el => el.textContent = pname('person'));
   document.querySelectorAll('.pname-mindam').forEach(el => el.textContent = pname('mindam'));
   document.querySelectorAll('#profSeg button').forEach(b => { b.textContent = `${pname(b.dataset.slot)} (${(P[b.dataset.slot] || {}).유형 || ''})`; });
-  const pf = P[channel] || {}; $('chHint').textContent = `${pf.이름 || ''} · ${((STATE.languages || {})[pf.언어] || {}).이름 || '한국어'} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
+  const pf = P[channel] || {}; $('chHint').textContent = `${pname(channel)} · ${((STATE.languages || {})[pf.언어] || {}).이름 || '한국어'} · ${pf.영상_길이 || ''} · ${pf.유형 || ''}`;
 }
 function setProfileSlot(slot) { profileSlot = slot; document.querySelectorAll('#profSeg button').forEach(b => b.classList.toggle('on', b.dataset.slot === slot)); renderProfileForm(); }
 function renderProfileForm() {
   const P = STATE.profiles || {}, p = P[profileSlot]; if (!p || !$('pf_이름')) return;
+  $('profileNameLabel').textContent = profileSlot === 'person' && p.언어 === 'ja' ? '한국 채널 기본 이름' : '채널 이름';
+  $('profileNameHint').textContent = profileSlot === 'person' && p.언어 === 'ja' ? '일본 채널 표시는 고정 브랜드명 心のしくみ便り를 사용합니다.' : '';
   $('pf_썸네일_레이아웃').innerHTML = Object.entries(STATE.layouts || {}).map(([k, v]) => `<option value="${k}" ${(p.썸네일 || {}).레이아웃 === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
   $('pf_언어').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(p.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
   for (const k of ['이름', '대상_시청자', '영상_길이', '해시태그', '설명', '카테고리', '면책', '업로드_폴더']) $('pf_' + k).value = p[k] || '';
@@ -1187,7 +1189,7 @@ function renderProfileForm() {
   $('pf_브랜드_배지').value = b.배지 || ''; $('pf_화풍_접미').value = p.화풍_접미 || '';
   $('pf_브랜드_사진_톤').innerHTML = Object.entries(STATE.tones || {}).map(([k, v]) => `<option value="${k}" ${(b.사진_톤 || 'none') === k ? 'selected' : ''}>${esc(v)}</option>`).join('');
   $('brandPreview').innerHTML = '';
-  $('profTypeHint').textContent = profileSlot === 'mindam' ? '이야기형: 기획 → 챕터로 창작 이야기를 씁니다 (야담·민담·전설 등)' : '정보형: 주제 하나를 9구간 나레이션으로 풀어 씁니다 (심리·건강·역사·상식 등)';
+  $('profTypeHint').textContent = profileSlot === 'mindam' ? '이야기형: 기획 → 챕터로 창작 이야기를 씁니다 (야담·민담·전설 등)' : (p.언어 === 'ja' ? '정보형: 일본 채널 心のしくみ便り로 주제·대본·제목·설명을 일본어로 만듭니다.' : '정보형: 주제 하나를 9구간 나레이션으로 풀어 씁니다 (심리·건강·역사·상식 등)');
   $('profStat').textContent = p.이름 || '';
   loadMascot();
 }
@@ -1204,7 +1206,7 @@ async function saveProfile() {
   data.화풍_접미 = $('pf_화풍_접미').value;
   if (!data.이름.trim()) return toast('채널 이름을 넣으세요.', true);
   if (data.언어 === 'ja') { if (((STATE.profiles || {})[profileSlot] || {}).언어 === 'ja') { data.브랜드_일본 = data.브랜드; data.검색어_일본 = data.검색어; } delete data.브랜드; delete data.검색어; }
-  try { await api('/api/profile', {slot: profileSlot, data}); toast(`${data.이름} 프로필 저장됨 — 다음 제작부터 반영됩니다`); await refresh(); } catch (e) { toast(e.message, true); }
+  try { await api('/api/profile', {slot: profileSlot, data}); await refresh(); toast(`${pname(profileSlot)} 프로필 저장됨 — 다음 제작부터 반영됩니다`); } catch (e) { toast(e.message, true); }
 }
 
 
@@ -1233,7 +1235,7 @@ function renderBeginnerGuide(job = STATE && STATE.job) {
   else if (job && job.status === 'error') guide.textContent = '작업이 멈췄습니다. 아래 오류 안내를 확인한 뒤 이어서 제작할 수 있습니다.';
   else {
     const p = ((STATE || {}).profiles || {}).person || {};
-    guide.textContent = `${p.이름 || '채널'} · ${p.언어 === 'ja' ? '일본어' : '한국어'} 제작 — 주제를 적거나 추천에서 고른 뒤 ‘제작 시작’을 누르세요.`;
+    guide.textContent = `${pname('person')} · ${p.언어 === 'ja' ? '일본어' : '한국어'} 제작 — 주제를 적거나 추천에서 고른 뒤 ‘제작 시작’을 누르세요.`;
   }
 }
 

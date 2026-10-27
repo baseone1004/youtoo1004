@@ -191,7 +191,7 @@
     <h2>내 채널 프로필 <span class="stat ok" id="profStat"></span></h2>
     <p class="lead">채널 이름·소개·시청자·마스코트를 여기서 정하면 대본·주제 추천·제목·설명·이미지·썸네일 프롬프트가 전부 이 내용에 맞춰집니다. 채널이 바뀌면 여기만 고치면 됩니다.</p>
     <div class="row"><div class="seg" id="profSeg"><button data-slot="person" class="on" onclick="setProfileSlot('person')">정보형 채널</button><button data-slot="mindam" onclick="setProfileSlot('mindam')">이야기형 채널</button></div><span class="hint" id="profTypeHint"></span></div>
-    <div class="keyrow"><b>채널 이름</b><input type="text" id="pf_이름" placeholder="예: 심리해독소"></div>
+    <div class="keyrow"><b id="profileNameLabel">채널 이름</b><input type="text" id="pf_이름" placeholder="예: 마음등불심리노트"><span id="profileNameHint" class="hint"></span></div>
     <div class="keyrow"><b>제작 언어</b><select id="pf_언어" style="max-width:240px"></select><span class="hint">대본·제목·설명·태그·자막에 적용됩니다. 이미지 프롬프트는 AI 호환을 위해 영어로 유지됩니다.</span></div>
     <div class="keyrow"><b>시청자</b><input type="text" id="pf_대상_시청자" placeholder="예: 관계·심리에 관심 있는 40~60대"></div>
     <div class="keyrow"><b>영상 길이</b><input type="text" id="pf_영상_길이" placeholder="예: 20~30분" style="max-width:160px"><b style="min-width:auto">해시태그</b><input type="text" id="pf_해시태그" placeholder="#채널명" style="max-width:200px"></div>

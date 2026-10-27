@@ -313,7 +313,7 @@ def summary():
     """화면용: 자리별 이름·유형·마스코트 유무·업로드 폴더."""
     out = {}
     for slot, p in load().items():
-        out[slot] = dict(p, 적용_브랜드=brand(slot), 적용_검색어=benchmark_queries(slot), 썸네일=thumbnail_profile(slot), 마스코트_있음=bool((p.get("마스코트") or {}).get("이름")))
+        out[slot] = dict(p, 표시_이름=name(slot), 적용_브랜드=brand(slot), 적용_검색어=benchmark_queries(slot), 썸네일=thumbnail_profile(slot), 마스코트_있음=bool((p.get("마스코트") or {}).get("이름")))
     return out
 
 

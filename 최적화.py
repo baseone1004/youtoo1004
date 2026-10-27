@@ -18,7 +18,7 @@ def 채널_설명(channel):
     import 채널_프로필
     p = 채널_프로필.get(channel)
     tail = " 제목 끝에 ' | 야담 옛날이야기 민담 전설 설화'." if channel == "mindam" else ""
-    return (f"채널 '{p['이름']}' — {p['설명']} 시청자: {p['대상_시청자']}. 영상 길이 {p.get('영상_길이', '')}. "
+    return (f"채널 '{채널_프로필.name(channel)}' — {p['설명']} 시청자: {p['대상_시청자']}. 영상 길이 {p.get('영상_길이', '')}. "
             f"기본 태그: {', '.join(p.get('기본_태그') or [])}.{tail}")
 
 

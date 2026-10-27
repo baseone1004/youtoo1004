@@ -33,7 +33,12 @@ except ImportError:
 def _profile():
     try:
         import 채널_프로필
-        return 채널_프로필.get("person")
+        profile = 채널_프로필.get("person")
+        if 채널_프로필.language_code("person") == "ja":
+            profile = dict(profile)
+            profile["이름"] = 채널_프로필.name("person")
+            profile["해시태그"] = "#" + 채널_프로필.name("person")
+        return profile
     except Exception:  # noqa: BLE001
         return {"이름": "마음등불심리노트", "검색어": ["인간관계 심리", "사람 심리 이유"], "기본_태그": ["심리학", "인간관계"], "해시태그": "#마음등불심리노트", "면책": ""}
 import 채널_프로필
