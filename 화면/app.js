@@ -151,14 +151,20 @@ async function refresh() {
   const nextImagePrice = imagePrice(channel);
   $('quickImageCost').textContent = `다음 이미지 생성: ${nextImagePrice.name} · 1장 ${nextImagePrice.credits} 크레딧 · 100장 ${(nextImagePrice.credits * 100).toFixed(0)} 크레딧 (장수는 대본 작성 후 결정, 썸네일·영상 변환 별도)`;
   await refreshYtAccounts();
-  $('referenceAccount').innerHTML = savedYtAccounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}${a.language === 'ja' ? ' · 일본어' : ' · 한국어'}</option>`).join('');
+  const accountOptions = savedYtAccounts.length
+    ? savedYtAccounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}${a.language === 'ja' ? ' · 일본어' : ' · 한국어'}</option>`).join('')
+    : '<option value="">YouTube 채널 미연결</option>';
+  $('referenceAccount').innerHTML = accountOptions;
   const activeAccount = savedYtAccounts.find(a => (a.selected_slots || []).includes('person'));
   if (activeAccount) $('referenceAccount').value = activeAccount.id;
-  $('productionAccount').innerHTML = $('referenceAccount').innerHTML;
+  $('productionAccount').innerHTML = accountOptions;
   if (activeAccount) $('productionAccount').value = activeAccount.id;
   $('productionAccount').disabled = !!STATE.dedicated;
   $('referenceAccount').disabled = !!STATE.dedicated;
-  $('channelWindowHint').textContent = '이 창에서 채널을 선택하고 한 편씩 제작하세요.';
+  $('channelWindowHint').textContent = savedYtAccounts.length
+    ? '이 창에서 채널을 선택하고 한 편씩 제작하세요.'
+    : '미연결 상태에서도 영상 파일은 만들 수 있습니다. 내 채널 주제 제외와 직접 업로드를 쓰려면 YouTube 채널을 연결하세요.';
+  $('channelConnectButton').classList.toggle('hidden', savedYtAccounts.length > 0);
   if (activeAccount) document.title = `${activeAccount.name} · 영상 제작`;
   $('customTitle').placeholder = ((STATE.profiles || {}).person || {}).언어 === 'ja' ? '例：いい人なのに、会ったあと疲れるのはなぜ？' : '예: 좋은 사람인데 만나고 나면 피곤한 이유';
   renderBeginnerGuide();
@@ -1263,6 +1269,7 @@ async function saveImageMode() {
 }
 let savedYtAccounts = [];
 async function selectReferenceAccount(accountId = $('referenceAccount').value) {
+  if (!accountId) return;
   try {
     const state = await genStatus();
     if (['running','paused'].includes(state.status)) throw new Error('이미지 생성이 끝난 뒤 채널을 바꿔 주세요.');
