@@ -566,11 +566,19 @@ async function loadProductionLibrary() {
   const box = $('productionLibrary');
   try {
     const r = await api('/api/library');
-    box.innerHTML = (r.items || []).map(x => {
+    const items = r.items || [];
+    box.innerHTML = items.map(x => {
       const state = x.package ? `업로드 준비 완료 · 쇼츠 ${x.short_count || 0}/2${x.short_count < 2 && x.script_exists ? ' · 대본을 선택해 쇼츠를 이어서 만드세요' : ''}` : `${x.script_exists ? '대본 있음' : '대본 없음'} · ${x.audio ? '음성 있음' : '음성 대기'} · 장면 파일 ${x.media_count}개`;
       const workLabel = x.package && (x.short_count || 0) < 2 ? '쇼츠 복구용 대본 선택' : '작업 선택';
       return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.package ? `<button class="mini primary" onclick="uploadLibraryPackage('${js(x.id)}','${js(x.name)}')">YouTube 업로드</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">${workLabel}</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}<button class="mini" onclick="markWorkUploaded('${js(x.id)}')">업로드 완료 후 정리</button></div>`;
-    }).join('') || '<p class="hint">저장된 작업이 없습니다.</p>';
+    }).join('') || (() => {
+      const queue = STATE?.queue || {};
+      const queueItems = queue.items || [];
+      const resumable = queue.status === 'paused' || queueItems.some(x => ['pending', 'error'].includes(x.status));
+      return resumable
+        ? '<div class="hint"><b>이어 만들 제작이 대기 중입니다.</b><p>아직 보관함에 완성 결과가 없습니다. 위 제작 현황의 <b>이어 만들기</b>를 누르면 멈춘 지점부터 계속합니다.</p><button class="mini primary" onclick="queueControl(\'resume\')">▶ 이어 만들기</button></div>'
+        : '<div class="hint"><b>완성되었거나 복구할 작업이 아직 없습니다.</b><p>채널과 주제를 선택해 제작을 시작하면 대본·음성·이미지·영상 결과가 이곳에 표시됩니다.</p><button class="mini primary" onclick="showView(\'wizard\')">주제 선택으로 가기</button></div>';
+    })();
   } catch (e) { box.textContent = e.message; }
 }
 function openProductionLibrary() {
