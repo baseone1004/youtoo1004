@@ -1,13 +1,14 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const src=fs.readFileSync('화면/app.js','utf8');
-const fn=src.slice(src.indexOf('function imagePrice(slot)'));
+const start=src.indexOf('function imagePrice(slot)');
+const fn=src.slice(start,src.indexOf('async function enableCodexMode()',start));
 const ctx={STATE:{profiles:{person:{마스코트:{레퍼런스_사용:false}}}}};
 vm.createContext(ctx);vm.runInContext(fn,ctx);
 assert.equal(ctx.imagePrice('person').credits,0.8);
 assert.equal(Math.floor(1000/ctx.imagePrice('person').credits),1250);
 ctx.STATE.profiles.person.마스코트.레퍼런스_사용=true;
-assert.equal(ctx.imagePrice('person').credits,5);
-assert.equal(Math.floor(1000/ctx.imagePrice('person').credits),200);
+assert.equal(ctx.imagePrice('person').credits,2);
+assert.equal(Math.floor(1000/ctx.imagePrice('person').credits),500);
 ctx.STATE.profiles.person.마스코트.생성_모델='seedream/4.5-edit';
 assert.equal(ctx.imagePrice('person').credits,6.5);
 assert.equal(Math.floor(1000/ctx.imagePrice('person').credits),153);

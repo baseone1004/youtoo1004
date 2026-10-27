@@ -1,19 +1,20 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const source=fs.readFileSync('화면/app.js','utf8');
-const fn=source.slice(source.indexOf('async function openChannelWindow('),source.indexOf('async function selectReferenceAccount('));
-(async()=>{
-  for(const allowed of [true,false]){
-    let destination='',refreshed=false;
-    const link={classList:{remove:()=>{link.visible=true;}}};
-    const popup={location:{replace:url=>destination=url},close:()=>{}};
-    const context={window:{open:()=>allowed?popup:null},api:async(path,body)=>{assert.equal(path,'/api/workspaces/open');assert.equal(body.id,'ja');return {url:'http://127.0.0.1:18802/'};},$:()=>link,toast:()=>{},refreshParallelChannels:async()=>{refreshed=true;}};
-    vm.createContext(context);vm.runInContext(fn,context);
-    const button={disabled:false,textContent:'일본 채널 · 별도 창 열기'};
-    await context.openChannelWindow('ja',button);
-    assert.equal(button.disabled,false);
-    assert(refreshed && link.visible);
-    assert.equal(link.href,'http://127.0.0.1:18802/');
-    assert.equal(destination,allowed?link.href:'');
-  }
-  console.log('Parallel channel UI checks passed (popup allowed/blocked)');
-})().catch(e=>{console.error(e);process.exitCode=1;});
+const start=source.indexOf('function setChannel(ch)');
+const fn=source.slice(start,source.indexOf('async function saveQuickLanguage()',start));
+const nodes={chHint:{},genreChips:{classList:{toggle(){}}},customTitle:{},quickLanguage:{}};
+const context={channel:'mindam',STATE:{
+  profiles:{person:{이름:'心のしくみ便り',언어:'ja',영상_길이:'20~30분',유형:'정보형'},mindam:{이름:'설루온',언어:'ko',영상_길이:'1~2시간',유형:'이야기형'}},
+  channels:{person:{},mindam:{}},
+},document:{querySelectorAll:()=>[]},$:id=>nodes[id],loadAnalysis(){},renderChannels(){},renderTopics(){}};
+vm.createContext(context);vm.runInContext(fn,context);
+context.setChannel('person');
+assert.equal(context.channel,'person');
+assert.equal(nodes.quickLanguage.value,'ja');
+assert(nodes.chHint.textContent.includes('心のしくみ便り'));
+context.setChannel('mindam');
+assert.equal(context.channel,'mindam');
+assert.equal(nodes.quickLanguage.value,'ko');
+assert(nodes.chHint.textContent.includes('설루온'));
+assert(!source.includes('async function openChannelWindow('));
+console.log('Single-app channel selection checks passed (Japanese psychology and Korean folk tale)');

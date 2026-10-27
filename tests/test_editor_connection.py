@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import MethodType
 from unittest.mock import patch, Mock
 import editor_connection as connection
 import 대본선택 as app
@@ -36,8 +37,19 @@ class ConnectionTest(unittest.TestCase):
             self.assertFalse(connection.is_editor(8765))
 
     def test_proxy_does_not_send_key_to_unrelated_program(self):
-        handler = Mock()
-        with patch.object(app, "is_editor", return_value=False), patch.object(app._rq, "request") as request:
+        class Handler:
+            pass
+
+        handler = Handler()
+        handler._json = Mock()
+        handler._embedded_editor = MethodType(app.H._embedded_editor, handler)
+        with tempfile.TemporaryDirectory() as td, \
+                patch.object(app, "BASE", td), \
+                patch.object(app, "editor_port", return_value=8765), \
+                patch.object(app, "is_editor", return_value=False), \
+                patch.object(app._rq, "request") as request:
             app.H._editor_proxy(handler, "/api/config", {"kie_api_key": "fake-test-key"})
             request.assert_not_called()
-            self.assertEqual(handler._json.call_args.args[1], 503)
+            self.assertEqual(handler._json.call_args.args, ({"ok": True}, 200))
+            saved = json.loads((Path(td) / "설정.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved["KIE_API_키"], "fake-test-key")
