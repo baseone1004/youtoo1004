@@ -138,7 +138,7 @@ def _render(ffmpeg, video, output, start, end, cancel=None):
         "boxblur=24:12,eq=brightness=-0.28,setsar=1[back];"
         "[fg]scale=1080:608:force_original_aspect_ratio=decrease,"
         "pad=1080:608:(ow-iw)/2:(oh-ih)/2,"
-        "drawbox=x=0:y=ih-76:w=iw:h=76:color=black@0.4:t=fill,setsar=1[front];"
+        "crop=1080:550:0:0,scale=1080:608:flags=lanczos,setsar=1[front];"
         f"[back][front]overlay=(W-w)/2:(H-h)/2,{subtitle_filter},format=yuv420p[v]"
     )
     command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", video,
