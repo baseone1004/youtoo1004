@@ -1526,7 +1526,7 @@ def _make_tts(job, req):
     r = 나레이션.synthesize(sents, out, req.get("api_key") or cfg.get("인월드_API_키", ""), voice,
                          settings["model"] if settings["timestamps"] else req.get("model") or settings["model"], speed,
                          log=job.add, cancel=lambda: job.cancel_requested,
-                         subtitle_lines=2 if channel == "mindam" else 1, groups=groups,
+                         subtitle_lines=1, groups=groups,
                          language=settings["language"], timestamps=settings["timestamps"],
                          normalize_numbers="number_normalization" in settings, force=bool(req.get("force")),
                          repair_alignment=bool(req.get("repair_alignment")),
@@ -1884,7 +1884,7 @@ def _run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     if "/민담/" in os.path.abspath(srt).replace("\\", "/"):
         # 이야기형은 시대 분위기에 맞는 바탕체 자막을 사용한다. 크기·색·위치는 편집기 설정을 유지한다.
         body["srt_font"] = "Batang"
-        body["srt_bold"] = False
+        body["srt_bold"] = True
     if re.search(r"[ぁ-んァ-ン]", Path(srt).read_text(encoding="utf-8-sig")) and os.path.isfile(os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", "YuGothM.ttc")):
         body["srt_font"] = "Yu Gothic"
     j = aip_wait("/api/render", body, job=job)

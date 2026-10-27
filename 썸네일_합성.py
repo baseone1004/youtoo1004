@@ -444,9 +444,6 @@ def layout_ink_gold(im, top, bottom, b):
     gold, seal = _hex(b["강조색"]), _hex(b["보조색"])
     im = _shade_bottom(_tone(im, b["사진_톤"]), 0.5, 0.92, (14, 10, 8))
     d = ImageDraw.Draw(im)
-    frame = (217, 163, 58)
-    d.rectangle((14, 14, W - 15, H - 15), outline=frame, width=5)
-    d.rectangle((26, 26, W - 27, H - 27), outline=frame, width=2)
     _band_texts(d, top, bottom, H - 250, WHITE, gold, BLACK, W - 160)
     if b["배지"]:
         _seal(im, (W - 140, 44), b["배지"], 104, 0, seal)

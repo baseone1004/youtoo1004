@@ -118,7 +118,7 @@ def build_app(out_app, editor):
     (out_app / "설정.json").write_text(json.dumps(기본_설정, ensure_ascii=False, indent=2), encoding="utf-8")
     for d in ("대본", "업로드", "대본/민담", "대본/_상태"):
         (out_app / d).mkdir(parents=True, exist_ok=True)
-    # 구매자용 채널 프로필: 내 채널(심리해독소·옛날서재)의 이름·마스코트가 남지 않도록 일반 값으로
+    # 구매자용 채널 프로필: 제작자의 개인 채널명·마스코트가 남지 않도록 일반 값으로
     (out_app / "채널_프로필.json").write_text(json.dumps(구매자_프로필, ensure_ascii=False, indent=2), encoding="utf-8")
     log(f"2) 편집프로그램 복사: {editor}")
     out_ed = out_app / "편집프로그램"
