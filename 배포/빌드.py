@@ -3,7 +3,7 @@
 
     python 배포/빌드.py                # 배포판/유튜브영상자동제작/ + zip
     python 배포/빌드.py --no-zip       # 폴더만
-    python 배포/빌드.py --editor "D:\\편집프로그램"   # 편집프로그램 위치를 직접 지정
+    python 배포/빌드.py --editor "D:\\편집프로그램"   # 선택 사항: 외부 편집기 포함
 
 만들어지는 구조:
     유튜브영상자동제작/
@@ -11,9 +11,9 @@
       시작(창없이).vbs          ← 창 없이 실행
       설치_안내.txt
       python/                  ← 내장 파이썬 (python.org 임베디드판 + 필요한 패키지)
-      app/                     ← 이 프로그램 + 편집프로그램 + ffmpeg
+      app/                     ← 이 프로그램 + ffmpeg (외부 편집기는 선택 사항)
         시작.py 대본선택.py … 화면/ 지침/ assets/ 딥시크_확장/
-        편집프로그램/ (app.py core/ static/ … bin/ffmpeg.exe)
+        편집프로그램/bin/ffmpeg.exe, ffprobe.exe
         설정.json (빈 값)  채널_프로필.json 없음 → 기본값
 개인 자료(설정.json 의 키, 대본/, 업로드/, 채널_프로필.json, 계획·후보 json, 로그)는 넣지 않는다."""
 import argparse
@@ -90,7 +90,7 @@ def find_editor(explicit):
     for c in cands:
         if (c / "app.py").is_file():
             return c.resolve()
-    raise SystemExit("편집프로그램 폴더를 찾지 못했습니다. --editor 로 지정하세요.")
+    return None
 
 
 def copy_tree(src, dst, skip_dirs=("__pycache__",), skip_suffix=(".pyc", ".log", ".mp4")):
@@ -120,18 +120,22 @@ def build_app(out_app, editor):
         (out_app / d).mkdir(parents=True, exist_ok=True)
     # 구매자용 채널 프로필: 제작자의 개인 채널명·마스코트가 남지 않도록 일반 값으로
     (out_app / "채널_프로필.json").write_text(json.dumps(구매자_프로필, ensure_ascii=False, indent=2), encoding="utf-8")
-    log(f"2) 편집프로그램 복사: {editor}")
+    log("2) 미디어 엔진 준비")
     out_ed = out_app / "편집프로그램"
-    out_ed.mkdir()
-    for f in EDITOR_FILES:
-        if (editor / f).is_file():
-            shutil.copy2(editor / f, out_ed / f)
-    for d in EDITOR_DIRS:
-        if (editor / d).is_dir():
-            copy_tree(editor / d, out_ed / d)
-    (out_ed / "config.json").write_text("{}", encoding="utf-8")
-    from 시작 import apply_editor_integrations
-    apply_editor_integrations(out_ed)
+    out_ed.mkdir(parents=True, exist_ok=True)
+    if editor:
+        log(f"   선택적 외부 편집기 복사: {editor}")
+        for f in EDITOR_FILES:
+            if (editor / f).is_file():
+                shutil.copy2(editor / f, out_ed / f)
+        for d in EDITOR_DIRS:
+            if (editor / d).is_dir():
+                copy_tree(editor / d, out_ed / d)
+        (out_ed / "config.json").write_text("{}", encoding="utf-8")
+        from 시작 import apply_editor_integrations
+        apply_editor_integrations(out_ed)
+    else:
+        log("   외부 편집기 없음 · 내장 KIE 이미지 생성과 FFmpeg 렌더링 사용")
 
 
 def build_ffmpeg(out_app, skip_download):
@@ -168,7 +172,7 @@ def build_python(out_py, req_file):
     # ._pth: 임베디드 파이썬은 이 파일에 적힌 경로만 sys.path 에 넣는다 (스크립트 폴더도 자동으로 안 들어감)
     pth = next(out_py.glob("python*._pth"))
     zip_name = pth.name.replace("._pth", ".zip")
-    pth.write_text("\n".join([zip_name, ".", "Lib", "..\\app", "..\\app\\편집프로그램", "import site", ""]), encoding="utf-8")
+    pth.write_text("\n".join([zip_name, ".", "Lib", "..\\app", "import site", ""]), encoding="utf-8")
     exe = out_py / "python.exe"
     env = dict(os.environ, PYTHONNOUSERSITE="1")      # 이 컴퓨터의 사용자 패키지를 못 보게 해서 배포판 안에 새로 설치되게
     log("   pip 설치")

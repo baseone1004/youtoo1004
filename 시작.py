@@ -157,8 +157,7 @@ def main():
         children.append(subprocess.Popen([sys.executable, "app.py", "--no-browser"],
                                          cwd=editor, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=DETACHED))
     elif not editor:
-        print("편집프로그램 폴더를 찾지 못했습니다. 영상 편집은 사용할 수 없습니다.")
-        print("다른 위치에 있다면 YOUTUBE_EDITOR_DIR 환경 변수에 폴더 경로를 지정하세요.")
+        print("외부 편집기 없이 내장 KIE 이미지 생성·FFmpeg 영상 렌더링으로 실행합니다.")
 
     script = None
     if not ready(8766):

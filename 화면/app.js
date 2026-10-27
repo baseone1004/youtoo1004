@@ -133,7 +133,7 @@ async function checkReady() {
     const ok = !!c && c.ok && Number.isFinite(c.credit) && c.credit > 0;
     if (codexOnly) items.push([true, 'Codex 이미지 · KIE 요청 없음', null]);
     else items.push([ok, ok ? 'KIE 연결 확인 완료' : (c && c.ok && c.credit === 0 ? 'KIE 크레딧 충전 필요' : 'KIE 키·연결 확인 필요'), 'settings']);
-    items.push([true, '편집프로그램 연결', null]);
+    items.push([true, '내장 FFmpeg 영상 렌더링 준비', null]);
   } catch (e) { items.push([false, '편집프로그램 꺼짐 — 시작 파일을 다시 실행하세요', null]); }
   const html = '<span class="lbl">준비 상태</span>' + items.map(([ok, label, tab]) => `<span class="pill ${ok ? 'ok' : 'bad'}" ${(!ok && tab) ? `onclick="showView('${tab}')"` : ''}>${ok ? '✓' : '!'} ${esc(label)}${(!ok && tab) ? ' → 고치기' : ''}</span>`).join('');
   readinessIssues = items.filter(x => !x[0]).map(x => x[1]);
@@ -174,8 +174,9 @@ async function refresh() {
   renderProfileNames();
   const activeProfile = (STATE.profiles || {})[channel] || {};
   $('quickLanguage').innerHTML = Object.entries(STATE.languages || {ko:{이름:'한국어'}}).map(([k, v]) => `<option value="${k}" ${(activeProfile.언어 || 'ko') === k ? 'selected' : ''}>${esc(v.이름 || k)}</option>`).join('');
-  if (!$('optHook').dataset.initialized) { $('optHook').value = c.후킹_장면수 ?? 5; $('optHook').dataset.initialized = '1'; }
-  if (c.AI === 'codex' && $('optHook').dataset.ai !== 'codex') $('optHook').value=c.후킹_장면수 ?? 5;
+  const hookCount = Math.max(0, Math.min(5, Number(c.후킹_장면수 ?? 5) || 0));
+  if (!$('optHook').dataset.initialized) { $('optHook').value = hookCount; $('optHook').dataset.initialized = '1'; }
+  if (c.AI === 'codex' && $('optHook').dataset.ai !== 'codex') $('optHook').value=hookCount;
   $('optHook').dataset.ai=c.AI;
   const lenOpts = Object.entries(STATE.lengths).map(([k, v]) => `<option value="${k}" ${k === '2' ? 'selected' : ''}>${esc(v)}</option>`).join('');
   if (!$('mindamLen').options.length) $('mindamLen').innerHTML = lenOpts;
@@ -365,7 +366,7 @@ function markLen() { document.querySelectorAll('#personLen button').forEach(b =>
 function setLen(min) { targetChars = Math.round(min * cpm); markLen(); api('/api/config', {대본_글자수: targetChars}).catch(() => {}); }
 function productionOptions() {
   return {guideline: '', target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: '', style: styleValue, chunk: +((STATE && STATE.config || {}).프롬프트_묶음 || 30), thumb_position: 'auto',
-    steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: +$('optHook').value, render: true, thumbnail: $('optThumb').checked, shorts: Math.max(0, Math.min(2, +$('optShorts').value || 0))}};
+    steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: Math.max(0, Math.min(5, +$('optHook').value || 0)), render: true, thumbnail: $('optThumb').checked, shorts: Math.max(0, Math.min(2, +$('optShorts').value || 0))}};
 }
 async function startProduction() {
   await addCustomTopic(true);                       // 입력칸에 적어 둔 주제도 함께
@@ -799,7 +800,8 @@ async function updateGallery(dir, pr) {
       const it = imgs[i], now = busy && st.current === i, fail = !it && failed.has(i), wait = queued.has(i) && !now;
       const src = it ? imageUrl(it) : '';
       const stTxt = wait ? '다시 만들기 예약' : it ? '완료' : (now ? '만드는 중' : (fail ? '실패' : '대기'));
-      const btns = wait ? '<button class="re" disabled>예약됨</button>' : it ? `<button class="re" onclick="regenScene(${i})">다시 만들기</button><button class="vi" onclick="hookScene(${i})">움직이기</button>` : `<button class="re" onclick="regenScene(${i})">${fail ? '다시 시도' : '만들기'}</button>`;
+      const motion = i <= 5 ? `<button class="vi" onclick="hookScene(${i})">KIE 영상 변환</button>` : '<button class="vi" disabled title="대본 앞 5장면까지만 영상으로 변환합니다">앞 5장면 전용</button>';
+      const btns = wait ? '<button class="re" disabled>예약됨</button>' : it ? `<button class="re" onclick="regenScene(${i})">다시 만들기</button>${motion}` : `<button class="re" onclick="regenScene(${i})">${fail ? '다시 시도' : '만들기'}</button>`;
       out.push(`<div class="g${it ? ' done' : ''}${now ? ' now' : ''}${fail ? ' fail' : ''}${wait ? ' queued' : ''}"><div class="no">${pad3(i)}</div><div class="pic">${it ? `<img src="${src}" loading="lazy" onclick="showBig('${src}')">` : (fail ? '실패' : (now ? '…' : '대기'))}</div><div class="st">${stTxt}</div><div class="bt">${btns}</div></div>`);
     }
     $('advGal').innerHTML = out.join('') || '<div class="hint">아직 이미지 프롬프트가 없습니다.</div>';
@@ -923,7 +925,16 @@ async function prepareVideoEditor() {
   status.textContent = '편집프로그램 연결을 확인하는 중…';
   try {
     const connection = await api('/api/editor/connection');
-    if (!connection.ready) throw new Error('편집프로그램이 실행되지 않았습니다. 프로그램 시작 파일을 다시 실행하세요.');
+    if (!connection.ready) {
+      fr.src = 'about:blank'; fr.style.display = 'none';
+      const a = script ? await api('/api/assets?script=' + encodeURIComponent(script)) : null;
+      const count = script ? (await listImages(imagesDirOf(script)).catch(() => [])).filter(x => !x.video).length : 0;
+      status.textContent = a
+        ? `내장 FFmpeg 렌더링 사용 · ${script.split(/[\\/]/).pop()} · MP4, 1080p · 이미지 ${count}장 · 자막 글꼴 자동 선택`
+        : '내장 FFmpeg 렌더링 사용 · MP4, 1080p · 자막 글꼴은 한국어·일본어·민담 채널에 맞춰 자동 선택됩니다.';
+      return;
+    }
+    fr.style.display = '';
     fr.dataset.src = connection.url;
     fr.src = connection.url + '?settings=' + Date.now();
   } catch (e) { fr.src = 'about:blank'; status.textContent = '연결 실패: ' + e.message; toast(e.message, true); return; }

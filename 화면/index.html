@@ -55,7 +55,7 @@
     <div class="row" data-advanced style="margin-top:8px"><button onclick="addCustomTopic()">+ 목록에 추가</button><span class="hint">추가하지 않고 바로 제작 시작을 눌러도 됩니다</span></div>
     <div class="row" data-advanced id="personLenRow" style="margin-top:10px"><label><b class="pname-person">정보형</b> 영상 길이</label><span class="lenbtns" id="personLen"></span><span class="hint" id="personLenHint"></span></div>
     <div id="mindamLenRow" data-advanced class="row hidden"><label><b class="pname-mindam">이야기형</b> 영상 길이</label><select id="mindamLen"></select></div>
-    <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>움직이는 영상 (추가 크레딧) <input type="number" id="optHook" value="5" min="0" max="30" style="width:70px"> 장면</label><label>쇼츠 자동 제작 <input type="number" id="optShorts" value="2" min="0" max="2" style="width:58px"> 편</label></div>
+    <div class="row" data-advanced><label class="chk"><input type="checkbox" id="optThumb" checked> 썸네일 3장 자동 제작</label><label class="chk"><input type="checkbox" id="optOptimize" checked> 유튜브 제목·설명·태그 자동 작성</label><label>KIE 영상 변환 (앞 5장면 이내, 추가 크레딧) <input type="number" id="optHook" value="5" min="0" max="5" style="width:70px"> 장면</label><label>쇼츠 자동 제작 <input type="number" id="optShorts" value="2" min="0" max="2" style="width:58px"> 편</label></div>
     <div class="sel-summary" id="step-2"><span class="cnt" id="selCount">0</span><span id="selText">개 선택 — 위에서 주제를 체크하거나 적으세요</span><span class="spacer"></span><button class="primary" id="toStep2" onclick="startProduction()" disabled>입력한 주제로 제작 시작</button></div>
     <p class="hint" id="defaultMotionNote">기본 제작은 앞 5장을 KIE 움직이는 영상으로 자동 변환합니다. 추가 크레딧이 발생하며, 고급 설정에서 장면 수를 0으로 바꾸면 끌 수 있습니다.</p>
     <p id="quickImageCost" class="hint"></p><div id="startHint" class="hint" style="margin-top:8px"></div>
@@ -154,9 +154,9 @@
     <div class="row" style="margin:0 0 6px"><b>썸네일</b><span class="hint" id="thumbNote"></span></div>
     <div id="workThumbs" class="gal thumbs"></div>
     <div class="row"><button class="primary" id="composeBtn" onclick="composeThumbnails()">✍ 원본에 문구 넣어 완성하기</button><button onclick="makeWorkspaceThumbnails()">🖼 새 이미지로 3장 다시 만들기</button><button class="mini" onclick="openWork('thumbs')">썸네일 폴더 열기</button></div>
-    <details class="box soft" id="adv-video" style="margin-top:12px"><summary>영상·자막 설정 (글꼴·크기·색상) — 편집프로그램 화면</summary><div>
-      <div id="videoStatus" class="banner info">대본을 고르지 않아도 자막 설정은 저장할 수 있습니다.</div>
-      <div class="row"><button class="primary" onclick="prepareVideoEditor()">🎬 완성한 작업 연결·새로고침</button></div>
+    <details class="box soft" id="adv-video" style="margin-top:12px"><summary>최종 렌더링 (내장 FFmpeg)</summary><div>
+      <div id="videoStatus" class="banner info">장면 이미지·나레이션·자막을 MP4로 합칩니다. 자막은 채널 언어에 맞춘 기본 글꼴을 자동 사용합니다.</div>
+      <div class="row"><button class="primary" onclick="prepareVideoEditor()">🎬 렌더 준비 상태 확인</button></div>
       <iframe id="frVideo" class="editor" src="about:blank" title="영상·자막 편집프로그램"></iframe>
     </div></details>
   </div>

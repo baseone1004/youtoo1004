@@ -132,6 +132,8 @@ class Job:
 REAL = sys.stdout
 STATE = {"job": None}
 LOCK = threading.Lock()
+EMBEDDED_EDITOR_JOBS = {}
+EMBEDDED_EDITOR_JOBS_LOCK = threading.RLock()
 import 공통_api as _공통
 _공통.cancel_hook = lambda: bool(STATE.get("job") and STATE["job"].cancel_requested)   # AI 응답을 기다리는 중에도 [■ 중단] 이 바로 먹는다
 QUEUE = QueueStore(os.path.join(대본_폴더, "_상태", "제작대기열.json"))
@@ -163,7 +165,7 @@ def spawn_restart():
 
 
 def shutdown_program(server):
-    """Stop the editor's image runner, then close both local servers.
+    """Stop the image runner, then close both local servers.
     만들던 편은 '대기 중'으로 되돌려 두어, 다음에 켜면 하던 데까지 이어서 만든다."""
     with QUEUE.lock:
         if QUEUE.data.get("status") == "running":
@@ -174,9 +176,9 @@ def shutdown_program(server):
     if job and job.status == "running":
         job.cancel_requested = True
     try:
-        _rq.post(editor_url() + "/api/gen/stop", json={}, timeout=3)
-    except _rq.RequestException:
-        pass  # The editor may already be closed.
+        aip("/api/gen/stop", {})
+    except Exception:
+        pass  # The editor or embedded runner may already be closed.
     # The editor runs as a separate pythonw process. Only stop the process
     # listening on its dedicated local port after checking its command line.
     if os.name == "nt" and is_editor(editor_port()):
@@ -1655,7 +1657,10 @@ AIP = editor_url()
 
 def aip(path, body=None, method=None, timeout=90):
     try:
-        r = _rq.request(method or ("POST" if body is not None else "GET"), AIP + path, json=body, timeout=timeout)
+        # Run the repository's built-in KIE/FFmpeg compatibility API through
+        # the main local server when the optional editor checkout is missing.
+        base = AIP if is_editor(editor_port()) else f"http://127.0.0.1:{PORT}/api/editor"
+        r = _rq.request(method or ("POST" if body is not None else "GET"), base + path, json=body, timeout=timeout)
     except _rq.RequestException as e:
         raise SystemExit(f"편집프로그램(Auto-Image Placer, {AIP})에 연결할 수 없습니다. 편집프로그램\\run.bat 을 먼저 켜 주세요. ({e.__class__.__name__})")
     if r.status_code >= 400:
@@ -1667,12 +1672,8 @@ def aip(path, body=None, method=None, timeout=90):
 
 
 def kie_credit():
-    """KIE 남은 크레딧. 키는 편집프로그램의 config.json 에 있다 (화면에서 영상 변환 전에 보여 주고, 부족하면 미리 알린다)."""
-    import 시작
-    editor = 시작.find_editor()
-    if not editor:
-        raise ValueError("편집프로그램 폴더를 찾지 못했습니다.")
-    key = str(load_json(os.path.join(editor, "config.json"), {}).get("kie_api_key", "") or os.environ.get("KIE_API_KEY", "")).strip()
+    """KIE balance using the app's private local settings or environment."""
+    key = str(load_json(os.path.join(BASE, "설정.json"), {}).get("KIE_API_키", "") or os.environ.get("KIE_API_KEY", "")).strip()
     if not key:
         return dict(ok=False, credit=None, detail="KIE 키가 없습니다.")
     r = _rq.get("https://api.kie.ai/api/v1/chat/credit", headers={"Authorization": f"Bearer {key}"}, timeout=20)
@@ -1831,6 +1832,7 @@ def scene_motion_prompts(prompts_file, scenes):
 
 def first_hook_scenes(prompts_file, n):
     """대본 장면 순서의 앞 n개만 영상화한다. 짧은 대본은 있는 장면만."""
+    n = max(0, min(5, int(n or 0)))
     with open(prompts_file, encoding="utf-8-sig") as f:
         return sorted(prompt_blocks(f.read()))[:max(0, int(n))]
 
@@ -1862,6 +1864,36 @@ def pick_hook_scenes(prompts_file, n):
 
 
 def run_hook_videos(job, images_dir, prompts_file, scenes, out_dir=None):
+    allowed = set(first_hook_scenes(prompts_file, 5)) if prompts_file and os.path.isfile(prompts_file) else set(range(1, 6))
+    scenes = [int(no) for no in scenes]
+    if any(no not in allowed for no in scenes):
+        raise ValueError("KIE 영상 변환은 대본의 앞 5장면까지만 가능합니다.")
+    if not is_editor(editor_port()):
+        cfg = load_json(os.path.join(BASE, "설정.json"), {})
+        key = str(cfg.get("KIE_API_키") or os.environ.get("KIE_API_KEY", "")).strip()
+        if not key:
+            raise RuntimeError("설정에서 KIE API 키를 먼저 저장하세요.")
+        from kie_video import image_to_video
+        ui = cfg.get("KIE_생성_UI") or {}
+        motions = scene_motion_prompts(prompts_file, scenes)
+        videos = {}
+        for no in scenes:
+            if job.cancel_requested:
+                raise RuntimeError("사용자가 제작을 중단했습니다.")
+            image = next((os.path.join(images_dir, f"{no:03d}{ext}") for ext in (".jpg", ".png", ".jpeg", ".webp")
+                          if os.path.isfile(os.path.join(images_dir, f"{no:03d}{ext}"))), "")
+            if not image:
+                raise RuntimeError(f"{no:03d}번 영상 변환용 이미지가 없습니다.")
+            output = os.path.join(out_dir or images_dir, f"{no:03d}.mp4")
+            job.add(f"   KIE 영상 변환 · {no:03d}번 장면")
+            result = image_to_video(key, image, (motions.get(no, "") + " " + motion_prompt_for(prompts_file)).strip(), output,
+                                    model=str(ui.get("kie_model") or "veo-3-1"),
+                                    aspect_ratio=str(ui.get("kie_ratio") or "16:9"),
+                                    duration=int(ui.get("kie_duration") or 0) or None,
+                                    log=job.add, cancel=lambda: job.cancel_requested)
+            videos[str(no)] = str(result)
+        job.add(f"   ✓ KIE 영상 {len(videos)}개")
+        return {"videos": videos, "output_dir": out_dir or images_dir, "failed": []}
     body = dict(images_dir=os.path.abspath(images_dir), prompts_file=os.path.abspath(prompts_file), scenes=scenes,
                 output_dir=os.path.abspath(out_dir) if out_dir else "", motion_prompt=motion_prompt_for(prompts_file))
     j = aip("/api/hook/start", body)
@@ -1906,6 +1938,13 @@ def run_render(job, srt, flow, images_dir, narration, output, ken_burns=True, mi
 def _run_render(job, srt, flow, images_dir, narration, output, ken_burns=True):
     report = production_library.require_render_media(flow, images_dir, os.path.join(os.path.dirname(flow), "장면_매칭_검사.json"))
     job.add(f"   ✓ 편집 전 검사 · 장면 {report['matched']}개 연결 · 영상 파일 우선 사용")
+    # The optional editor folder is not part of the source repository. Keep
+    # completed work renderable with the bundled FFmpeg path when it is absent.
+    if not is_editor(editor_port()):
+        import video_renderer
+        job.add("   내장 FFmpeg 편집기 사용 · 자막·장면·나레이션을 결합합니다")
+        return video_renderer.render(srt, flow, images_dir, narration, output, job=job,
+                                     ken_burns=ken_burns)
     # 편집프로그램 화면에서 마지막으로 쓴 자막 글꼴·색·위치·화면 설정을 그대로 가져와 쓴다
     ui = ((aip("/api/info").get("config") or {}).get("ui") or {})
     keep = {k: ui[k] for k in ("width", "height", "fps", "fit", "ken_burns", "kb_zoom", "transition", "transition_duration", "crf", "preset",
@@ -2290,6 +2329,11 @@ def make_pipeline(job, req):
         if job.cancel_requested:
             raise RuntimeError("사용자가 연속 제작을 중단했습니다.")
     steps = dict(req.get("steps") or {})
+    try:
+        requested_hook_scenes = int(steps.get("hook", 0) or 0)
+    except (TypeError, ValueError):
+        requested_hook_scenes = 0
+    steps["hook"] = max(0, min(5, requested_hook_scenes))
     if int(steps.get("hook", 0) or 0) > 0:
         try:
             has_kie = bool(aip("/api/info").get("kie_key_saved"))
@@ -2755,20 +2799,209 @@ class H(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
 
     def _editor_proxy(self, path, body=None):
+        route = urllib.parse.urlparse(path).path
+        if body and route == "/api/hook/start":
+            requested = body.get("scenes") or []
+            prompts = str(body.get("prompts_file") or "")
+            if prompts:
+                prompt_path = Path(prompts).resolve()
+                if not prompt_path.is_relative_to(Path(BASE).resolve()) or not prompt_path.is_file():
+                    self._json({"detail": "프로그램 안에 저장된 이미지 프롬프트를 선택하세요."}, 400)
+                    return
+                allowed = set(first_hook_scenes(str(prompt_path), 5))
+            else:
+                allowed = set(range(1, 6))
+            try:
+                if any(int(no) not in allowed for no in requested):
+                    self._json({"detail": "KIE 영상 변환은 대본의 앞 5장면까지만 가능합니다."}, 400)
+                    return
+            except (TypeError, ValueError):
+                self._json({"detail": "영상으로 변환할 장면 번호를 확인하세요."}, 400)
         if body and body.get("reference_image"):
             reference = Path(BASE, body["reference_image"]).resolve()
             if not reference.is_relative_to(Path(BASE).resolve()) or not reference.is_file():
                 self._json({"detail": "프로그램에 저장한 레퍼런스 이미지를 선택하세요."}, 400)
                 return
             body = dict(body, reference_image=str(reference))
+        if body and route == "/api/config" and isinstance(body.get("gen_ui"), dict):
+            ui = dict(body["gen_ui"])
+            if "kie_hook_scenes" in ui:
+                try:
+                    ui["kie_hook_scenes"] = max(0, min(5, int(ui["kie_hook_scenes"] or 0)))
+                except (TypeError, ValueError):
+                    self._json({"detail": "KIE 영상 장면 수는 0~5 사이로 입력하세요."}, 400)
+                    return
+            body = dict(body, gen_ui=ui)
         if not is_editor(editor_port()):
-            self._json({"detail": "편집프로그램 연결을 확인하지 못했습니다. 시작 파일을 다시 실행하세요."}, 503)
+            result, status = self._embedded_editor(path, body)
+            self._json(result, status)
             return
         try:
             response = _rq.request("POST" if body is not None else "GET", editor_url() + path, json=body, timeout=90)
             self._json(response.json(), response.status_code)
         except (_rq.RequestException, ValueError):
             self._json({"detail": "편집프로그램 응답을 받지 못했습니다. 잠시 뒤 다시 시도하세요."}, 502)
+
+    def _embedded_editor(self, path, body=None):
+        """KIE image/video and FFmpeg compatibility API without the optional editor."""
+        route = urllib.parse.urlparse(path).path
+        cfg_path = Path(BASE) / "설정.json"
+        cfg = load_json(str(cfg_path), {})
+        key = str(cfg.get("KIE_API_키") or os.environ.get("KIE_API_KEY", "")).strip()
+        saved = cfg.get("KIE_이미지_설정") or {}
+
+        def inside(value, must_exist=False):
+            p = Path(str(value or "")).resolve()
+            if not p.is_relative_to(Path(BASE).resolve()) or (must_exist and not p.is_file()):
+                raise ValueError("프로그램 폴더 안에 있는 프롬프트·결과 경로를 선택하세요.")
+            return p
+
+        try:
+            import kie_imagegen
+            runner = kie_imagegen.runner
+            if route == "/api/info":
+                return ({"image_model": "z-image", "kie_key_saved": bool(key),
+                         "config": {"gen": saved, "ui": cfg.get("KIE_편집_UI", {}), "gen_ui": cfg.get("KIE_생성_UI", {})}}, 200)
+            if route == "/api/config":
+                incoming = body or {}
+                if "kie_api_key" in incoming:
+                    new_key = str(incoming.get("kie_api_key") or "").strip()
+                    if new_key:
+                        cfg["KIE_API_키"] = new_key
+                    elif incoming.get("clear_kie_api_key"):
+                        cfg.pop("KIE_API_키", None)
+                if isinstance(incoming.get("ui"), dict):
+                    cfg["KIE_편집_UI"] = incoming["ui"]
+                if isinstance(incoming.get("gen_ui"), dict):
+                    cfg["KIE_생성_UI"] = incoming["gen_ui"]
+                atomic_write_json(str(cfg_path), cfg)
+                return ({"ok": True}, 200)
+            if route == "/api/gen/status":
+                state = runner.state.to_dict()
+                state["output_dir"] = saved.get("output_dir", "")
+                state["prompts_file"] = saved.get("prompts_file", "")
+                return (state, 200)
+            if route == "/api/gen/prompts":
+                prompts = inside((body or {}).get("path"), True)
+                return ({"path": str(prompts), "count": len(kie_imagegen.parse_prompts(prompts))}, 200)
+            if route in ("/api/gen/start", "/api/gen/regen"):
+                req = body or {}
+                prompts = inside(req.get("prompts_file"), True)
+                out = inside(req.get("output_dir"))
+                if not key and req.get("reference_model") != "codex":
+                    raise ValueError("설정에 KIE API 키를 저장하세요.")
+                scene = req.get("scene")
+                if route.endswith("regen") and scene is not None:
+                    if runner.state.status in ("running", "paused"):
+                        if not runner.queue_regen(int(scene)):
+                            raise ValueError("이미 다시 만들기가 예약되어 있거나 작업을 시작할 수 없습니다.")
+                        return ({"ok": True, "queued": True, "moved": []}, 200)
+                    start_no = end_no = int(scene)
+                    skip_existing = False
+                else:
+                    start_no = max(1, int(req.get("start_no", 1)))
+                    end_no = max(0, int(req.get("end_no", 0)))
+                    skip_existing = bool(req.get("skip_existing", True))
+                settings = kie_imagegen.GenSettings(
+                    prompts_file=str(prompts), output_dir=str(out), api_key=key,
+                    start_no=start_no, end_no=end_no, skip_existing=skip_existing,
+                    style_prefix=str(req.get("style_prefix") or ""), aspect_ratio=str(req.get("aspect_ratio") or "16:9"),
+                    reference_image=str(req.get("reference_image") or ""),
+                    reference_model=str(req.get("reference_model") or "qwen/image-edit"))
+                runner.start(settings)
+                saved = {"prompts_file": str(prompts), "output_dir": str(out),
+                         "reference_image": settings.reference_image, "reference_model": settings.reference_model,
+                         "style_prefix": settings.style_prefix, "aspect_ratio": settings.aspect_ratio}
+                cfg["KIE_이미지_설정"] = saved
+                atomic_write_json(str(cfg_path), cfg)
+                return ({"ok": True, "queued": False}, 200)
+            if route == "/api/gen/stop":
+                runner.stop()
+                return ({"ok": True}, 200)
+            if route == "/api/gen/recover":
+                req = body or {}
+                out = inside(req.get("output_dir"))
+                runner.recover_submission(str(out), int(req.get("scene")), str(req.get("task_id") or ""),
+                                          bool(req.get("confirmed_not_created")), bool(req.get("confirmed_failed")))
+                return ({"ok": True}, 200)
+            job_match = re.fullmatch(r"/api/jobs/([a-f0-9]{12})(/cancel)?", route)
+            if job_match:
+                job_id, cancel_path = job_match.groups()
+                with EMBEDDED_EDITOR_JOBS_LOCK:
+                    job = EMBEDDED_EDITOR_JOBS.get(job_id)
+                    if not job:
+                        return ({"detail": "KIE 영상 작업을 찾을 수 없습니다."}, 404)
+                    if cancel_path:
+                        job["cancel"].set()
+                        return ({"ok": True}, 200)
+                    return ({k: v for k, v in job.items() if k != "cancel"}, 200)
+            if route == "/api/hook/start":
+                if not key:
+                    raise ValueError("설정에서 KIE API 키를 먼저 저장하세요.")
+                req = body or {}
+                images = inside(req.get("images_dir"))
+                if not images.is_dir():
+                    raise ValueError("장면 이미지 폴더를 찾을 수 없습니다.")
+                prompts_file = str(inside(req.get("prompts_file"), True)) if req.get("prompts_file") else ""
+                scenes = list(dict.fromkeys(int(no) for no in (req.get("scenes") or [])))
+                if not scenes or len(scenes) > 5:
+                    raise ValueError("KIE 영상 변환은 1~5개 장면으로 요청하세요.")
+                allowed = set(first_hook_scenes(prompts_file, 5)) if prompts_file else set(range(1, 6))
+                if any(no not in allowed for no in scenes):
+                    raise ValueError("KIE 영상 변환은 대본의 앞 5장면까지만 가능합니다.")
+                out = inside(req.get("output_dir")) if req.get("output_dir") else images
+                job_id = uuid.uuid4().hex[:12]
+                task = {"job_id": job_id, "status": "pending", "progress": 0.0, "stage": "대기",
+                        "result": {}, "error": "", "cancel": threading.Event()}
+                with EMBEDDED_EDITOR_JOBS_LOCK:
+                    EMBEDDED_EDITOR_JOBS[job_id] = task
+
+                def work():
+                    task["status"], task["stage"] = "running", "KIE 영상 변환"
+                    try:
+                        from kie_video import image_to_video
+                        prompts = scene_motion_prompts(prompts_file, scenes)
+                        ui = cfg.get("KIE_생성_UI") or {}
+                        videos = {}
+                        for index, no in enumerate(scenes):
+                            if task["cancel"].is_set():
+                                task["status"] = "cancelled"
+                                return
+                            image = next((images / f"{no:03d}{ext}" for ext in (".jpg", ".png", ".jpeg", ".webp")
+                                          if (images / f"{no:03d}{ext}").is_file()), None)
+                            if not image:
+                                raise ValueError(f"{no:03d}번 장면 이미지가 없습니다.")
+                            prompt = " ".join(x for x in (prompts.get(no, ""), str(req.get("motion_prompt") or "")) if x).strip()
+                            dest = out / f"{no:03d}.mp4"
+                            video = image_to_video(key, str(image), prompt, str(dest),
+                                model=str(req.get("model") or ui.get("kie_model") or "veo-3-1"),
+                                aspect_ratio=str(req.get("aspect_ratio") or ui.get("kie_ratio") or "16:9"),
+                                duration=int(req.get("duration") or 0) or None,
+                                log=lambda line: task.update(stage=line), cancel=task["cancel"].is_set)
+                            videos[str(no)] = str(video)
+                            task["progress"] = (index + 1) / len(scenes)
+                        task.update(status="done", stage="완료", progress=1.0,
+                                    result={"videos": videos, "output_dir": str(out), "failed": []})
+                    except Exception as exc:
+                        task.update(status="cancelled" if task["cancel"].is_set() else "error",
+                                    stage="중단됨" if task["cancel"].is_set() else "오류", error=str(exc))
+                threading.Thread(target=work, daemon=True, name="kie-video-" + job_id).start()
+                return ({"job_id": job_id}, 200)
+            if route == "/api/scan_folder":
+                folder = inside((body or {}).get("path"))
+                files = {"srt": next(iter(folder.glob("*.srt")), None),
+                         "narration": next((p for p in folder.glob("나레이션.*") if p.suffix.lower() in (".mp3", ".wav", ".m4a")), None),
+                         "flow": next((p for p in (folder / "플로우.txt", folder / "이미지플로우.txt") if p.is_file()), None),
+                         "subtitle_mov": None}
+                image_dir = folder / "images"
+                return ({"srt": str(files["srt"]) if files["srt"] else "",
+                         "narration": str(files["narration"]) if files["narration"] else "",
+                         "flow": str(files["flow"]) if files["flow"] else "",
+                         "subtitle_mov": "", "images": str(image_dir),
+                         "image_count": len(list_images(str(image_dir)))}, 200)
+        except Exception as exc:  # return a normal API error for the existing UI
+            return ({"detail": str(exc)}, 400)
+        return ({"detail": "내장 미디어 기능에서 지원하지 않는 요청입니다."}, 503)
 
     def do_GET(self):
         u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
@@ -2813,6 +3046,7 @@ class H(BaseHTTPRequestHandler):
                                             영상변환_방식=cfg.get("영상변환_방식", ""),
                                             후킹_장면수=cfg.get("후킹_장면수", 0), 프롬프트_묶음=cfg.get("프롬프트_묶음", 30),
                                             텔레그램_토큰=mask(cfg.get("텔레그램_봇_토큰", "")), 유튜브_API_키=mask(cfg.get("유튜브_API_키", "")),
+                                            KIE키있음=bool(cfg.get("KIE_API_키") or os.environ.get("KIE_API_KEY")),
                                             텔레그램_채팅_ID=str(cfg.get("텔레그램_채팅_ID", "")),
                                             텔레그램_알림=cfg.get("텔레그램_알림", True), 온보딩_완료=bool(cfg.get("온보딩_완료", False))),
                                 base_dir=BASE, dedicated=bool(os.environ.get("YOUTOO_ACCOUNT")), extension_dir=os.path.join(channel_workspaces.HOME, "딥시크_확장"),
@@ -2951,7 +3185,8 @@ class H(BaseHTTPRequestHandler):
                 cfg = load_json("설정.json", {})
                 cfg.update(AI="codex", 모델="", 후킹_장면수=5)
                 atomic_write_json("설정.json", cfg)
-                채널_프로필.save("person", {"마스코트": {"생성_모델": "codex"}})
+                for slot in 채널_프로필.SLOTS:
+                    채널_프로필.save(slot, {"마스코트": {"생성_모델": "codex"}})
                 self._json({"ok": True}); return
             if u.path == '/api/local-voice/profile':
                 import local_voice
@@ -3075,8 +3310,8 @@ class H(BaseHTTPRequestHandler):
                     j.cancel_requested = True; stopped.append("지금 작업")
                 for path, name in (("/api/gen/stop", "이미지 생성"),):
                     try:
-                        _rq.post(AIP + path, json={}, timeout=5); stopped.append(name)
-                    except _rq.RequestException:
+                        aip(path, {}); stopped.append(name)
+                    except Exception:
                         pass
                 __import__("codex_bridge").cancel_all(BASE)
                 self._json({"ok": True, "stopped": stopped})
@@ -3249,7 +3484,7 @@ class H(BaseHTTPRequestHandler):
                 for k in ("나레이션_방식_ko", "나레이션_방식_ja", "AI", "API_키", "모델", "대본_글자수", "인월드_API_키", "인월드_목소리", "인월드_모델", "인월드_속도",
                           "인월드_목소리_사람", "인월드_목소리_민담", "인월드_목소리_일본", "인월드_속도_일본", "인월드_속도_사람", "인월드_속도_민담", "인월드_온도", "이야기형_숨김", "레퍼런스_자동관리", "영상변환_방식", "분당_글자수", "화풍", "후킹_장면수",
                           "API_키_deepseek", "API_키_gemini", "프롬프트_묶음",
-                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "온보딩_완료"):
+                          "텔레그램_봇_토큰", "텔레그램_채팅_ID", "텔레그램_알림", "내_채널", "민담_채널", "유튜브_API_키", "KIE_API_키", "온보딩_완료"):
                     if k in body and (body[k] != "" or k in ("내_채널", "민담_채널", "인월드_목소리_민담", "모델")):     # 빈 값을 허용하는 항목: 지우면 기본으로 돌아감
                         cfg[k] = str(body[k]).strip() if isinstance(body[k], str) else body[k]
                 # AI 를 바꾸면 이전 AI 의 모델 이름이 남지 않게 (예: gemini 인데 deepseek-chat) — 새 AI 의 기본 모델을 쓴다
