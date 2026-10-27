@@ -8,7 +8,7 @@
 [Setup]
 AppName={#AppName}
 AppVersion={#AppVersion}
-DefaultDirName={autopf}\유튜브영상자동제작
+DefaultDirName={localappdata}\Programs\유튜브영상자동제작
 DefaultGroupName={#AppName}
 OutputDir=..\배포판
 OutputBaseFilename=유튜브영상자동제작_설치
@@ -23,7 +23,9 @@ WizardStyle=modern
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Files]
-Source: "{#SrcDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#SrcDir}\*"; DestDir: "{app}"; Excludes: "app\설정.json,app\채널_프로필.json"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#SrcDir}\app\설정.json"; DestDir: "{app}\app"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "{#SrcDir}\app\채널_프로필.json"; DestDir: "{app}\app"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\시작.bat"; WorkingDir: "{app}"
