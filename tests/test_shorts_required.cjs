@@ -1,0 +1,11 @@
+const fs=require('fs'),assert=require('assert');
+const html=fs.readFileSync('화면/index.html','utf8');
+const app=fs.readFileSync('화면/app.js','utf8');
+assert(!html.includes('id="optShorts"'));
+assert(html.includes('롱폼당 쇼츠 2편 자동 제작'));
+assert(app.includes('thumbnail: $(\'optThumb\').checked, shorts: 2'));
+assert(app.includes('쇼츠 2편까지 완성되어야 다음 편으로 넘어갑니다.'));
+assert(html.includes('id="workLibrary"'));
+assert(app.includes('롱폼당 필요한 쇼츠 2편'));
+assert(app.includes("['보관함 열기', 'openProductionLibrary()']"));
+console.log('Two Shorts are required in the full-production UI');

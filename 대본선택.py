@@ -2223,6 +2223,46 @@ def make_thumbnails(job, req):
     return dict(thumbnails=outs, dir=tdir, cost=ai.cost_text())
 
 
+def sync_package_shorts(package, shorts):
+    """Replace the active package Shorts while archiving a previous generation."""
+    package = Path(package)
+    destination = package / "쇼츠"
+    staging = package / (".쇼츠_새결과_" + uuid.uuid4().hex)
+    backup = None
+    if shorts:
+        staging.mkdir(parents=True, exist_ok=False)
+        try:
+            for item in shorts:
+                source = item.get("path")
+                if not source or not os.path.isfile(source):
+                    raise RuntimeError("쇼츠 영상 파일을 업로드 패키지에 복사하지 못했습니다.")
+                shutil.copy2(source, staging / os.path.basename(source))
+                for key in ("srt", "metadata"):
+                    sidecar = item.get(key)
+                    if sidecar and os.path.isfile(sidecar):
+                        shutil.copy2(sidecar, staging / os.path.basename(sidecar))
+            if len(list(staging.glob("*.mp4"))) != len(shorts):
+                raise RuntimeError("쇼츠 업로드 패키지의 영상 수가 제작 결과와 다릅니다.")
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+    try:
+        if destination.exists():
+            archive = package / "이전_쇼츠"
+            archive.mkdir(exist_ok=True)
+            backup = archive / (datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_" + uuid.uuid4().hex[:8])
+            os.replace(destination, backup)
+        if shorts:
+            os.replace(staging, destination)
+    except Exception:
+        if backup and backup.exists() and not destination.exists():
+            os.replace(backup, destination)
+        raise
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+
 def make_upload_package(script_file, result):
     """완성된 한 편의 업로드 필수 파일을 프로젝트의 업로드 폴더 한곳에 모은다."""
     assets = assets_dir(script_file)
@@ -2261,14 +2301,8 @@ def make_upload_package(script_file, result):
         if os.path.isfile(thumb):
             shutil.copy2(thumb, package / f"썸네일_{index}.jpg")
     shorts = result.get("shorts") or []
-    if shorts:
-        shorts_dir = package / "쇼츠"
-        shorts_dir.mkdir(parents=True, exist_ok=True)
-        for item in shorts:
-            for key in ("path", "srt", "metadata"):
-                source = item.get(key)
-                if source and os.path.isfile(source):
-                    shutil.copy2(source, shorts_dir / os.path.basename(source))
+    if "shorts" in result or result.get("shorts_error"):
+        sync_package_shorts(package, shorts)
     return os.path.abspath(package)
 
 
@@ -2321,6 +2355,26 @@ def final_video_is_current(video, images_dir, result):
     return newest <= t
 
 
+def pipeline_shorts_count(steps):
+    """Every rendered long video gets two Shorts; smaller steps are preparation-only jobs."""
+    if steps.get("render"):
+        return 2
+    try:
+        return max(0, min(2, int(steps.get("shorts", 0) or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def verify_shorts_package(generated, upload_dir, error=""):
+    generated_files = [Path(x.get("path", "")) for x in generated if x.get("path")]
+    valid_generated = [p for p in generated_files if p.is_file() and p.stat().st_size > 0]
+    package_dir = Path(upload_dir) / "쇼츠"
+    packaged = [p for p in package_dir.glob("*.mp4") if p.is_file()] if package_dir.is_dir() else []
+    if error or len(valid_generated) != 2 or len(packaged) != 2:
+        detail = (": " + str(error)) if error else ""
+        raise RuntimeError("롱폼당 필요한 쇼츠 2편이 모두 준비되지 않아 이 편을 미완료로 남겼습니다. 대기열은 다음 편으로 넘어가지 않습니다. 보관함에서 원본 대본을 골라 이어서 만들 수 있습니다." + detail)
+
+
 def make_pipeline(job, req):
     """주제 → 대본 → 최적화 → 이미지 프롬프트 → 나레이션(인월드) → 이미지 자동 생성(편집프로그램) → [후킹 영상] → [최종 렌더]"""
     if req.get("script_file"):
@@ -2342,6 +2396,8 @@ def make_pipeline(job, req):
         if not has_kie:
             job.add("   ! KIE 키가 없어 움직이는 영상(영상변환)은 건너뜁니다. [설정]에서 KIE 키를 저장하면 다음 편부터 만듭니다.")
             steps["hook"] = 0
+    shorts_count = pipeline_shorts_count(steps)
+    steps["shorts"] = shorts_count
     result = {}
     job.result = result          # 진행 중에도 단계별 결과(대본·프롬프트·나레이션…)를 화면에서 열 수 있게
     # 1) 대본 (이미 있는 대본 파일로 시작하면 건너뜀)
@@ -2495,10 +2551,7 @@ def make_pipeline(job, req):
             job.add(f"   ! 최종 영상 합치기 실패: {e}")
     check_cancelled()
     # 6.5) 완성 롱폼에서 서로 다른 하이라이트 쇼츠 생성
-    try:
-        shorts_count = max(0, min(2, int(steps.get("shorts", 0) or 0)))
-    except (TypeError, ValueError):
-        shorts_count = 0
+    shorts_error = ""
     if shorts_count:
         final_video = result.get("video") or os.path.join(assets, "최종.mp4")
         if os.path.isfile(final_video) and result.get("srt") and os.path.isfile(result["srt"]):
@@ -2520,15 +2573,20 @@ def make_pipeline(job, req):
             except Exception as e:  # noqa: BLE001
                 check_cancelled()
                 result["shorts_error"] = str(e)
+                shorts_error = str(e)
                 result.setdefault("issues", []).append(f"쇼츠 {shorts_count}편 미완료: {e}")
-                job.add(f"   ! 쇼츠 제작을 건너뜁니다 (롱폼 제작은 계속): {e}")
+                job.add(f"   ! 쇼츠 {shorts_count}편 미완료: {e}")
         else:
-            job.add("   ! 완성 영상 또는 자막이 없어 쇼츠를 건너뜁니다.")
+            shorts_error = "완성된 롱폼 영상 또는 자막 파일이 없습니다."
+            result["shorts_error"] = shorts_error
+            job.add("   ! 완성 영상 또는 자막이 없어 쇼츠를 만들지 못했습니다.")
     job.stage = "⑦ 업로드 폴더 정리"
     result["upload_dir"] = make_upload_package(script, result)
     job.add("   ✓ 업로드 폴더: " + result["upload_dir"])
     if render_error is not None:
         raise RuntimeError(f"최종 영상 합치기 실패 (대본·썸네일·제목은 저장됨): {render_error}")
+    if steps.get("render"):
+        verify_shorts_package(result.get("shorts") or [], result["upload_dir"], shorts_error)
     job.stage = "완료"; job.progress = 1.0
     job.add("✅ 파이프라인 완료 · " + assets)
     result["assets"] = assets

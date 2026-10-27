@@ -7,6 +7,85 @@ import 대본선택 as app
 
 
 class KiePipelineTest(unittest.TestCase):
+    def test_rendered_long_videos_always_require_two_shorts(self):
+        self.assertEqual(app.pipeline_shorts_count({"render": True, "shorts": 0}), 2)
+        self.assertEqual(app.pipeline_shorts_count({"render": True, "shorts": 1}), 2)
+        self.assertEqual(app.pipeline_shorts_count({"render": False, "shorts": 0}), 0)
+
+    def test_rendered_pipeline_is_not_complete_until_two_shorts_are_packaged(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source, package = root / "generated", root / "업로드"
+            source.mkdir(); package.mkdir()
+            source_files = [source / f"short{i}.mp4" for i in (1, 2)]
+            package_shorts = package / "쇼츠"; package_shorts.mkdir()
+            for file in source_files:
+                file.write_bytes(b"video")
+                (package_shorts / file.name).write_bytes(b"video")
+            generated = [{"path": str(file)} for file in source_files]
+            app.verify_shorts_package(generated, package)
+            (package_shorts / "short2.mp4").unlink()
+            with self.assertRaisesRegex(RuntimeError, "롱폼당 필요한 쇼츠 2편"):
+                app.verify_shorts_package(generated, package)
+
+    def test_short_retry_replaces_active_package_and_archives_previous_clips(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            package = root / "업로드"
+            active = package / "쇼츠"; active.mkdir(parents=True)
+            (active / "old.mp4").write_bytes(b"old")
+            source = root / "생성"; source.mkdir()
+            generated = []
+            for index in (1, 2):
+                video = source / f"short{index}.mp4"; video.write_bytes(b"new")
+                generated.append({"path": str(video)})
+
+            app.sync_package_shorts(package, generated)
+            self.assertEqual(sorted(p.name for p in (package / "쇼츠").glob("*.mp4")), ["short1.mp4", "short2.mp4"])
+            archived = list((package / "이전_쇼츠").glob("*/old.mp4"))
+            self.assertEqual(len(archived), 1)
+
+            app.sync_package_shorts(package, [])
+            self.assertFalse((package / "쇼츠").exists())
+            self.assertEqual(len(list((package / "이전_쇼츠").glob("*/old.mp4"))), 1)
+
+    def test_full_render_does_not_complete_when_two_shorts_fail(self):
+        import shorts
+        import video_export
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            script = root / "script.txt"; script.write_text("[대본]\n본문입니다.", encoding="utf-8")
+            (root / "나레이션.mp3").write_bytes(b"audio")
+            (root / "나레이션.srt").write_text("1\n00:00:00,000 --> 00:00:03,000\n본문입니다.\n", encoding="utf-8")
+            (root / "플로우.txt").write_text("1: 1\n", encoding="utf-8")
+            (root / "script_이미지프롬프트.txt").write_text("===001===\n프롬프트: 장면", encoding="utf-8")
+            (root / "images").mkdir()
+            (root / "images" / "001.jpg").write_bytes(b"image")
+            (root / "최종.mp4").write_bytes(b"video")
+            package = root / "업로드"; package.mkdir()
+            job = app.Job("pipeline")
+            with patch.object(app, "ensure_script_language"), \
+                    patch.object(app, "assets_dir", return_value=str(root)), \
+                    patch.object(app, "channel_of", return_value="person"), \
+                    patch.object(app, "narration_matches", return_value=True), \
+                    patch.object(app, "narration_cache_matches", return_value=True), \
+                    patch.object(app.나레이션, "probe_duration", return_value=600), \
+                    patch.object(app, "ensure_longform_narration", return_value=False), \
+                    patch.object(app, "refresh_image_flow"), \
+                    patch.object(app, "final_video_is_current", return_value=True), \
+                    patch.object(app, "minimum_video_seconds", return_value=False), \
+                    patch.object(video_export, "export", return_value="desktop.mp4"), \
+                    patch.object(app, "AI", side_effect=RuntimeError("no AI needed")), \
+                    patch.object(shorts, "create", side_effect=ValueError("테스트 실패")) as create, \
+                    patch.object(app, "make_upload_package", return_value=str(package)):
+                with self.assertRaisesRegex(RuntimeError, "쇼츠 2편"):
+                    app.make_pipeline(job, {"script_file": str(script), "reuse_prompts": True, "steps":
+                        {"tts": True, "prompts": False, "images": False, "hook": 0,
+                         "thumbnail": False, "render": True, "shorts": 0}})
+            self.assertEqual(create.call_args.kwargs["count"], 2)
+            self.assertEqual(job.result["upload_dir"], str(package))
+            self.assertEqual(job.result["shorts_error"], "테스트 실패")
+
     def pipeline_fixture(self, td):
         root = Path(td)
         script = root / "final.txt"

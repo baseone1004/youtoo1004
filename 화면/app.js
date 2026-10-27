@@ -366,14 +366,14 @@ function markLen() { document.querySelectorAll('#personLen button').forEach(b =>
 function setLen(min) { targetChars = Math.round(min * cpm); markLen(); api('/api/config', {대본_글자수: targetChars}).catch(() => {}); }
 function productionOptions() {
   return {guideline: '', target: targetChars, mark_used: true, length: $('mindamLen').value, img_guideline: '', style: styleValue, chunk: +((STATE && STATE.config || {}).프롬프트_묶음 || 30), thumb_position: 'auto',
-    steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: Math.max(0, Math.min(5, +$('optHook').value || 0)), render: true, thumbnail: $('optThumb').checked, shorts: Math.max(0, Math.min(2, +$('optShorts').value || 0))}};
+    steps: {optimize: $('optOptimize').checked, prompts: true, tts: true, images: true, hook: Math.max(0, Math.min(5, +$('optHook').value || 0)), render: true, thumbnail: $('optThumb').checked, shorts: 2}};
 }
 async function startProduction() {
   await addCustomTopic(true);                       // 입력칸에 적어 둔 주제도 함께
   if (!selection.size) { $('customTitle').focus(); return toast('주제를 체크하거나 적어 주세요.', true); }
   const options = productionOptions();
   if (!await checkReady()) { showView('settings'); return toast('확인할 항목: ' + readinessIssues.join(' · '), true); }
-  if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 선택한 영상변환 → 썸네일 → 최종 영상 → 쇼츠 ${options.steps.shorts}편 → 제목·설명·태그 저장까지 자동으로 하고, 끝나면 다음 편으로 넘어갑니다.`)) return;
+  if (!confirm(`선택한 ${selection.size}편을 순서대로 만들까요?\n대본 → 나레이션 → 이미지 → 선택한 영상변환 → 썸네일 → 최종 영상 → 쇼츠 2편 → 제목·설명·태그 저장까지 자동으로 합니다. 쇼츠 2편까지 완성되어야 다음 편으로 넘어갑니다.`)) return;
   try {
     const q = await api('/api/queue/start', {items: [...selection.values()], options});
     selection.clear(); custom.person = []; custom.mindam = []; renderTopics(); renderQueue(q); startPolling(true); window.scrollTo({top: 0, behavior: 'smooth'});
@@ -498,6 +498,7 @@ function explainError(message, opts) {
   const gemini = STATE && STATE.keys && STATE.keys.gemini;
   let t;
   if (/^(?:RuntimeError:\s*)?(?:취소됨|중단됨|사용자가.{0,10}중단|cancelled|canceled)/i.test(raw)) t = {title: '사용자가 중단했습니다', why: '이어서 만들려면 다시 시도를 누르세요.', acts: R};
+  else if (/롱폼당 필요한 쇼츠 2편/i.test(raw)) t = {title: '쇼츠 2편을 마친 뒤 다음 편을 만들게요', why: '롱폼과 제작 자료는 보관함에 남아 있습니다. 대기열은 멈췄으니 [다시 시도]를 누르면 정상 결과를 재사용하고 빠진 쇼츠부터 이어 만듭니다. 필요하면 보관함에서 해당 대본을 선택해 이어서 만들 수도 있습니다.', acts: [...R, ['보관함 열기', 'openProductionLibrary()']]};
   else if (/이미지 생성이 끝나지 않음: stopped/.test(raw)) t = {title: '이미지 생성이 중단되었습니다', why: '이미지 칸의 [■ 중단]을 눌렀거나 마우스가 화면 모서리로 가서 멈췄습니다. 다시 시도하면 빠진 장면부터 이어서 만듭니다.', acts: R};
   else if (/음성 복구 중단/.test(raw)) t = {title: '음성 복구가 실패해 추가 요청을 막았어요', why: '짧게 나눈 음성도 정상 응답을 확인하지 못했습니다. 받은 정상 음성은 보존했습니다. 이어 만들기를 반복해서 눌러도 같은 부분을 다시 유료 요청하지 않습니다. 상세 오류와 인월드 사용 내역·목소리 설정을 확인하세요.', acts: [['나레이션 설정', "showView('settings')"]]};
   else if (/자막 싱크|음성 타임스탬프/.test(raw)) t = {title: '음성을 복구한 뒤 이어서 만들 수 있어요', why: '이어 만들기를 누르면 문제·누락 음성만 자동으로 새로 만들고 다음 제작 단계로 넘어갑니다. 정상 음성은 재사용하며, 새로 만드는 부분에 인월드 사용량이 발생합니다. 다시 실패하면 다음 편을 시작하지 않고 멈춥니다.', acts: opts.blocked ? [] : retry ? [['▶ 음성 복구하고 이어 만들기', "queueControl('resume')"]] : [['문제 음성만 다시 만들기', `repairNarration('${js(opts.script || '')}')`]]};
@@ -566,6 +567,12 @@ async function loadProductionLibrary() {
       return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.package ? `<button class="mini primary" onclick="uploadLibraryPackage('${js(x.id)}','${js(x.name)}')">YouTube 업로드</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">${workLabel}</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}<button class="mini" onclick="markWorkUploaded('${js(x.id)}')">업로드 완료 후 정리</button></div>`;
     }).join('') || '<p class="hint">저장된 작업이 없습니다.</p>';
   } catch (e) { box.textContent = e.message; }
+}
+function openProductionLibrary() {
+  showView('wizard');
+  const library = $('workLibrary');
+  if (library) { library.open = true; library.scrollIntoView({behavior: 'smooth', block: 'center'}); }
+  loadProductionLibrary();
 }
 async function selectLibraryWork(path) {
   await refresh();
