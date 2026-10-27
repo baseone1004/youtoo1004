@@ -18,6 +18,7 @@ CACHE = os.path.join("대본", "_상태", "채널_제목.json")
 CONFIG_KEY = {"person": "내_채널", "mindam": "민담_채널"}
 REFRESH_AFTER = datetime.timedelta(hours=1)          # 새로 올린 영상이 추천에서 빨리 빠지도록 자주 확인한다
 _lock = threading.Lock()
+_save_lock = threading.Lock()
 _busy = set()
 
 
@@ -41,6 +42,39 @@ def channel_url(cfg, channel):
     return str(cfg.get(CONFIG_KEY[channel], "") or "").strip()
 
 
+def _account_sources(cfg, channel):
+    """Return saved channels whose published topics belong to this production slot.
+
+    The person slot may serve both Korean and Japanese psychology channels. The
+    story account is deliberately excluded even when its language is Korean.
+    """
+    accounts = cfg.get("유튜브_계정") or []
+    if channel == "person" and accounts:
+        story_id = cfg.get("유튜브_선택_mindam")
+        selected_id = cfg.get("유튜브_선택_person")
+        selected_url = channel_url(cfg, channel)
+        selected = []
+        for account in accounts:
+            if not account.get("url") or account.get("id") == story_id:
+                continue
+            language = account.get("language")
+            if language in {"ko", "ja"} or account.get("id") == selected_id or account.get("url") == selected_url:
+                selected.append(account)
+        return selected
+    if channel == "mindam" and accounts:
+        selected_id = cfg.get("유튜브_선택_mindam")
+        selected_url = channel_url(cfg, channel)
+        return [a for a in accounts if a.get("url") and (a.get("id") == selected_id or a.get("url") == selected_url)]
+    return []
+
+
+def _titles_for_account(account):
+    info = _load().get("account:" + str(account.get("id", "")), {})
+    if info.get("url") != account.get("url"):
+        return []
+    return list(info.get("titles") or [])
+
+
 def cached(channel):
     """저장된 채널 정보. {url, name, titles, fetched, error} 또는 {}."""
     return _load().get(channel) or {}
@@ -48,6 +82,9 @@ def cached(channel):
 
 def titles(cfg, channel):
     """설정된 채널 주소와 맞는 저장본의 제목 목록. 주소가 비었거나 바뀌었으면 빈 목록."""
+    sources = _account_sources(cfg, channel)
+    if sources:
+        return list(dict.fromkeys(title for account in sources for title in _titles_for_account(account)))
     url = channel_url(cfg, channel)
     info = cached(channel)
     if not url or info.get("url") != url:
@@ -55,16 +92,16 @@ def titles(cfg, channel):
     return list(info.get("titles") or [])
 
 
-def fetch(cfg, channel):
-    """채널 제목을 지금 가져와 저장한다. 결과 dict 를 돌려준다."""
-    url = channel_url(cfg, channel)
-    api_key = str(cfg.get("유튜브_API_키", "") or "").strip()
+def _fetch_one(cfg, channel, url, api_key, cache_key):
+    """Fetch one URL and save it under a slot or account cache key."""
+    api_key = str(api_key or "").strip()
     if not url or (T is None and not api_key):
         return {}
+    busy_key = str(cache_key)
     with _lock:
-        if channel in _busy:
-            return cached(channel)
-        _busy.add(channel)
+        if busy_key in _busy:
+            return _load().get(busy_key, {})
+        _busy.add(busy_key)
     try:
         data = _load()
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -75,22 +112,52 @@ def fetch(cfg, channel):
             except Exception as exc:  # noqa: BLE001
                 error = str(exc)
         if info is None and T is not None:            # 없으면 yt-dlp (제목·길이만 믿을 수 있음)
-            info = T.fetch_channel(url, 300); source = "ytdlp"
+            try:
+                info = T.fetch_channel(url, 300); source = "ytdlp"
+            except Exception as exc:  # noqa: BLE001
+                error = error or str(exc)
         if info and info.get("videos") is not None:
             videos = [dict(title=v["title"], views=int(v.get("views") or 0), likes=int(v.get("likes") or 0), duration=int(v.get("duration") or 0),
                            published=v.get("published", ""), url=v.get("url", ""))
                       for v in info["videos"] if v.get("title")]
-            data[channel] = dict(url=url, name=info.get("name") or url, titles=[v["title"] for v in videos], videos=videos,
+            data[busy_key] = dict(url=url, name=info.get("name") or url, titles=[v["title"] for v in videos], videos=videos,
                                  subs=int(info.get("subs") or 0), fetched=now, source=source, error="",
                                  warning=(f"유튜브 API 는 실패해 제목만 읽었습니다(조회수 없음): {error}" if error else ""))
         else:
-            previous = data.get(channel) or {}
-            data[channel] = dict(previous, url=url, fetched=previous.get("fetched", ""), error=error or f"채널을 읽지 못했습니다 ({now}). 주소를 확인하세요.")
-        _save(data)
-        return data[channel]
+            previous = data.get(busy_key) or {}
+            data[busy_key] = dict(previous, url=url, fetched=previous.get("fetched", ""), error=error or f"채널을 읽지 못했습니다 ({now}). 주소를 확인하세요.")
+        # Several saved channels may refresh at once. Merge into the latest
+        # cache snapshot so one thread cannot erase another channel's result.
+        with _save_lock:
+            latest = _load()
+            latest[busy_key] = data[busy_key]
+            _save(latest)
+            return latest[busy_key]
     finally:
         with _lock:
-            _busy.discard(channel)
+            _busy.discard(busy_key)
+
+
+def fetch(cfg, channel):
+    """Refresh every saved channel represented by the slot, then return summary."""
+    sources = _account_sources(cfg, channel)
+    if sources:
+        results = []
+        selected_id = cfg.get("유튜브_선택_" + channel)
+        for account in sources:
+            key = account.get("api_key") or (cfg.get("유튜브_API_키") if account.get("id") == selected_id else "")
+            result = _fetch_one(cfg, channel, account.get("url", ""), key, "account:" + str(account.get("id", "")))
+            if result:
+                results.append(result)
+        return dict(url=channel_url(cfg, channel), name=" · ".join(r.get("name", "") for r in results if r.get("name")),
+                    titles=list(dict.fromkeys(t for r in results for t in r.get("titles", []))),
+                    videos=[v for r in results for v in r.get("videos", [])],
+                    fetched=max((r.get("fetched", "") for r in results), default=""),
+                    error=" · ".join(r.get("error", "") for r in results if r.get("error")),
+                    warning=" · ".join(r.get("warning", "") for r in results if r.get("warning")),
+                    source="accounts", account_count=len(sources))
+    url = channel_url(cfg, channel)
+    return _fetch_one(cfg, channel, url, cfg.get("유튜브_API_키", ""), channel)
 
 
 def age_minutes(channel):
@@ -104,6 +171,23 @@ def age_minutes(channel):
 
 def fetch_if_stale(cfg, channel, minutes=10):
     """저장본이 minutes 보다 오래됐으면 지금 바로(동기) 다시 받는다. 주제를 추천하기 직전에 써서 방금 올린 영상도 걸러 낸다."""
+    sources = _account_sources(cfg, channel)
+    if sources:
+        stale = False
+        for account in sources:
+            info = _load().get("account:" + str(account.get("id", "")), {})
+            if info.get("url") != account.get("url") or not info.get("fetched"):
+                stale = True
+                break
+            try:
+                age = datetime.datetime.now() - datetime.datetime.strptime(info["fetched"], "%Y-%m-%d %H:%M")
+                if age.total_seconds() / 60 >= minutes:
+                    stale = True
+                    break
+            except ValueError:
+                stale = True
+                break
+        return fetch(cfg, channel) if stale else {}
     url = channel_url(cfg, channel)
     if not url or (T is None and not str(cfg.get("유튜브_API_키", "") or "").strip()):
         return cached(channel)
@@ -114,6 +198,25 @@ def fetch_if_stale(cfg, channel, minutes=10):
 
 def fetch_in_background(cfg, channel, force=False):
     """저장본이 없거나 오래됐으면 백그라운드에서 다시 받는다."""
+    sources = _account_sources(cfg, channel)
+    if sources:
+        started = False
+        selected_id = cfg.get("유튜브_선택_" + channel)
+        for account in sources:
+            cache_key = "account:" + str(account.get("id", ""))
+            info = _load().get(cache_key, {})
+            if info.get("url") == account.get("url") and info.get("fetched") and not force:
+                try:
+                    if datetime.datetime.now() - datetime.datetime.strptime(info["fetched"], "%Y-%m-%d %H:%M") < REFRESH_AFTER:
+                        continue
+                except ValueError:
+                    pass
+            api_key = account.get("api_key") or (cfg.get("유튜브_API_키") if account.get("id") == selected_id else "")
+            thread = threading.Thread(target=_fetch_one, args=(cfg, channel, account.get("url", ""), api_key, cache_key), daemon=True,
+                                      name=f"channel-sync-{str(account.get('id', ''))[:8]}")
+            thread.start()
+            started = True
+        return started
     url = channel_url(cfg, channel)
     if not url or T is None:
         return False
@@ -133,6 +236,20 @@ def status(cfg):
     """화면용 요약: 채널별 {url, name, count, fetched, error, busy}."""
     out = {}
     for channel in CONFIG_KEY:
+        sources = _account_sources(cfg, channel)
+        if sources:
+            infos = [_load().get("account:" + str(a.get("id", "")), {}) for a in sources]
+            fresh_infos = [i for a, i in zip(sources, infos) if i.get("url") == a.get("url")]
+            successful = [i for i in fresh_infos if not i.get("error")]
+            partial_errors = [i.get("error", "") for i in fresh_infos if i.get("error")]
+            out[channel] = dict(url=channel_url(cfg, channel), name=" · ".join(i.get("name", "") for i in fresh_infos if i.get("name")),
+                                count=len(titles(cfg, channel)), fetched=max((i.get("fetched", "") for i in fresh_infos), default=""),
+                                error=(" · ".join(partial_errors) if partial_errors and not successful else ""),
+                                warning=" · ".join([i.get("warning", "") for i in fresh_infos if i.get("warning")] +
+                                                   (partial_errors if successful else [])),
+                                source="accounts", busy=any(("account:" + str(a.get("id", ""))) in _busy for a in sources),
+                                account_count=len(sources))
+            continue
         url = channel_url(cfg, channel)
         info = cached(channel)
         fresh = bool(url) and info.get("url") == url
@@ -174,7 +291,10 @@ def filter_topics(cfg, channel, items, key="제목"):
 def analysis(cfg, channel):
     """내 채널 분석: 영상 수·조회수 평균/중앙값·상위 영상·잘 되는/약한 키워드. 저장본(videos) 기준."""
     url = channel_url(cfg, channel)
-    info = cached(channel)
+    selected_id = cfg.get("유튜브_선택_" + channel)
+    info = _load().get("account:" + str(selected_id), {}) if selected_id else {}
+    if info.get("url") != url:
+        info = cached(channel)
     videos = info.get("videos") or []
     if url and info.get("url") == url and info.get("fetched") and not info.get("error") and not videos:
         return dict(ok=False, connected=True, count=0, name=info.get("name", ""),
