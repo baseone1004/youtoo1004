@@ -544,7 +544,7 @@ def refresh_topics(channel, shown):
             if os.path.exists(path):
                 with open(path, encoding="utf-8-sig") as f:
                     exclude += [l.strip() for l in f if l.strip() and not l.startswith("#")]
-        exclude += 채널_연동.titles(cfg, channel)[:80]
+        exclude += 채널_연동.titles(cfg, channel)
         exclude += [s["name"] for s in script_files()]
         analysis = 채널_연동.analysis(cfg, channel)
         try:
