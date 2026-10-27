@@ -8,6 +8,33 @@ from PIL import Image
 import reference_images as ref
 
 class ReferenceTest(unittest.TestCase):
+    def test_psychology_reference_is_language_locked_for_korean_and_japanese(self):
+        data = io.BytesIO()
+        Image.new("RGB", (2, 2), "blue").save(data, format="PNG")
+        url = "data:image/png;base64," + base64.b64encode(data.getvalue()).decode()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ko = root / "ko.png"; ko.write_bytes(data.getvalue())
+            ja = root / "ja.png"; ja.write_bytes(data.getvalue())
+            mascot = {"레퍼런스_사용": True, "생성_모델": "codex", "이미지": "ko.png"}
+            references = {"ko": {"reference": "ko.png"}, "ja": {"reference": "ja.png"}}
+            with patch.object(ref, "ROOT", root), \
+                    patch.object(ref.채널_프로필, "get", return_value={"마스코트": mascot}), \
+                    patch.object(ref.채널_프로필, "language_code", side_effect=["ko", "ja", "ko", "ja"]), \
+                    patch.object(ref.채널_프로필, "brand_reference", side_effect=references.__getitem__) as brand, \
+                    patch.object(ref.채널_프로필, "save") as save:
+                ko_options = ref.reference_options("person")
+                ja_options = ref.reference_options("person")
+                self.assertEqual(Path(ko_options["reference_image"]), ko)
+                self.assertEqual(Path(ja_options["reference_image"]), ja)
+                self.assertEqual(ko_options["reference_model"], "codex")
+                self.assertEqual(ja_options["reference_model"], "codex")
+                for lang in ("ko", "ja"):
+                    with self.subTest(language=lang), self.assertRaisesRegex(ValueError, "고정"):
+                        ref.save_reference("person", url)
+                self.assertEqual(brand.call_count, 4)
+                save.assert_not_called()
+
     def test_upload_is_normalized_and_channel_saved(self):
         data = io.BytesIO()
         Image.new("RGB", (50, 30), "red").save(data, format="JPEG")
