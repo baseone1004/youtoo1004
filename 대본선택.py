@@ -9,6 +9,7 @@
   지침은 지침/ 폴더의 txt 를 골라 쓰고, 화면에서 바로 고쳐 저장할 수 있습니다.
 """
 import sys, os, re, io, json, glob, time, threading, datetime, webbrowser, urllib.parse, subprocess, shutil, uuid, mimetypes, tempfile
+import hashlib
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -2321,7 +2322,8 @@ def make_upload_package(script_file, result):
     tags = saved.get("tags") or _block(opt_text, "태그") or _block(script_text, "태그")
     description = upload_description(saved.get("description") or _block(opt_text, "설명글") or _block(script_text, "설명글"), tags, script_language(script_file))
     channel_dir = 대본생성.safe_name(채널_프로필.get("mindam" if is_mindam else "person").get("업로드_폴더") or ("민담" if is_mindam else "심리해독소"))
-    package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}"
+    script_key = hashlib.sha256(os.path.normcase(os.path.abspath(script_file)).encode("utf-8")).hexdigest()[:12]
+    package = Path(BASE) / "업로드" / channel_dir / f"{datetime.date.today().isoformat()}_{대본생성.safe_name(title)}_{script_key}"
     package.mkdir(parents=True, exist_ok=True)
     atomic_write_json(package / "제작원본.json", {"script": os.path.relpath(os.path.abspath(script_file), BASE),
                                                   "language": script_language(script_file)})
