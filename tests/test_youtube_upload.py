@@ -8,6 +8,26 @@ import youtube_upload
 
 
 class YouTubeUploadTests(unittest.TestCase):
+    def test_oauth_clients_are_protected_and_selected_per_account(self):
+        japanese = {"installed": {"client_id": "japanese-client", "client_secret": "japanese-secret",
+                                   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                                   "token_uri": "https://oauth2.googleapis.com/token"}}
+        korean = {"installed": {"client_id": "korean-client", "client_secret": "korean-secret",
+                                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                                "token_uri": "https://oauth2.googleapis.com/token"}}
+        with tempfile.TemporaryDirectory() as td:
+            youtube_upload.save_client(td, japanese, "japanese")
+            youtube_upload.save_client(td, korean, "korean")
+            japanese_path = Path(td) / youtube_upload.CLIENT_DIR / "japanese.json"
+            korean_path = Path(td) / youtube_upload.CLIENT_DIR / "korean.json"
+            prefix = (youtube_upload._DPAPI_PREFIX, youtube_upload._LOCAL_PREFIX)
+            self.assertTrue(japanese_path.read_bytes().startswith(prefix))
+            self.assertTrue(korean_path.read_bytes().startswith(prefix))
+            self.assertEqual(youtube_upload._read_private_json(youtube_upload._client_for_account(td, "japanese")), japanese)
+            self.assertEqual(youtube_upload._read_private_json(youtube_upload._client_for_account(td, "korean")), korean)
+            state = youtube_upload.status(td, [{"id": "japanese"}, {"id": "korean"}])
+            self.assertEqual(state["clients"], {"japanese": True, "korean": True})
+
     def test_oauth_client_is_desktop_only_and_stored_protected(self):
         client = {"installed": {"client_id": "client-id", "client_secret": "secret",
                                "auth_uri": "https://accounts.google.com/o/oauth2/auth",

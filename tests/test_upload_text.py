@@ -8,6 +8,20 @@ import 대본선택 as app
 
 
 class UploadTextTests(unittest.TestCase):
+    def test_same_day_same_title_packages_keep_distinct_work_ids(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            scripts = [root / "대본" / "한국어" / f"작업{i}.txt" for i in (1, 2)]
+            for script in scripts:
+                script.parent.mkdir(parents=True, exist_ok=True)
+                script.write_text("[제목]\n같은 제목\n\n[대본]\n본문", encoding="utf-8")
+            with patch.object(app, "BASE", str(root)):
+                packages = [Path(app.make_upload_package(str(script), {})) for script in scripts]
+                repeated = Path(app.make_upload_package(str(scripts[0]), {}))
+            self.assertNotEqual(packages[0], packages[1])
+            self.assertEqual(packages[0], repeated)
+            self.assertTrue(all((package / "제작원본.json").is_file() for package in packages))
+
     def test_korean_and_japanese_texts_preserve_language_and_hashtag_spacing(self):
         for title, description, tags in (("마음의 거리", "한국어 설명", "마음, 관계"),
                                           ("心の距離", "日本語の説明", "心理, 人間関係")):

@@ -33,7 +33,9 @@ class ReleaseValidationTest(unittest.TestCase):
     def test_release_with_personal_work_directory_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             out = self.make_release(Path(td))
-            (out / "app" / "대본").mkdir()
+            work = out / "app" / "대본"
+            work.mkdir()
+            (work / "개인대본.txt").write_text("개인 작업", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "개인 작업 파일"):
                 validate_release(out)
 
