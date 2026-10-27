@@ -2,7 +2,7 @@
 """채널 프로필 — 채널 이름·설명·시청자·마스코트·썸네일 방식 같은 '내 채널 고유 정보'를 한 곳(채널_프로필.json)에 둔다.
 
 프로그램에는 두 개의 '자리'가 있다 (자리는 제작 방식이 달라 고정):
-  person : 정보형 채널 — 주제 → 9구간 나레이션 대본 (기본값: 심리해독소)
+  person : 정보형 채널 — 주제 → 9구간 나레이션 대본 (기본값: 마음등불심리노트)
   mindam : 이야기형 채널 — 기획 → 챕터 창작 이야기 (기본값: 설루온)
 어느 자리든 이름·설명·마스코트 등은 화면 [설정 → 채널 프로필]에서 바꿀 수 있고, 지침 파일 안의
 {{채널명}} {{채널_설명}} {{대상_시청자}} {{마스코트_설명}} {{마스코트_프롬프트}} {{해시태그}} 자리표시자는 읽을 때 채워진다."""
@@ -27,7 +27,7 @@ _lock = threading.Lock()
     "person": {
         "유형": "정보형",
         "언어": "ko",
-        "이름": "심리해독소",
+        "이름": "마음등불심리노트",
         "설명": ("복잡한 사람의 속마음과 관계의 해답을 찾아 주는 정보형 롱폼 채널. "
                "관계 해독(나를 이용하려는 사람 구분법·건강한 손절 기준), 감정 해독(피로감·불안·번아웃을 줄이는 마음 관리), "
                "처세 해독(만만해 보이지 않는 대화법·상처받지 않는 거리 두기)을 다룬다. "
@@ -37,22 +37,21 @@ _lock = threading.Lock()
         "검색어": ["인간관계 심리", "사람 심리 이유", "왜 사람들은", "손절해야 할 사람", "착한 사람 손해",
                  "만만하게 보이는 이유", "말투 심리", "나를 이용하는 사람", "관계 피로", "번아웃 심리",
                  "속마음 심리학", "거리두기 인간관계", "상처받지 않는 법", "감정 소모"],
-        "기본_태그": ["심리학", "인간관계", "심리해독", "인간관계피로", "처세술", "감정조절", "속마음", "대화법", "마음치유"],
-        "해시태그": "#심리해독소",
+        "기본_태그": ["심리학", "인간관계", "마음등불", "인간관계피로", "처세술", "감정조절", "속마음", "대화법", "마음치유"],
+        "해시태그": "#마음등불심리노트",
         "자료_검색_접미": ["심리학 연구 결과", "연구 논문", "통계 조사"],
         "면책": ("※ 본 영상은 사람과 관계, 심리 현상을 이해하기 위한 정보 제공을 목적으로 제작되었습니다. "
                "특정 개인을 진단하거나 모든 경우에 동일하게 적용하기 위한 내용은 아닙니다."),
         "마스코트": {
-            "이름": "해",
-            "이미지": "assets/캐릭터/해.png",
-            "설명": ("크림색 아기곰, 크고 동그란 안경, 발그레한 볼과 미소, 목에 하늘색 리본과 '해' 글자가 적힌 동그란 배지, "
-                   "한 손에 하트 모양 열쇠, 옆에 하트가 새겨진 자물쇠. 굵은 갈색 외곽선의 단순한 2D 캐릭터"),
-            "프롬프트": ("the channel mascot Hae: a cream-colored chibi bear with big round glasses, "
-                     "rosy cheeks, a light-blue ribbon collar with a round badge, holding a heart-shaped key next to a small heart padlock, "
-                     "same face, same design, consistent character design"),
+            "이름": "마음등불",
+            "이미지": "레퍼런스/한국채널_마음등불심리노트.png",
+            "설명": "둥근 표정의 작은 등불 요정. 짙은 남색의 등불 몸체와 모자, 민트빛 불꽃, 따뜻한 황금빛 광채를 가진 2D 캐릭터. 고정 레퍼런스의 얼굴·실루엣·색·장식을 그대로 유지한다.",
+            "프롬프트": "the channel mascot from the fixed reference: a small adorable lantern spirit with a round expressive face, deep navy lantern body and cap, a glowing mint-green flame, and warm golden light; preserve the exact face, silhouette, colors and accessories",
+            "레퍼런스_사용": True,
+            "생성_모델": "codex",
         },
-        "브랜드": {"주색": "#0F1B3D", "강조색": "#4BE3C4", "바탕색": "#FFF4DC", "보조색": "#E6543C", "배지": "심리해독소", "사진_톤": "warm"},
-        "화풍_접미": "warm soft watercolor-like tones with gentle cream highlights, calm cozy lighting, consistent channel look",
+        "브랜드": {"주색": "#18344A", "강조색": "#62E3C2", "바탕색": "#FFF4DC", "보조색": "#FFC95C", "배지": "마음등불심리노트", "사진_톤": "warm"},
+        "화풍_접미": "consistent warm 2D anime illustration, clean cel shading, expressive readable faces, soft cream highlights and calm cozy lighting; preserve the exact fixed channel mascot design",
         "썸네일": {
             "레이아웃": "jalnan_pop",
             "화풍": ("bright flat 2D chibi sticker illustration for a YouTube thumbnail, thick clean dark outlines, big expressive eyes, "
@@ -62,7 +61,7 @@ _lock = threading.Lock()
             "띠_문구": "",
         },
         "지침": {"대본": "정보형_대본지침.txt", "이미지": "이미지지침_정보형.txt"},
-        "업로드_폴더": "심리해독소",
+        "업로드_폴더": "마음등불심리노트",
         "영상_길이": "20~30분",
     },
     "mindam": {
@@ -77,9 +76,9 @@ _lock = threading.Lock()
         "해시태그": "#야담",
         "자료_검색_접미": [],
         "면책": "※ 본 영상은 옛이야기를 바탕으로 한 창작 이야기입니다.",
-        "마스코트": {"이름": "", "이미지": "", "설명": "", "프롬프트": ""},
+        "마스코트": {"이름": "", "이미지": "", "설명": "", "프롬프트": "", "레퍼런스_사용": False, "생성_모델": "codex"},
         "브랜드": {"주색": "#1C120A", "강조색": "#FFD54A", "바탕색": "#F3E9D2", "보조색": "#B3261E", "배지": "설루온", "사진_톤": "sepia"},
-        "화풍_접미": "soft muted natural colors, gentle warm lamplight or daylight, clean full-frame composition, consistent channel look",
+        "화풍_접미": "consistent 2D anime illustration with clean cel shading, expressive readable faces, historically grounded Joseon clothing and locations, full-frame composition",
         "썸네일": {
             "레이아웃": "ink_gold",
             "화풍": ("bright clean anime-style 2D illustration for a YouTube thumbnail, large clear expressive eyes, smooth cel shading, cheerful saturated colors, sunny daylight, "
@@ -154,7 +153,12 @@ def get(slot):
 
 
 def name(slot):
-    return get(slot)["이름"] or 기본_프로필[slot]["이름"]
+    profile = get(slot)
+    if slot == "person" and language_code(slot) == "ja":
+        mapped = brand_reference("ja")
+        if mapped.get("name"):
+            return mapped["name"]
+    return profile["이름"] or 기본_프로필[slot]["이름"]
 
 
 def save(slot, patch, replace=False):
@@ -195,7 +199,7 @@ def placeholders(slot):
     p = get(slot)
     m = p.get("마스코트") or {}
     return {
-        "채널명": p["이름"],
+        "채널명": name(slot),
         "언어": language_name(slot),
         "채널_설명": p["설명"],
         "대상_시청자": p["대상_시청자"],

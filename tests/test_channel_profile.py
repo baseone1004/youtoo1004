@@ -20,7 +20,7 @@ class ChannelProfileTest(unittest.TestCase):
 
     def test_defaults_when_no_file(self):
         data = P.load(force=True)
-        self.assertEqual(data["person"]["이름"], "심리해독소")
+        self.assertEqual(data["person"]["이름"], "마음등불심리노트")
         self.assertEqual(data["mindam"]["유형"], "이야기형")
         self.assertEqual(data["mindam"]["썸네일"]["레이아웃"], "ink_gold")
 
@@ -34,7 +34,7 @@ class ChannelProfileTest(unittest.TestCase):
         with open(P.FILE, encoding="utf-8") as f:
             self.assertEqual(json.load(f)["mindam"]["이름"], "새 채널")
         self.assertEqual(P.name("mindam"), "새 채널")
-        self.assertEqual(P.name("person"), "심리해독소")
+        self.assertEqual(P.name("person"), "마음등불심리노트")
 
     def test_fill_placeholders(self):
         P.save("person", {"이름": "건강백서", "마스코트": {"이름": "콩", "프롬프트": "the mascot Kong"}})

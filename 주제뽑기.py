@@ -35,7 +35,7 @@ def _profile():
         import 채널_프로필
         return 채널_프로필.get("person")
     except Exception:  # noqa: BLE001
-        return {"이름": "심리해독소", "검색어": ["인간관계 심리", "사람 심리 이유"], "기본_태그": ["심리학", "인간관계"], "해시태그": "#심리해독소", "면책": ""}
+        return {"이름": "마음등불심리노트", "검색어": ["인간관계 심리", "사람 심리 이유"], "기본_태그": ["심리학", "인간관계"], "해시태그": "#마음등불심리노트", "면책": ""}
 import 채널_프로필
 검색어 = 채널_프로필.benchmark_queries("person")
 제외_채널_단어 = ["뉴스", "TV", "연예", "정치", "News", "방송", "KBS", "MBC", "SBS", "JTBC", "YTN"]
@@ -843,7 +843,7 @@ def make_upload(c):
     """후보 하나로 유튜브 업로드용 제목·해시태그·설명글·태그를 만든다."""
     kws = (c.get("k") or tag_words(c["t"]) + tag_words(c["th"]))[:3]
     cat_tags = CAT_TAGS.get(c["c"], [])
-    pf = _profile(); ch_name = pf.get("이름") or "심리해독소"; ch_tag = (pf.get("해시태그") or "#" + ch_name).strip()
+    pf = _profile(); ch_name = pf.get("이름") or "마음등불심리노트"; ch_tag = (pf.get("해시태그") or "#" + ch_name).strip()
     title = f"{c['t']} ({CAT_SUFFIX.get(c['c'], ch_name)})"
     hashtags = [ch_tag, "#" + cat_tags[0]] + ["#" + k for k in kws[:1]]
     points = c.get("p") or ["왜 그런 일이 벌어지는지 그 이유", "심리학과 연구가 설명하는 원인", "오늘부터 달라질 수 있는 한 가지"]
