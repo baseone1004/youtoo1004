@@ -111,8 +111,10 @@ function renderingWithoutScriptAI(job) {
 }
 async function checkReady() {
   const items = [];
+  let appInfo = null;
   try {
-    const info = await api('/api/state');
+    appInfo = await api('/api/state');
+    const info = appInfo;
     const selectedChannels = [...new Set([...selection.values()].map(x => x.channel))];
     const requiredChannels = selectedChannels.length ? selectedChannels : [channel];
     const v = requiredChannels.every(ch => (info.profiles?.[ch]?.언어 === 'ja') ? String(info.config.인월드_목소리_일본 || '').trim() : String(info.config[ch === 'mindam' ? '인월드_목소리_민담' : '인월드_목소리_사람'] || info.config.인월드_목소리 || '').trim());
@@ -133,10 +135,10 @@ async function checkReady() {
     const ok = !!c && c.ok && Number.isFinite(c.credit) && c.credit > 0;
     if (codexOnly) items.push([true, 'Codex 이미지 · KIE 요청 없음', null]);
     else items.push([ok, ok ? 'KIE 연결 확인 완료' : (c && c.ok && c.credit === 0 ? 'KIE 크레딧 충전 필요' : 'KIE 키·연결 확인 필요'), 'settings']);
-    const mediaTools = info.media_tools || {};
-    const renderReady = mediaTools.ffmpeg === true && mediaTools.ffprobe === true;
-    items.push([renderReady, renderReady ? 'FFmpeg·ffprobe 렌더링 준비됨' : 'FFmpeg 또는 ffprobe 설치 필요 · 설치 후 시작 파일 다시 실행', null]);
-  } catch (e) { items.push([false, '편집프로그램 꺼짐 — 시작 파일을 다시 실행하세요', null]); }
+  } catch (e) { items.push([false, 'KIE 연결 확인 필요', 'settings']); }
+  const mediaTools = appInfo?.media_tools || {};
+  const renderReady = mediaTools.ffmpeg === true && mediaTools.ffprobe === true;
+  items.push([renderReady, renderReady ? 'FFmpeg·ffprobe 렌더링 준비됨' : 'FFmpeg 또는 ffprobe 설치 필요 · 설치 후 시작 파일 다시 실행', null]);
   const html = '<span class="lbl">준비 상태</span>' + items.map(([ok, label, tab]) => `<span class="pill ${ok ? 'ok' : 'bad'}" ${(!ok && tab) ? `onclick="showView('${tab}')"` : ''}>${ok ? '✓' : '!'} ${esc(label)}${(!ok && tab) ? ' → 고치기' : ''}</span>`).join('');
   readinessIssues = items.filter(x => !x[0]).map(x => x[1]);
   $('readyBar').innerHTML = html; $('setupReady').innerHTML = html; return items.every(x => x[0]);
