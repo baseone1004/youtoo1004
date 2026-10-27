@@ -542,7 +542,13 @@ async function stopAll() {
 async function queueControl(action) {
   const labels = {pause: '지금 만드는 편이 끝나면 잠시 멈춥니다.', resume: '가장 앞의 미완성 편부터 한 편씩 이어서 제작합니다.', cancel: '지금 작업과 남은 주제를 모두 중단할까요?'};
   if (action === 'cancel' && !confirm(labels.cancel)) return;
-  try { renderQueue(await api('/api/queue/' + action, {})); toast(labels[action]); } catch (e) { toast(e.message, true); }
+  try {
+    const queue = await api('/api/queue/' + action, {});
+    if (STATE) STATE.queue = queue;
+    renderQueue(queue);
+    toast(labels[action]);
+    if (action === 'resume') startPolling(true);
+  } catch (e) { toast(e.message, true); }
 }
 async function removeQueueItem(id) { try { renderQueue(await api('/api/queue/remove', {id})); } catch (e) { toast(e.message, true); } }
 function renderQueue(q) {
