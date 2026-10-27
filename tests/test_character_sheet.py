@@ -50,20 +50,22 @@ class CharacterSheetTest(unittest.TestCase):
             note = app.sheet_note(sheet)
             self.assertIn("[인물 고정표", note); self.assertIn("그대로 되풀이", note)
 
-    def test_person_or_no_plan_is_empty(self):
+    def test_person_has_no_cast_and_story_without_plan_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             person = os.path.join(tmp, "대본", "2026-01-01_정보형.txt"); os.makedirs(os.path.dirname(person))
             open(person, "w", encoding="utf-8").write("[대본]\n문장.")
             self.assertEqual(app.character_sheet(person, FakeAI(SHEET)), "")
             d = os.path.join(tmp, "대본", "민담", "기획없음"); os.makedirs(d)
             f = os.path.join(d, "final.txt"); open(f, "w", encoding="utf-8").write("본문")
-            self.assertEqual(app.character_sheet(f, FakeAI(SHEET)), "")
+            with self.assertRaisesRegex(RuntimeError, "인물.*표"):
+                app.character_sheet(f, FakeAI(SHEET))
             self.assertEqual(app.sheet_note(""), "")
 
-    def test_unreadable_answer_falls_back(self):
+    def test_unreadable_story_roster_stops_before_images(self):
         with tempfile.TemporaryDirectory() as tmp:
             script = self._workdir(tmp)
-            self.assertEqual(app.character_sheet(script, FakeAI("알 수 없는 답"), lambda *_: None), "")
+            with self.assertRaisesRegex(RuntimeError, "인물.*표"):
+                app.character_sheet(script, FakeAI("알 수 없는 답"), lambda *_: None)
             self.assertFalse(os.path.isfile(os.path.join(os.path.dirname(script), "인물표.txt")))
 
 

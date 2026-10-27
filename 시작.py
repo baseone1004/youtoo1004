@@ -17,6 +17,8 @@ PACKAGES = {
     "yt_dlp": ("yt-dlp", "2026.8.19"), "openai": ("openai", "3.13.0"), "ddgs": ("ddgs", "9.16.0"),
     "requests": ("requests", "2.34.2"), "fastapi": ("fastapi", "0.141.1"),
     "uvicorn": ("uvicorn", "0.52.4"), "PIL": ("pillow", "12.3.0"),
+    "googleapiclient": ("google-api-python-client", "2.201.0"),
+    "google_auth_oauthlib": ("google-auth-oauthlib", "1.5.0"),
 }
 
 

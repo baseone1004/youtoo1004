@@ -38,7 +38,7 @@ FFMPEG_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
 # 프로그램 파일: 이것만 복사한다 (개인 자료·로그·테스트는 제외)
 APP_DIRS = ["화면", "지침", "assets", "딥시크_확장"]
-APP_SKIP_FILES = {"설정.json", "채널_프로필.json", "계획.json", "후보.json", "민담_후보.json", "트렌드.json", "민담_트렌드.json",
+APP_SKIP_FILES = {"설정.json", "youtube_oauth_client.json", "채널_프로필.json", "계획.json", "후보.json", "민담_후보.json", "트렌드.json", "민담_트렌드.json",
                   "벤치_히트.json", "추천_추가.json", "사용한_주제.txt", "민담_사용한_주제.txt", "현상_추가.txt",
                   "유튜브_자동화_시작.bat", "유튜브_자동화_시작.vbs"}
 EDITOR_DIRS = ["core", "static", "capcut_template", "user_fonts"]

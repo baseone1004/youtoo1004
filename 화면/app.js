@@ -393,7 +393,7 @@ async function continuePipeline() {
 }
 
 // ── 3단계: 진행 ─────────────────────────────────────────
-const KIND_LABEL = {bench: '채널 벤치마킹', script: '대본 만들기', mindam: '이야기 대본 만들기', images: '이미지 프롬프트', variations: '제목 변형', optimize: '제목·설명·태그', tts: '나레이션', pipeline: '한 편 자동 제작', queue_pipeline: '연속 제작 중', thumbnail: '썸네일'};
+const KIND_LABEL = {bench: '채널 벤치마킹', script: '대본 만들기', mindam: '이야기 대본 만들기', images: '이미지 프롬프트', variations: '제목 변형', optimize: '제목·설명·태그', tts: '나레이션', pipeline: '한 편 자동 제작', queue_pipeline: '연속 제작 중', thumbnail: '썸네일', youtube_upload: 'YouTube 업로드'};
 function startPolling(scroll) {
   clearInterval(pollTimer); $('pgResult').classList.add('hidden'); $('pgErr').classList.add('hidden'); $('pgPreview').classList.add('hidden');
   poll(); pollTimer = setInterval(poll, 1500);
@@ -477,6 +477,10 @@ async function poll() {
       + ((j.kind === 'script' || j.kind === 'mindam') && r.file ? `<div style="margin-top:8px"><button class="primary" onclick="$('contFile').value='${js(r.file)}';continuePipeline()">🎬 이 대본으로 나레이션 → 이미지 → 영상까지 이어서 만들기</button></div>` : '')
       + ((r.issues || []).length ? `<div class="hint" style="margin-top:6px">확인: ${r.issues.map(esc).join(' · ')}</div>` : '')
       + `<div class="hint">${esc(r.cost || '')}</div>`;
+    if (j.kind === 'youtube_upload' && r.uploaded) {
+      box.innerHTML += r.uploaded.map(v => `<div>${esc(v.title || v.file)} · ${v.skipped ? '이미 올린 파일 (건너뜀)' : '업로드 완료'} ${v.url ? `<a href="${esc(v.url)}" target="_blank" rel="noopener">YouTube에서 확인</a>` : ''}</div>`).join('');
+      loadProductionLibrary();
+    }
     refresh();
   } else if (j.status === 'error' && isCancelMessage(j.error)) { $('pgErr').classList.add('hidden'); $('pgStage').textContent = '⏹ 중단됨 — 이어서 만들려면 대본을 고르고 [이어서 만들기]를 누르세요'; }
   else if (j.status === 'error') { const e = $('pgErr'); e.classList.remove('hidden'); e.className = 'errwrap'; e.innerHTML = explainError(j.error); }
@@ -554,7 +558,7 @@ async function loadProductionLibrary() {
     const r = await api('/api/library');
     box.innerHTML = (r.items || []).map(x => {
       const state = x.package ? '업로드 준비 완료' : `${x.script_exists ? '대본 있음' : '대본 없음'} · ${x.audio ? '음성 있음' : '음성 대기'} · 장면 파일 ${x.media_count}개`;
-      return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">작업 선택</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}<button class="mini" onclick="markWorkUploaded('${js(x.id)}')">업로드 완료 후 정리</button></div>`;
+      return `<div class="file" style="flex-wrap:wrap"><span style="flex:1;min-width:180px"><b>${esc(x.name)}</b><br><small class="hint">${esc(state)}</small></span><button class="mini" onclick="openPath('${js(x.folder)}')">폴더</button>${x.video ? `<button class="mini" onclick="openPath('${js(x.video)}')">영상 열기</button>` : ''}${x.package ? `<button class="mini primary" onclick="uploadLibraryPackage('${js(x.id)}','${js(x.name)}')">YouTube 업로드</button>` : ''}${x.script_exists ? `<button class="mini" onclick="selectLibraryWork('${js(x.script)}')">작업 선택</button>` : (x.recoverable ? `<button class="mini" onclick="restoreLibraryWork('${js(x.id)}')">문서 복원</button>` : '')}<button class="mini" onclick="markWorkUploaded('${js(x.id)}')">업로드 완료 후 정리</button></div>`;
     }).join('') || '<p class="hint">저장된 작업이 없습니다.</p>';
   } catch (e) { box.textContent = e.message; }
 }
@@ -1248,13 +1252,75 @@ function fillYtAccountForm() {
   $('ytAccountName').value=account.name; $('ytAccountUrl').value=account.url; $('ytAccountKey').value=''; $('ytAccountLanguage').value=account.language || (((STATE || {}).profiles || {})[channel] || {}).언어 || 'ko';
 }
 async function refreshYtAccounts() {
-  try { const response = await fetch('/api/youtube/accounts'); if (response.status === 404) { $('ytAccounts').innerHTML='<option>제작 완료 후 프로그램 재시작 필요</option>'; return; } if (!response.ok) return; const r = await response.json(); savedYtAccounts = r.accounts; const previous=$('ytAccounts').value; $('ytAccounts').innerHTML=r.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.url)}${a.language === 'ja' ? ' · 일본어' : a.language === 'ko' ? ' · 한국어' : ''}${a.key_saved ? ' · 키 저장됨' : ''}</option>`).join(''); if(previous) $('ytAccounts').value=previous; } catch(e) { toast(e.message,true); }
+  try { const response = await fetch('/api/youtube/accounts'); if (response.status === 404) { $('ytAccounts').innerHTML='<option>제작 완료 후 프로그램 재시작 필요</option>'; return; } if (!response.ok) return; const r = await response.json(); savedYtAccounts = r.accounts; const previous=$('ytAccounts').value; $('ytAccounts').innerHTML=r.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.url)}${a.language === 'ja' ? ' · 일본어' : a.language === 'ko' ? ' · 한국어' : ''}${a.key_saved ? ' · 키 저장됨' : ''}</option>`).join(''); if(previous) $('ytAccounts').value=previous; await refreshYoutubeOAuthStatus(); } catch(e) { toast(e.message,true); }
 }
 async function saveYtAccount() {
   try { await api('/api/youtube/accounts',{name:$('ytAccountName').value,url:$('ytAccountUrl').value,api_key:$('ytAccountKey').value,language:$('ytAccountLanguage').value}); $('ytAccountKey').value=''; await refreshYtAccounts(); toast('유튜브 계정 저장됨'); } catch(e) { toast(e.message,true); }
 }
 async function useYtAccount() {
   try { const r=await api('/api/youtube/accounts/select',{id:$('ytAccounts').value,slot:channel}); if(r.workspace_url){window.location.href=r.workspace_url;return;} await refresh(); toast('선택한 유튜브 계정 적용됨'); } catch(e) { toast(e.message,true); }
+}
+async function refreshYoutubeOAuthStatus() {
+  try {
+    const response = await fetch('/api/youtube/oauth/status'); if (!response.ok) return;
+    const state = await response.json(), account = savedYtAccounts.find(a => a.id === $('ytAccounts').value);
+    const auth = account && state.accounts && state.accounts[account.id];
+    const el = $('ytOAuthStatus'), help = $('ytOAuthHelp');
+    if (!account) { el.textContent = '채널 계정을 먼저 저장하세요'; el.className = 'stat'; return; }
+    if (!state.client_saved) { el.textContent = 'OAuth JSON 미등록'; el.className = 'stat'; help.textContent = 'Google Cloud에서 YouTube Data API v3를 사용 설정하고 데스크톱 OAuth JSON을 등록하세요.'; return; }
+    if (auth && auth.status === 'running') { el.textContent = auth.stage || 'Google 로그인 대기'; el.className = 'stat now'; help.textContent = '열린 브라우저에서 올바른 YouTube 채널로 로그인하고 권한을 허용하세요.'; setTimeout(refreshYoutubeOAuthStatus, 1800); return; }
+    if (auth && auth.status === 'error') { el.textContent = '연결 실패'; el.className = 'stat bad'; help.textContent = auth.error || '브라우저 로그인에 실패했습니다.'; return; }
+    if (auth && auth.connected) { el.textContent = `연결됨 · ${auth.channel}`; el.className = 'stat ok'; help.textContent = `연결된 YouTube 채널: ${auth.channel} · 업로드 공개 범위: ${$('youtubePrivacy').value}`; return; }
+    el.textContent = '이 계정 로그인 필요'; el.className = 'stat'; help.textContent = '위 목록에서 채널을 선택하고 [선택 계정 Google 로그인]을 누르세요.';
+  } catch (e) {}
+}
+async function saveYoutubeOAuthClient() {
+  const file = $('ytOAuthClientFile').files?.[0]; if (!file) return toast('Google Cloud에서 내려받은 데스크톱 OAuth JSON 파일을 선택하세요.', true);
+  try {
+    const client_config = JSON.parse(await file.text());
+    await api('/api/youtube/oauth/client', {client_config});
+    $('ytOAuthClientFile').value = '';
+    toast('OAuth 설정을 이 PC에 저장했습니다.');
+    await refreshYoutubeOAuthStatus();
+  } catch(e) { toast(e.message || 'OAuth JSON 파일을 읽지 못했습니다.', true); }
+}
+async function connectYoutubeAccount() {
+  const account = savedYtAccounts.find(a => a.id === $('ytAccounts').value);
+  if (!account) return toast('YouTube 계정을 저장하고 선택하세요.', true);
+  try {
+    const r = await api('/api/youtube/oauth/connect', {account_id: account.id});
+    if (r.started) toast('브라우저에서 Google 로그인 창을 열었습니다.');
+    await refreshYoutubeOAuthStatus();
+  } catch(e) { toast(e.message, true); }
+}
+async function disconnectYoutubeAccount() {
+  const account = savedYtAccounts.find(a => a.id === $('ytAccounts').value);
+  if (!account) return toast('YouTube 계정을 선택하세요.', true);
+  if (!confirm(`${account.name}의 YouTube 업로드 로그인을 이 PC에서 해제할까요?`)) return;
+  try { await api('/api/youtube/oauth/disconnect', {account_id: account.id}); toast('이 채널의 로그인 정보를 지웠습니다.'); await refreshYoutubeOAuthStatus(); }
+  catch(e) { toast(e.message, true); }
+}
+async function uploadLibraryPackage(id, name) {
+  const privacy = $('youtubePrivacy').value, include_shorts = $('youtubeIncludeShorts').checked;
+  const visibility = {private:'비공개',unlisted:'일부 공개',public:'공개'}[privacy] || '비공개';
+  const count = include_shorts ? '롱폼과 생성된 쇼츠' : '롱폼 영상';
+  if (!confirm(`${name}\\n\\n${count}을(를) YouTube에 ${visibility}로 올릴까요?\\n선택한 계정의 로그인 채널로 전송됩니다.`)) return;
+  const confirm_public = privacy !== 'public' || confirm('이 영상들을 지금 공개 상태로 게시합니다. 맞나요?');
+  if (!confirm_public) return;
+  try {
+    await api('/api/youtube/upload', {package_id:id, privacy, include_shorts, confirm_public});
+    startPolling(true);
+    toast(`${visibility} 업로드를 시작했습니다. 완료와 링크는 진행 화면에서 확인하세요.`);
+  } catch(e) {
+    if (/이전 업로드가 실패하거나 중단된 파일/.test(e.message) &&
+        confirm('YouTube Studio에서 위 파일이 업로드되지 않은 것을 직접 확인했나요? 확인한 경우에만 재시도 기록을 초기화합니다.')) {
+      try {
+        await api('/api/youtube/upload/retry', {package_id:id, confirmed_not_uploaded:true});
+        return uploadLibraryPackage(id, name);
+      } catch(retryError) { toast(retryError.message, true); return; }
+    }
+    toast(e.message, true);
+  }
 }
 
 function imagePrice(slot) {

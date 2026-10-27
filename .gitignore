@@ -43,3 +43,5 @@ server.err.log
 채널별_작업공간/
 로컬음성/
 .local-voice/
+youtube_oauth_client.json
+youtube_auth/

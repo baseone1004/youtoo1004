@@ -35,6 +35,17 @@ def find_ffmpeg(name="ffmpeg"):
         c2 = c.replace("ffmpeg.exe", f"{name}.exe")
         if os.path.exists(c2):
             return c2
+    # WinGet can install per-user and update the registry PATH without
+    # changing the environment of an already-running desktop app.
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            packages = Path(local) / "Microsoft" / "WinGet" / "Packages"
+            for vendor in ("Gyan.FFmpeg.*", "BtbN.FFmpeg.*"):
+                for package in packages.glob(vendor + "_*"):
+                    for binary in package.glob("**/bin/" + name + ".exe"):
+                        if binary.is_file():
+                            return str(binary)
     raise FileNotFoundError(f"{name} 을 찾을 수 없습니다. ffmpeg 를 설치하거나 PATH 에 넣어주세요.")
 
 

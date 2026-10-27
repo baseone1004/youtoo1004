@@ -2865,6 +2865,11 @@ class H(BaseHTTPRequestHandler):
             elif u.path == "/api/youtube/accounts":
                 from youtube_accounts import public_accounts
                 self._json({"accounts": public_accounts(load_json("설정.json", {}))})
+            elif u.path == "/api/youtube/oauth/status":
+                import youtube_upload
+                cfg = load_json("설정.json", {})
+                youtube_accounts.migrate(cfg)
+                self._json(youtube_upload.status(BASE, cfg.get("유튜브_계정", [])))
             elif u.path == "/api/kie/credit":
                 self._json(kie_credit())
             elif u.path == "/api/channel":
@@ -3125,12 +3130,63 @@ class H(BaseHTTPRequestHandler):
                     if (STATE.get("job") and STATE["job"].status == "running") or queue_snapshot().get("status") == "running":
                         raise ValueError("제작이 끝난 뒤 계정을 삭제하세요.")
                     delete_account(cfg, body.get("id"))
+                    import youtube_upload
+                    youtube_upload.disconnect(BASE, body.get("id"))
                 else:
                     save_account(cfg, body)
                 atomic_write_json("설정.json", cfg)
                 if u.path.endswith("/select"):
                     채널_연동.fetch_in_background(cfg, body.get("slot", "person"), force=True)
                 self._json({"ok": True, "accounts": public_accounts(cfg)})
+            elif u.path == "/api/youtube/oauth/client":
+                import youtube_upload
+                self._json(youtube_upload.save_client(BASE, body.get("client_config")))
+            elif u.path == "/api/youtube/oauth/connect":
+                import youtube_upload
+                cfg = load_json("설정.json", {})
+                youtube_accounts.migrate(cfg)
+                account = next((a for a in cfg.get("유튜브_계정", []) if a.get("id") == body.get("account_id")), None)
+                if not account:
+                    raise ValueError("로그인할 저장 YouTube 계정을 선택하세요.")
+                self._json(youtube_upload.connect(BASE, account))
+            elif u.path == "/api/youtube/oauth/disconnect":
+                import youtube_upload
+                self._json(youtube_upload.disconnect(BASE, body.get("account_id", "")))
+            elif u.path == "/api/youtube/upload/retry":
+                import youtube_upload
+                cfg = load_json("설정.json", {})
+                youtube_accounts.migrate(cfg)
+                accounts = cfg.get("유튜브_계정") or []
+                package_id = str(body.get("package_id") or "")
+                row = next((x for x in production_library.library(BASE) if x.get("id") == package_id and x.get("package")), None)
+                if not row:
+                    raise ValueError("업로드 패키지를 보관함에서 다시 선택하세요.")
+                account, _slot = youtube_upload.account_for_package(BASE, row["folder"], accounts, cfg)
+                self._json(youtube_upload.reset_uncertain(BASE, row["folder"], account["id"], body.get("confirmed_not_uploaded") is True))
+            elif u.path == "/api/youtube/upload":
+                import youtube_upload
+                cfg = load_json("설정.json", {})
+                youtube_accounts.migrate(cfg)
+                accounts = cfg.get("유튜브_계정") or []
+                package_id = str(body.get("package_id") or "")
+                row = next((x for x in production_library.library(BASE) if x.get("id") == package_id and x.get("package")), None)
+                if not row:
+                    raise ValueError("업로드 패키지를 보관함에서 다시 선택하세요.")
+                account, _slot = youtube_upload.account_for_package(BASE, row["folder"], accounts, cfg)
+                if body.get("privacy") == "public" and body.get("confirm_public") is not True:
+                    raise ValueError("공개 업로드는 별도 확인이 필요합니다.")
+                check = youtube_upload.preflight(BASE, row["folder"], account, body.get("privacy", "private"),
+                                                 include_shorts=body.get("include_shorts") is True)
+                with QUEUE.lock:
+                    if QUEUE.data.get("status") == "running":
+                        raise ValueError("영상 제작 대기열이 끝난 뒤 업로드하세요.")
+                def upload_video(job):
+                    job.stage = "YouTube 업로드 준비"
+                    job.add(f"▶ {account.get('name', 'YouTube 채널')}에 업로드합니다.")
+                    return youtube_upload.upload_package(BASE, row["folder"], account, body.get("privacy", "private"),
+                                                         job, include_shorts=body.get("include_shorts") is True)
+                run_job("youtube_upload", upload_video)
+                self._json({"ok": True, "channel": check["channel"], "title": check["title"], "video_count": check["video_count"]})
             elif u.path == "/api/youtube/test":
                 cfg = load_json("설정.json", {})
                 key = str(cfg.get("유튜브_API_키", "") or "").strip()

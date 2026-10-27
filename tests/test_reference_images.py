@@ -32,6 +32,8 @@ class ReferenceTest(unittest.TestCase):
             self.assertEqual(ref.reference_options("person"), {})
 
     def test_enabled_missing_reference_does_not_silently_fallback(self):
-        with patch.object(ref.채널_프로필, "get", return_value={"마스코트": {"이미지": "missing.png", "레퍼런스_사용": True}}):
+        with patch.object(ref.채널_프로필, "get", return_value={"마스코트": {"이미지": "missing.png", "레퍼런스_사용": True}}), \
+             patch.object(ref.채널_프로필, "language_code", return_value="ko"), \
+             patch.object(ref.채널_프로필, "brand_reference", return_value={"reference": "레퍼런스/고정_레퍼런스.png"}):
             with self.assertRaises(ValueError):
                 ref.reference_options("person")

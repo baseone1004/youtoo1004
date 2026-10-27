@@ -35,7 +35,7 @@ class LocalizationTest(unittest.TestCase):
             brand=profiles.brand("person")
         self.assertEqual(brand["주색"],"#18344A")
         self.assertEqual(brand["언어"],"ja")
-        self.assertEqual(brand["배지"],"心の話")
+        self.assertEqual(brand["배지"],"心のしくみ便り")
         with tempfile.TemporaryDirectory() as td:
             src=Path(td,"source.png"); out=Path(td,"thumb.jpg")
             Image.new("RGB",(1280,720),"#FFF8ED").save(src)

@@ -285,7 +285,7 @@
   </div>
 
   <div class="card" id="chanCard" data-advanced>
-    <h2>유튜브 연동 · 내 유튜브 채널 연동</h2><div class="row"><select aria-label="저장된 유튜브 계정" style="max-width:100%;min-width:0" id="ytAccounts" onchange="fillYtAccountForm()"></select><button onclick="useYtAccount()">선택 계정 적용</button></div><div class="keyrow"><input type="text" id="ytAccountName" placeholder="계정 이름 (예: 일본 채널)"><input type="text" id="ytAccountUrl" placeholder="유튜브 채널 주소"><input id="ytAccountKey" type="password" placeholder="API 키 (비우면 현재 키 사용)"><select id="ytAccountLanguage" aria-label="계정 제작 언어"><option value="ko">한국어</option><option value="ja">일본어</option><option value="en">영어</option><option value="es">스페인어</option><option value="zh">중국어</option></select><button onclick="saveYtAccount()">계정 저장</button></div><p class="hint">채널 주소·API 키·제작 언어를 여러 개 저장합니다. 일본 계정은 일본어를 선택하세요. 같은 주소를 저장하면 수정됩니다. 선택 계정 적용 시 현재 채널과 조회용 키가 변경됩니다.</p>
+    <h2>유튜브 연동 · 내 유튜브 채널 연동</h2><div class="row"><select aria-label="저장된 유튜브 계정" style="max-width:100%;min-width:0" id="ytAccounts" onchange="fillYtAccountForm();refreshYoutubeOAuthStatus()"></select><button onclick="useYtAccount()">선택 계정 적용</button></div><div class="keyrow"><input type="text" id="ytAccountName" placeholder="계정 이름 (예: 일본 채널)"><input type="text" id="ytAccountUrl" placeholder="유튜브 채널 주소"><input id="ytAccountKey" type="password" placeholder="API 키 (비우면 현재 키 사용)"><select id="ytAccountLanguage" aria-label="계정 제작 언어"><option value="ko">한국어</option><option value="ja">일본어</option><option value="en">영어</option><option value="es">스페인어</option><option value="zh">중국어</option></select><button onclick="saveYtAccount()">계정 저장</button></div><p class="hint">채널 주소·API 키·제작 언어를 여러 개 저장합니다. 일본 계정은 일본어를 선택하세요. 같은 주소를 저장하면 수정됩니다. 선택 계정 적용 시 현재 채널과 조회용 키가 변경됩니다.</p>
     <p class="lead">채널 주소를 넣으면 이미 올린 영상 제목을 읽어 와서, 겹치는 주제는 추천 목록에서 자동으로 뺍니다. (로그인·API 키 필요 없음)</p>
     <div class="keyrow"><b class="pname-person">정보형</b><span class="stat" id="chStatP"></span><input type="text" id="chUrlP" placeholder="https://www.youtube.com/@채널이름  또는  /channel/UC…"><button class="mini primary" onclick="saveChannel('person')">저장</button><button class="mini" onclick="refreshChannel('person')">제목 다시 읽기</button></div>
     <p class="hint" id="chInfoP" style="margin:-2px 0 10px 120px;white-space:pre-wrap"></p>
@@ -298,6 +298,21 @@
     <h3>유튜브 API 키 <span class="stat" id="ytKeyStat"></span><span class="hint" id="ytKeyInfo"></span></h3>
     <p class="hint">넣으면 조회수·좋아요·게시일까지 정확히 읽어 채널 분석에 씁니다 (없으면 제목만 읽음). 발급: console.cloud.google.com → 프로젝트 만들기 → <b>YouTube Data API v3</b> 사용 설정 → 사용자 인증 정보 → API 키 만들기. 무료입니다.</p>
     <div class="keyrow"><b>API 키</b><input type="password" id="ytKey" placeholder="AIza…"><button class="mini primary" onclick="saveYtKey()">저장</button><button class="mini" onclick="testYtKey()">연결 확인</button><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener" class="mini" style="font-size:13px">↗ 발급 페이지</a></div>
+    <h3>YouTube 업로드 로그인 <span class="stat" id="ytOAuthStatus"></span></h3>
+    <p class="hint">Google Cloud에서 YouTube Data API v3를 사용 설정하고 OAuth 클라이언트를 <b>데스크톱 앱</b>으로 만들어 JSON을 내려받으세요. 아래 파일은 이 PC에만 저장됩니다. 그런 다음 위 계정 목록에서 채널을 골라 Google 로그인을 연결합니다. 업로드는 기본 비공개이며, 공개·일부공개도 업로드 버튼을 눌러 직접 선택할 수 있습니다.</p>
+    <details class="inner"><summary>처음 연결하기 · OAuth JSON 준비 순서</summary>
+      <ol class="hint">
+        <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>에서 프로젝트를 만들거나 선택합니다.</li>
+        <li><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API v3</a>를 사용 설정합니다.</li>
+        <li><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">Google Auth Platform · Clients</a>에서 클라이언트를 만들고 애플리케이션 유형을 <b>데스크톱 앱</b>으로 선택한 다음 JSON을 내려받습니다. 로그인 테스트 사용자 설정이 표시되면 사용할 Google 계정을 추가하세요.</li>
+        <li>이 화면에서 JSON 파일을 선택해 저장하고, 저장된 YouTube 계정을 골라 <b>선택 계정 Google 로그인</b>을 누릅니다. 브라우저에서 올바른 채널로 로그인하고 권한을 허용하세요.</li>
+        <li>작업 보관함의 완성 패키지에서 <b>YouTube 업로드</b>를 누릅니다. 기본 공개 범위는 비공개이며, 롱폼과 생성된 쇼츠를 함께 보낼지 선택할 수 있습니다.</li>
+      </ol>
+      <p class="hint">공식 안내: <a href="https://developers.google.com/youtube/data/quickstart/python" target="_blank" rel="noopener">YouTube API 설정</a> · <a href="https://developers.google.com/identity/protocols/oauth2/native-app" target="_blank" rel="noopener">데스크톱 앱 OAuth</a>. OAuth 파일과 로그인 토큰은 GitHub에 올리지 말고 이 PC에서만 관리하세요.</p>
+    </details>
+    <div class="keyrow"><input type="file" id="ytOAuthClientFile" accept=".json,application/json"><button class="mini" onclick="saveYoutubeOAuthClient()">OAuth JSON 저장</button><button class="mini primary" onclick="connectYoutubeAccount()">선택 계정 Google 로그인</button><button class="mini" onclick="disconnectYoutubeAccount()">로그인 해제</button></div>
+    <div class="row"><label>업로드 공개 범위</label><select id="youtubePrivacy" aria-label="업로드 공개 범위"><option value="private">비공개 (검토 후 직접 공개)</option><option value="unlisted">일부 공개</option><option value="public">공개</option></select><label class="chk"><input id="youtubeIncludeShorts" type="checkbox" checked> 이 패키지의 쇼츠도 함께 업로드</label></div>
+    <p class="hint" id="ytOAuthHelp">OAuth 연결 후 완성 확인 → 작업 보관함에서 업로드 패키지 옆의 YouTube 업로드를 누르세요.</p>
     <h3>내 채널 분석 <span class="hint">채널을 읽을 때마다 자동 갱신</span></h3>
     <div class="row"><div class="seg"><button data-ach="person" class="on" onclick="loadAnalysis('person')">정보형</button><button data-ach="mindam" onclick="loadAnalysis('mindam')">이야기형</button></div><button class="mini" onclick="loadAnalysis()">다시 계산</button></div>
     <div id="chAnalysis" class="hint">채널을 연동하면 여기에 분석이 나옵니다.</div>
@@ -316,5 +331,5 @@
 
 <div id="toastBox"></div>
 <script>if(document.querySelector('link[data-failed]'))document.getElementById('uiLoadError').classList.remove('hidden');</script>
-<script src="/static/app.js?v=20261012-2" onerror="document.getElementById('uiLoadError').classList.remove('hidden')"></script>
+<script src="/static/app.js?v=20261027-upload-oauth-1" onerror="document.getElementById('uiLoadError').classList.remove('hidden')"></script>
 </body></html>
