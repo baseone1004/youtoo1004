@@ -1114,10 +1114,35 @@ def _planned_character_names(chars):
 
 def _validate_character_sheet(sheet, chars):
     rows = [ln.strip() for ln in (sheet or "").splitlines() if ln.count("/") >= 4 and "clothing" in ln.lower()]
-    covered = {_character_key(ln.split("/", 1)[0]) for ln in rows}
-    missing = [name for name in _planned_character_names(chars) if name not in covered]
-    if missing:
-        raise RuntimeError("인물 고정표에 계획된 인물이 빠져 이미지 생성을 멈췄습니다. 인물표를 확인해 주세요.")
+    planned = set(_planned_character_names(chars))
+    covered = set()
+    seen_forms = set()
+    unexpected = []
+    duplicate_forms = []
+    for line in rows:
+        name = line.split("/", 1)[0].strip()
+        later_life = bool(re.search(r"\s*\(뒤\)\s*$", name))
+        base_name = re.sub(r"\s*\(뒤\)\s*$", "", name)
+        key = _character_key(base_name)
+        if not key:
+            continue
+        covered.add(key)
+        form = (key, later_life)
+        if form in seen_forms:
+            duplicate_forms.append(name)
+        seen_forms.add(form)
+        if key not in planned:
+            unexpected.append(name)
+    missing = planned - covered
+    if missing or unexpected or duplicate_forms:
+        details = []
+        if missing:
+            details.append("누락된 인물 " + ", ".join(sorted(missing)))
+        if unexpected:
+            details.append("기획에 없는 인물 " + ", ".join(unexpected))
+        if duplicate_forms:
+            details.append("중복된 외형표 " + ", ".join(duplicate_forms))
+        raise RuntimeError("인물 고정표와 기획의 등장인물이 일치하지 않아 이미지 생성을 멈췄습니다 (" + "; ".join(details) + "). 인물표를 확인해 주세요.")
     return rows
 
 
