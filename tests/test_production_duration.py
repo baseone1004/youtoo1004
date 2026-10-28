@@ -4,22 +4,29 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import production_duration as policy
+import 민담_대본
 import 대본선택 as app
 
 
 class DurationPolicyTests(unittest.TestCase):
+    def test_story_length_choices_are_90_or_120_minutes(self):
+        self.assertEqual(set(민담_대본.길이), {"2", "3"})
+        self.assertEqual(민담_대본.길이["2"]["이름"], "1시간 30분")
+        self.assertEqual(민담_대본.길이["3"]["이름"], "2시간")
+
     def test_language_and_speed_budgets_include_margin(self):
-        self.assertEqual(policy.script_target(6750, 270, "ko"), (8100, 25))
-        self.assertEqual(policy.script_target(6750, 270, "ja"), (12000, 25))
-        self.assertEqual(policy.script_target(6750, 270, "ja", 1.2), (14400, 25))
-        self.assertEqual(policy.script_target(100, 270, "ko", 0.8), (8100, 25))
+        self.assertEqual(policy.script_target(2700, 270, "ko"), (4050, 10))
+        self.assertEqual(policy.script_target(2700, 270, "ja"), (6000, 10))
+        self.assertEqual(policy.script_target(2700, 270, "ja", 1.2), (7200, 10))
+        self.assertEqual(policy.script_target(100, 270, "ko", 0.8), (4050, 10))
+        self.assertEqual(policy.script_target(5400, 270, "ko"), (6750, 20))
 
     def test_duration_boundary_and_invalid_metadata(self):
-        policy.require_duration(1500)
-        for seconds in (1499.99, 0, float("nan"), float("inf")):
+        policy.require_duration(600)
+        for seconds in (599.99, 0, float("nan"), float("inf")):
             with self.assertRaises(ValueError):
                 policy.require_duration(seconds)
-        self.assertEqual(policy.additional_chars(6000, 1200), 2100)
+        self.assertEqual(policy.additional_chars(6000, 480), 3000)
 
     def run_extension(self, durations, cancelled=False):
         temp = tempfile.TemporaryDirectory()
@@ -35,7 +42,7 @@ class DurationPolicyTests(unittest.TestCase):
                 job.cancel_requested = True
             return f"さらに具体的な例{ai.ask.call_count}を見ていきましょう。" * 60
         ai.ask.side_effect = answer
-        patches = [patch.object(app, "minimum_video_seconds", return_value=1500),
+        patches = [patch.object(app, "minimum_video_seconds", return_value=600),
                    patch.object(app, "assets_dir", return_value=temp.name),
                    patch.object(app.나레이션, "find_ffmpeg", return_value="probe"),
                    patch.object(app.나레이션, "probe_duration", side_effect=durations),
@@ -49,9 +56,9 @@ class DurationPolicyTests(unittest.TestCase):
         return job, script, result, ai, original
 
     def test_short_narration_is_extended_and_retimed(self):
-        job, script, result, ai, original = self.run_extension([1200, 1520])
+        job, script, result, ai, original = self.run_extension([480, 620])
         self.assertTrue(app.ensure_longform_narration(job, str(script), result))
-        self.assertEqual(result["duration"], 1520)
+        self.assertEqual(result["duration"], 620)
         self.assertEqual(result["srt"], "new srt")
         text = script.read_text(encoding="utf-8")
         self.assertTrue(text.startswith(original.split("===sum===")[0].rstrip()))
@@ -59,19 +66,19 @@ class DurationPolicyTests(unittest.TestCase):
         self.assertEqual(ai.ask.call_count, 1)
 
     def test_sufficient_narration_does_not_generate_again(self):
-        job, script, result, ai, original = self.run_extension([1500])
+        job, script, result, ai, original = self.run_extension([600])
         self.assertFalse(app.ensure_longform_narration(job, str(script), result))
         ai.ask.assert_not_called()
         self.assertEqual(script.read_text(encoding="utf-8"), original)
 
     def test_insufficient_after_two_additions_stops(self):
-        job, script, result, ai, _ = self.run_extension([1000, 1100, 1200])
-        with self.assertRaisesRegex(ValueError, "최소 25분"):
+        job, script, result, ai, _ = self.run_extension([400, 500, 580])
+        with self.assertRaisesRegex(ValueError, "최소 10분"):
             app.ensure_longform_narration(job, str(script), result)
         self.assertEqual(ai.ask.call_count, 2)
 
     def test_cancel_during_extension_does_not_change_script_or_request_tts(self):
-        job, script, result, ai, original = self.run_extension([1200], cancelled=True)
+        job, script, result, ai, original = self.run_extension([480], cancelled=True)
         with self.assertRaisesRegex(RuntimeError, "중단"):
             app.ensure_longform_narration(job, str(script), result)
         app.make_tts.assert_not_called()
@@ -84,9 +91,9 @@ class DurationPolicyTests(unittest.TestCase):
             def render(job, srt, flow, images, audio, staged, ken_burns):
                 Path(staged).write_bytes(b"new video")
                 return {}
-            with patch.object(app, "_run_render", side_effect=render), patch.object(app, "verify_final_video", return_value=1499):
+            with patch.object(app, "_run_render", side_effect=render), patch.object(app, "verify_final_video", return_value=599):
                 with self.assertRaises(ValueError):
-                    app.run_render(app.Job("pipeline"), "srt", "flow", "images", "audio", str(output), minimum_duration=1500)
+                    app.run_render(app.Job("pipeline"), "srt", "flow", "images", "audio", str(output), minimum_duration=600)
             self.assertEqual(output.read_bytes(), b"previous video")
 
     def test_narration_and_length_are_finalized_before_image_prompts(self):

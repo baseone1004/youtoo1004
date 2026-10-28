@@ -643,7 +643,7 @@ def make_person_script(job, req):
     _, speed = voice_for(cfg, "person")
     target, minutes = production_duration.script_target(requested, cpm, 채널_프로필.language_code("person"), speed)
     n_parts = max(1, -(-target // 4500))          # 한 번에 4,500자 이하로 나눠 요청
-    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 (선택 {minutes}분, 여유 분량 포함) · 실제 음성 최소 25분 확인 · 지침 {guideline}")
+    job.add(f"AI: {ai.name} ({ai.model}) · 목표 {target:,}자 (선택 {minutes}분, 여유 분량 포함) · 실제 음성 최소 {production_duration.MINIMUM_MINUTES}분 확인 · 지침 {guideline}")
     job.add(f"▶ {t['제목']}")
     full, body = 대본생성.generate(ai, system, t, target, n_parts)
     storage = os.path.join(대본_폴더, production_library.LANGUAGE_FOLDERS[채널_프로필.language_code("person")])
@@ -1640,7 +1640,7 @@ def minimum_video_seconds(script):
 
 
 def ensure_longform_narration(job, script, result):
-    """이미지 비용이 발생하기 전에 실제 음성을 검사하고 최대 두 번 내용을 보충한다."""
+    """이미지 비용이 발생하기 전에 10분 이상인지 확인하고, 모자라면 최대 두 번 보충한다."""
     if not minimum_video_seconds(script):
         return False
     changed = False
@@ -1650,10 +1650,11 @@ def ensure_longform_narration(job, script, result):
         duration = 나레이션.probe_duration(나레이션.find_ffmpeg("ffprobe"), result["narration"])
         result["duration"] = duration
         atomic_write_json(os.path.join(assets_dir(script), "길이_검사.json"),
-                          dict(duration=duration, minimum=1500, ok=duration >= 1500, additions=attempt))
+                          dict(duration=duration, minimum=production_duration.MINIMUM_SECONDS,
+                               ok=duration >= production_duration.MINIMUM_SECONDS, additions=attempt))
         if duration >= production_duration.MINIMUM_SECONDS:
             production_duration.require_duration(duration)
-            job.add(f"   ✓ 실제 나레이션 {int(duration // 60)}분 {int(duration % 60)}초 · 최소 25분 충족")
+            job.add(f"   ✓ 실제 나레이션 {int(duration // 60)}분 {int(duration % 60)}초 · 최소 {production_duration.MINIMUM_MINUTES}분 충족")
             return changed
         if attempt == 2:
             production_duration.require_duration(duration)
@@ -1663,8 +1664,8 @@ def ensure_longform_narration(job, script, result):
         cfg = 대본생성.load_cfg()
         guideline = 채널_프로필.get("person")["지침"].get("대본") or "정보형_대본지침.txt"
         system = read_guideline(guideline, "person")
-        job.stage = "② 나레이션 · 25분 분량 보충"
-        job.add(f"   실제 음성 {duration / 60:.1f}분 → 사례·설명 약 {extra:,}자 보충 ({attempt + 1}/2). 추가 대본·음성 생성 비용이 발생할 수 있습니다.")
+        job.stage = f"② 나레이션 · {production_duration.MINIMUM_MINUTES}분 분량 보충"
+        job.add(f"   실제 음성 {duration / 60:.1f}분 → 최소 길이를 맞추기 위해 사례·설명 약 {extra:,}자 보충 ({attempt + 1}/2). 추가 대본·음성 생성 비용이 발생할 수 있습니다.")
         ai = AI(cfg)
         addition = ai.ask(system,
             f"기존 대본의 주제와 말투를 유지하며 끝에 자연스럽게 이어질 심화 내용을 공백 포함 {extra}자 이상 작성한다. "
@@ -1676,7 +1677,7 @@ def ensure_longform_narration(job, script, result):
             raise RuntimeError("사용자가 제작을 중단했습니다.")
         addition = fix_script_sentences(대본생성.clean_part(addition)).strip()
         if not addition or len(addition) < 100 or addition in body:
-            raise ValueError("25분을 위한 대본 보충 응답이 충분하지 않습니다. 기존 작업은 저장돼 있습니다. 대본 AI 연결을 확인한 뒤 이어서 제작하세요.")
+            raise ValueError(f"{production_duration.MINIMUM_MINUTES}분을 위한 대본 보충 응답이 충분하지 않습니다. 기존 작업은 저장돼 있습니다. 대본 AI 연결을 확인한 뒤 이어서 제작하세요.")
         before, marker, rest = full.partition("[대본]")
         if not marker:
             raise ValueError("대본 본문 구분을 찾지 못해 자동 보충하지 못했습니다.")
@@ -3162,7 +3163,7 @@ class H(BaseHTTPRequestHandler):
                                             텔레그램_알림=cfg.get("텔레그램_알림", True), 온보딩_완료=bool(cfg.get("온보딩_완료", False))),
                                 base_dir=BASE, dedicated=bool(os.environ.get("YOUTOO_ACCOUNT")), extension_dir=os.path.join(channel_workspaces.HOME, "딥시크_확장"),
                                 web_alive=웹큐.extension_alive(), web_hidden=(웹큐._extension_seen["info"] == "hidden"),
-                                lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) != "0"}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
+                                lengths={k: v["이름"] for k, v in 민담_대본.길이.items() if str(k) in {"2", "3"}}, styles=list(화풍), style_info=화풍_설명, style_groups=화풍_그룹,
                                 style_prefixes={k: image_style_lock(k) for k in 화풍},
                                 job=job.to_dict() if job else None, queue=queue_snapshot(), reset_items=reset_items(),
                                 channels=채널_연동.status(cfg), profiles=채널_프로필.summary(), languages=채널_프로필.LANGUAGES,

@@ -35,7 +35,7 @@ def load_cfg():
     from 공통_api import normalize_provider_config
     cfg = normalize_provider_config(cfg)
     cfg.setdefault("AI", "deepseek"); cfg.setdefault("API_키", ""); cfg.setdefault("모델", "")
-    cfg.setdefault("대본_글자수", 6750); cfg.setdefault("하루_대본_편수", 2)     # 6,750자 = 25분 (분당 270자 기준)
+    cfg.setdefault("대본_글자수", 2700); cfg.setdefault("하루_대본_편수", 2)     # 기본 선택 10분 (실제 음성 최소 10분, 여유 분량 포함 생성)
     return cfg
 
 def safe_name(s):
@@ -48,7 +48,7 @@ def topic_card(t, target):
              "[이 영상에서 다룰 내용]"] + [f"- {p}" for p in t.get("다룰내용", [])]
     if t.get("출처후보"):
         lines += ["[참고할 만한 저서·연구]"] + [f"- {s}" for s in t["출처후보"]]
-    lines += [f"[작성 목표] 공백 포함 {target:,}자 이상 (이십오 분 이상 롱폼 · 이 분량을 반드시 채운다), 9개 구간"]
+    lines += [f"[작성 목표] 공백 포함 {target:,}자 이상 (최소 십 분 이상 심리 롱폼 · 선택한 목표 분량을 채운다), 9개 구간"]
     return "\n".join(lines)
 
 def split_groups(n_parts):

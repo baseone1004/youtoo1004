@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""정보형 롱폼 대본은 25분 미만으로 만들지 않는다."""
+"""심리 롱폼은 10분부터 선택하고 대본 작성 후 곧바로 제작한다."""
 import os
 import tempfile
 import unittest
@@ -32,7 +32,7 @@ class Job:
 
 
 class LongformMinimumTest(unittest.TestCase):
-    def test_longform_minimum_is_25_minutes(self):
+    def test_default_length_is_10_minutes_plus_script_margin(self):
         with tempfile.TemporaryDirectory() as tmp:
             cwd = os.getcwd(); os.chdir(tmp); os.makedirs("대본")
             try:
@@ -42,8 +42,8 @@ class LongformMinimumTest(unittest.TestCase):
                 with patch.object(app, "AI", FakeAI), patch.object(app.대본생성, "load_cfg", return_value={"분당_글자수": 270, "대본_글자수": 5400}), \
                      patch.object(app.대본생성, "generate", side_effect=fake_generate), patch.object(app, "read_guideline", return_value="지침"), \
                      patch.object(app, "load_json", return_value=[]), patch.object(app.채널_프로필, "language_code", return_value="ko"):
-                    app.make_person_script(Job(), dict(title="주제", target=5400, mark_used=False, optimize=False))   # 20분 요청 → 25분으로 올린다
-                self.assertEqual(seen["target"], 30 * 270)
+                    app.make_person_script(Job(), dict(title="주제", target=2700, mark_used=False, optimize=False))
+                self.assertEqual(seen["target"], 15 * 270)
             finally:
                 os.chdir(cwd)
 

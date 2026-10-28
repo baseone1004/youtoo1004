@@ -38,11 +38,11 @@
   <div class="inner">
     <h2>어떤 영상을 만들까요?</h2>
     <p class="lead">주제만 고르거나 적으면 대본·나레이션·이미지·썸네일·최종 영상까지 자동으로 만듭니다.</p>
-    <p class="hint" id="durationPolicy">한국어·일본어 영상은 최소 25분으로 제작합니다. 새 제작은 연속 문장을 묶어 이미지 최대 150장으로 만듭니다. 기존 제작의 장면 번호는 유지합니다. 실제 음성이 짧으면 내용을 자동 보충하며 대본·음성 생성 비용이 추가될 수 있습니다.</p>
+    <p class="hint" id="durationPolicy">한국어·일본어 심리 영상은 최소 10분입니다. 대본을 쓴 뒤 바로 음성·이미지·영상 제작을 이어갑니다. 설루온 옛이야기는 1시간 30분 또는 2시간으로 제작합니다. 실제 음성이 10분보다 짧으면 내용을 보충하며 대본·음성 생성 비용이 추가될 수 있습니다.</p>
     <div class="row" data-advanced>
       <div class="seg" id="chSeg"><button data-ch="person" class="on" onclick="setChannel('person')">정보형</button><button data-ch="mindam" onclick="setChannel('mindam')">이야기형</button></div>
       <label><b>제작 언어</b> <select id="quickLanguage" onchange="saveQuickLanguage()" style="min-width:130px"></select></label>
-      <span class="hint" id="chHint">20~30분 · 심리·관계 이야기</span><span class="spacer"></span>
+      <span class="hint" id="chHint">10분 이상 · 심리·관계 이야기</span><span class="spacer"></span>
       <button class="mini" onclick="selectAllVisible(true)">모두 선택</button><button class="mini" onclick="selectAllVisible(false)">선택 해제</button>
     </div>
     <div class="row" style="margin:6px 0 2px"><span class="hint">추천 주제 — 체크하면 제작 목록에 들어갑니다</span><span class="spacer"></span><span class="hint" id="topicRefreshStat"></span><button class="mini" id="benchBtn" onclick="runBenchmark()">📊 인기 영상 찾기</button><button class="primary mini" id="topicRefreshBtn" onclick="refreshTopics()">🔄 새 주제 추천</button></div>
