@@ -127,15 +127,22 @@ def _render(ffmpeg, video, output, start, end, cancel=None):
         font = "Batang" if "/민담/" in path_text else "Yu Gothic" if re.search(r"[ぁ-んァ-ン]", subtitle_text) else "Malgun Gothic"
         subtitle_filter = (
             f"subtitles=filename='{_filter_path(subtitle)}':"
-            f"force_style='FontName={font},FontSize=48,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-            "BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=64,MarginR=64,MarginV=300,WrapStyle=2'"
+            # SRT uses libass's small default script canvas. Font and margins
+            # are script units, not output pixels: a 48pt font and MarginV=300
+            # put text off-screen on a 1080x1920 canvas. Keep captions large
+            # while reserving a visible safe area for the 9:16 layout.
+            f"force_style='FontName={font},FontSize=10,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+            "BorderStyle=1,Outline=1.2,Shadow=0.3,Alignment=2,MarginL=24,MarginR=24,MarginV=42,WrapStyle=0'"
         )
     else:
         subtitle_filter = "null"
     graph = (
         "[0:v]split=2[bg][fg];"
-        "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-        "boxblur=24:12,eq=brightness=-0.28,setsar=1[back];"
+        # Blur the background at quarter output resolution. The blur is
+        # intentionally soft, so upscaling this layer keeps its appearance
+        # while avoiding a full-resolution 1080x1920 blur on CPU-only PCs.
+        "[bg]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,"
+        "boxblur=6:3,eq=brightness=-0.28,scale=1080:1920:flags=bilinear,setsar=1[back];"
         "[fg]scale=1080:608:force_original_aspect_ratio=decrease,"
         "pad=1080:608:(ow-iw)/2:(oh-ih)/2,"
         "crop=1080:550:0:0,scale=1080:608:flags=lanczos,setsar=1[front];"
@@ -143,7 +150,7 @@ def _render(ffmpeg, video, output, start, end, cancel=None):
     )
     command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{start:.3f}", "-i", video,
                "-t", f"{duration:.3f}", "-filter_complex", graph, "-map", "[v]", "-map", "0:a?",
-               "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-c:a", "aac", "-b:a", "160k",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "160k",
                "-movflags", "+faststart", output]
     process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     while process.poll() is None:

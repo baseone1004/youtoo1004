@@ -43,6 +43,30 @@ class ShortsTest(unittest.TestCase):
                 shorts.create(video, subtitles, root / "쇼츠", "짧은 이야기", "ko",
                               "ffmpeg", count=2)
 
+    def test_render_keeps_subtitles_in_frame_and_uses_cpu_friendly_filters(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            output = root / "clip.rendering-123.mp4"
+            output.write_bytes(b"x" * 60_000)
+            (root / "clip.srt").write_text(
+                "1\n00:00:00,000 --> 00:00:03,000\n자막 위치 검사\n", encoding="utf-8"
+            )
+            process = unittest.mock.Mock()
+            process.poll.return_value = 0
+            process.returncode = 0
+            process.communicate.return_value = (None, b"")
+            with patch.object(shorts.subprocess, "Popen", return_value=process) as popen:
+                shorts._render("ffmpeg", "source.mp4", str(output), 0, 30)
+
+            command = popen.call_args.args[0]
+            graph = command[command.index("-filter_complex") + 1]
+            self.assertIn("scale=270:480", graph)
+            self.assertIn("scale=1080:1920", graph)
+            self.assertIn("FontSize=10", graph)
+            self.assertIn("MarginV=42", graph)
+            self.assertIn("WrapStyle=0", graph)
+            self.assertEqual(command[command.index("-preset") + 1], "veryfast")
+
 
 if __name__ == "__main__":
     unittest.main()
