@@ -1,5 +1,6 @@
 import unittest
 from youtube_accounts import public_accounts, save_account, select_account, switch_profile, delete_account
+import 채널_프로필
 
 class AccountsTest(unittest.TestCase):
     def test_reference_and_model_are_kept_per_account(self):
@@ -7,14 +8,17 @@ class AccountsTest(unittest.TestCase):
             {"id":"ko", "name":"Korean", "url":"https://www.youtube.com/@ko", "language":"ko"},
             {"id":"jp", "name":"Japan", "url":"https://www.youtube.com/@jp", "language":"ja"}]}
         korean={"이름":"Korean", "언어":"ko", "마스코트":{"이미지":"ko.png", "생성_모델":"model-ko"}}
+        ko_reference=채널_프로필.brand_reference("ko")["reference"]
+        ja_reference=채널_프로필.brand_reference("ja")["reference"]
         jp=switch_profile(cfg,"jp","person",korean)
         self.assertEqual(jp["언어"],"ja")
-        jp["마스코트"]["이미지"]="jp.png"
+        self.assertEqual(jp["마스코트"]["이미지"],ja_reference)
         jp["마스코트"]["생성_모델"]="model-jp"
         ko=switch_profile(cfg,"ko","person",jp)
-        self.assertEqual(ko["마스코트"],korean["마스코트"])
+        self.assertEqual(ko["마스코트"]["이미지"],ko_reference)
+        self.assertEqual(ko["마스코트"]["생성_모델"],"model-ko")
         restored=switch_profile(cfg,"jp","person",ko)
-        self.assertEqual(restored["마스코트"]["이미지"],"jp.png")
+        self.assertEqual(restored["마스코트"]["이미지"],ja_reference)
         self.assertEqual(restored["마스코트"]["생성_모델"],"model-jp")
         self.assertNotIn("profile",public_accounts(cfg)[0])
 

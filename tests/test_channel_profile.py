@@ -52,6 +52,15 @@ class ChannelProfileTest(unittest.TestCase):
         self.assertIn("대괄호 블록명", instruction)
         self.assertEqual(P.fill("{{언어}}", "person"), "일본어")
 
+    def test_locked_reference_tracks_language_and_ignores_profile_override(self):
+        ko = P.brand_reference("ko")["reference"]
+        ja = P.brand_reference("ja")["reference"]
+        saved = P.save("person", {"언어": "ja", "마스코트": {"이미지": ko, "레퍼런스_사용": False}})
+        self.assertEqual(saved["마스코트"]["이미지"], ja)
+        self.assertTrue(saved["마스코트"]["레퍼런스_사용"])
+        saved = P.save("person", {"언어": "ko", "마스코트": {"이미지": ja}})
+        self.assertEqual(saved["마스코트"]["이미지"], ko)
+
     def test_unknown_language_falls_back_to_korean(self):
         saved = P.save("person", {"언어": "xx"})
         self.assertEqual(saved["언어"], "ko")

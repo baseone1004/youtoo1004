@@ -111,6 +111,19 @@ def brand_reference(language):
     return next((item for item in channels if item.get("language") == language), {})
 
 
+def lock_brand_reference(slot, profile):
+    """Keep a psychology profile's stored mascot image aligned with its language brand."""
+    if slot != "person" or not isinstance(profile, dict):
+        return profile
+    language = str(profile.get("언어") or "ko").lower()
+    reference = brand_reference(language).get("reference")
+    if reference:
+        mascot = profile.setdefault("마스코트", {})
+        mascot["이미지"] = reference
+        mascot["레퍼런스_사용"] = True
+    return profile
+
+
 def _merge(base, over):
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
@@ -143,6 +156,7 @@ def load(force=False):
         data = {slot: _merge(기본_프로필[slot], saved.get(slot)) for slot in SLOTS}
         for slot in SLOTS:
             data[slot]["유형"] = 기본_프로필[slot]["유형"]      # 자리의 제작 방식은 바꿀 수 없다
+            lock_brand_reference(slot, data[slot])
         _cache = data
         return copy.deepcopy(data)
 
@@ -184,6 +198,7 @@ def save(slot, patch, replace=False):
         else:
             clean[k] = v
     data[slot] = _merge(기본_프로필[slot] if replace else data[slot], clean)
+    lock_brand_reference(slot, data[slot])
     if not data[slot]["이름"].strip():
         data[slot]["이름"] = 기본_프로필[slot]["이름"]
     with _lock:
